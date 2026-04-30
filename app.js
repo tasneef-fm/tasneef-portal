@@ -1728,11 +1728,46 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
     return new Promise(async(resolve)=>{
       let stream=null;
       const overlay=document.createElement('div'); overlay.className='cam-overlay-v72';
-      overlay.innerHTML=`<div class="cam-box-v72"><h3>${info.title}</h3><video class="cam-video-v72" autoplay playsinline></video><div class="cam-actions-v72"><button type="button" id="camShotV72">التقاط الصورة</button><button type="button" class="cam-cancel-v72" id="camCancelV72">إلغاء</button></div><div class="footer-note">سيتم وضع التاريخ والوقت واسم المشرف على الصورة تلقائيًا.</div></div>`;
+      overlay.innerHTML=`<div class="cam-box-v72"><h3>${info.title}</h3><video class="cam-video-v72" autoplay playsinline muted></video><div class="cam-actions-v72"><button type="button" id="camShotV72">التقاط الصورة</button><button type="button" id="camSwitchV73" style="background:#0d6b56!important">تبديل الكاميرا</button><button type="button" class="cam-cancel-v72" id="camCancelV72">إلغاء</button></div><div class="footer-note">سيحاول التطبيق فتح الكاميرا الخلفية أولًا. إذا لم تعمل، اضغط تبديل الكاميرا أو تأكد أن الصفحة تعمل على HTTPS.</div></div>`;
       document.body.appendChild(overlay);
       const video=overlay.querySelector('video');
       function close(val){ try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){} overlay.remove(); resolve(val); }
       overlay.querySelector('#camCancelV72').onclick=()=>close(null);
+      let preferBackCameraV73 = true;
+      async function startCameraV73(){
+        try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+        stream = null;
+        const tries = preferBackCameraV73
+          ? [
+              {video:{facingMode:{exact:'environment'}}, audio:false},
+              {video:{facingMode:{ideal:'environment'}}, audio:false},
+              {video:true, audio:false}
+            ]
+          : [
+              {video:{facingMode:{exact:'user'}}, audio:false},
+              {video:{facingMode:{ideal:'user'}}, audio:false},
+              {video:true, audio:false}
+            ];
+        let lastErr = null;
+        for(const constraints of tries){
+          try{
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            video.srcObject = stream;
+            try{ await video.play(); }catch(e){}
+            return true;
+          }catch(err){ lastErr = err; }
+        }
+        msg('تعذر فتح الكاميرا: '+((lastErr && lastErr.message) || lastErr || 'تحقق من صلاحيات الكاميرا'),'err');
+        return false;
+      }
+      const switchBtnV73 = overlay.querySelector('#camSwitchV73');
+      if(switchBtnV73){
+        switchBtnV73.onclick = async()=>{
+          preferBackCameraV73 = !preferBackCameraV73;
+          switchBtnV73.textContent = preferBackCameraV73 ? 'تبديل الكاميرا' : 'الرجوع للخلفية';
+          await startCameraV73();
+        };
+      }
       overlay.querySelector('#camShotV72').onclick=()=>{
         const w=640, h=480;
         const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
@@ -1752,8 +1787,8 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
         close(canvas.toDataURL('image/jpeg',0.72));
       };
       try{
-        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}, audio:false});
-        video.srcObject=stream;
+        const ok = await startCameraV73();
+        if(!ok) close(null);
       }catch(err){
         msg('تعذر فتح الكاميرا: '+(err.message||err),'err');
         close(null);
