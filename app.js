@@ -1923,8 +1923,8 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
   function v74ProjectLat(p){ return v74NormNum(p?.geofence_lat ?? p?.latitude ?? p?.lat); }
   function v74ProjectLng(p){ return v74NormNum(p?.geofence_lng ?? p?.longitude ?? p?.lng); }
   function v74ProjectRadius(p){ return Math.max(1, Number(p?.geofence_radius_meters ?? p?.allowed_distance_meters ?? 150) || 150); }
-  function v74OutAllowed(p){ return v74Bool(p?.allow_out_of_range); }
-  function v74ProjectMapUrl(p){ return p?.map_url || p?.location_url || p?.google_maps_url || p?.location || ''; }
+  function v74OutAllowed(p){ return v74Bool(p?.allow_out_of_range_checkin ?? p?.allow_out_of_range); }
+  function v74ProjectMapUrl(p){ return p?.location_url || p?.map_url || p?.google_maps_url || p?.location || ''; }
   function v74GetPosition(){
     return new Promise((resolve,reject)=>{
       if(!navigator.geolocation) return reject(new Error('الموقع GPS غير مدعوم في هذا المتصفح'));
@@ -2055,15 +2055,15 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
       visit_type_default:v74Get('projectVisitDefault')?.value||'surface',
       status:v74Get('projectStatus')?.value||'active',
       notes:v74Get('projectNotes')?.value||'',
-      map_url:(v74Get('projectMapUrl')?.value||'').trim(),
-      geofence_lat:v74NormNum(v74Get('projectGeoLat')?.value),
-      geofence_lng:v74NormNum(v74Get('projectGeoLng')?.value),
-      geofence_radius_meters:Number(v74Get('projectGeoRadius')?.value||150),
+      location_url:(v74Get('projectMapUrl')?.value||'').trim(),
+      latitude:v74NormNum(v74Get('projectGeoLat')?.value),
+      longitude:v74NormNum(v74Get('projectGeoLng')?.value),
+      allowed_distance_meters:Number(v74Get('projectGeoRadius')?.value||150),
       geofence_enabled:v74Get('projectGeoEnabled')?.value==='true',
-      allow_out_of_range:v74Get('projectAllowOutRange')?.value==='true'
+      allow_out_of_range_checkin:v74Get('projectAllowOutRange')?.value==='true'
     };
     let res=id?await sb.from('projects').update(row).eq('id',id):await sb.from('projects').insert(row);
-    if(res.error && String(res.error.message||'').match(/map_url|geofence|allow_out_of_range/i)){
+    if(res.error && String(res.error.message||'').match(/location_url|latitude|longitude|allowed_distance_meters|geofence_enabled|allow_out_of_range_checkin/i)){
       return v74Msg('أعمدة GPS غير موجودة في قاعدة البيانات. شغّل ملف schema_update_v74_geofence.sql ثم أعد الحفظ.','err');
     }
     if(res.error) return v74Msg(res.error.message,'err');
@@ -2081,7 +2081,7 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
     if(v74Get('projectFridayMinutes')) v74Get('projectFridayMinutes').value=p.friday_minutes??90;
     if(v74Get('projectOperationType')) v74Get('projectOperationType').value=p.operation_type||'daily_visit';
     if(v74Get('projectVisitDefault')) v74Get('projectVisitDefault').value=p.visit_type_default||'surface';
-    if(v74Get('projectMapUrl')) v74Get('projectMapUrl').value=p.map_url||p.location_url||p.google_maps_url||'';
+    if(v74Get('projectMapUrl')) v74Get('projectMapUrl').value=p.location_url||p.map_url||p.google_maps_url||'';
     if(v74Get('projectGeoLat')) v74Get('projectGeoLat').value=p.geofence_lat??p.latitude??p.lat??'';
     if(v74Get('projectGeoLng')) v74Get('projectGeoLng').value=p.geofence_lng??p.longitude??p.lng??'';
     if(v74Get('projectGeoRadius')) v74Get('projectGeoRadius').value=p.geofence_radius_meters??p.allowed_distance_meters??150;
