@@ -12,7 +12,7 @@ const fmt = d => d ? new Date(d).toLocaleString('ar-SA') : '-';
 const timeOnly = d => d ? new Date(d).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) : '-';
 const minsToText = m => { m=Number(m||0); const h=Math.floor(m/60), mm=m%60; return `${h}:${String(mm).padStart(2,'0')}`; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[] };
+let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[], contract_services:[], contract_services_error:'' };
 function msg(text, type='ok'){ const el=$('globalMsg')||$('loginMsg'); if(!el) return; el.className='msg '+(type==='err'?'err':''); el.textContent=text; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),4000); }
 function playAppSound(type){ try{ const files={checkin:'sounds/checkin.wav', checkout:'sounds/checkout.wav', ticket:'sounds/ticket.wav'}; const src=files[type]; if(!src) return; const a=new Audio(src); a.volume=0.75; a.play().catch(()=>{}); }catch(e){} }
 function requireRole(role){ const u=session(); if(!u){ location.href='index.html'; return null; } if(role && u.role!==role){ location.href = u.role==='admin' ? 'admin.html' : (u.role==='technician' ? 'technician.html' : 'supervisor.html'); return null; } return u; }
@@ -29,16 +29,25 @@ async function login(){
 }
 function logout(){ clearSession(); location.href='index.html'; }
 async function loadAll(){
-  const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
+  const [users, projects, workers, attendance, logs, tickets, contractServices] = await Promise.all([
     sb.from('app_users').select('*').order('id'),
     sb.from('projects').select('*').order('id'),
     sb.from('workers').select('*').order('id'),
     sb.from('attendance').select('*').order('attendance_date',{ascending:false}),
     sb.from('time_logs').select('*').order('check_in',{ascending:false}),
-    sb.from('tickets').select('*').order('created_at',{ascending:false})
+    sb.from('tickets').select('*').order('created_at',{ascending:false}),
+    sb.from('contract_services').select('*').order('service_date',{ascending:true,nullsFirst:false})
   ]);
   for(const r of [users,projects,workers,attendance,logs,tickets]) if(r.error) console.warn(r.error.message);
-  data.users = users.data || []; data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false); data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false); data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+  if(contractServices.error){
+    console.warn('contract_services:', contractServices.error.message);
+    data.contract_services = [];
+    data.contract_services_error = contractServices.error.message;
+  } else {
+    data.contract_services = contractServices.data || [];
+    data.contract_services_error = '';
+  }
+  data.users = users.data || []; data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false); data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
   data.projects = projects.data || []; data.workers = workers.data || []; data.attendance = attendance.data || []; data.logs = logs.data || []; data.tickets = tickets.data || [];
 }
 function fillSelect(id, rows, label='name', allLabel=null, value='id'){ const el=$(id); if(!el) return; el.innerHTML = (allLabel!==null?`<option value="">${allLabel}</option>`:'') + rows.map(r=>`<option value="${r[value]}">${esc(r[label]||r.full_name||r.username)}</option>`).join(''); }
@@ -295,7 +304,13 @@ function renderTickets(){ const b=$('ticketsBody'); if(!b) return; const st=$('t
 function editTicket(id){ const t=data.tickets.find(x=>x.id===id); if(!t)return; $('ticketId').value=t.id; $('ticketProject').value=t.project_id||''; if($('ticketSupervisor')) $('ticketSupervisor').value=t.supervisor_id||''; $('ticketTitle').value=t.title||''; $('ticketPriority').value=t.priority||'normal'; if($('ticketStatus')) $('ticketStatus').value=t.status||'open'; $('ticketDescription').value=t.description||''; $('ticketFormTitle')&&($('ticketFormTitle').textContent='تعديل تكت'); }
 function renderAlerts(){ const div=$('alertsList'); if(!div) return; const alerts=[]; data.projects.filter(p=>!p.supervisor_id).forEach(p=>alerts.push(['warn',`مشروع بدون مشرف: ${p.name}`])); data.workers.filter(w=>!workerSupId(w)).forEach(w=>alerts.push(['warn',`عامل بدون مشرف: ${w.name}`])); data.logs.filter(l=>!l.check_out).forEach(l=>alerts.push(['danger',`تسجيل دخول بدون خروج: ${projectName(l.project_id)} - ${supervisorName(l.supervisor_id)}`])); data.tickets.filter(t=>t.status==='open').forEach(t=>alerts.push(['warn',`تكت مفتوح: ${t.title} - ${projectName(t.project_id)}`])); div.innerHTML=alerts.map(a=>`<div class="alert-item ${a[0]}">${esc(a[1])}</div>`).join('')||'<div class="alert-item">لا توجد تنبيهات حالياً</div>'; }
 function toCSV(rows){ if(!rows.length) return ''; const keys=Object.keys(rows[0]); return [keys.join(','),...rows.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\n'); }
-function download(name,text){ const blob=new Blob([text],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+function download(name,text){
+  const isCsv=String(name||'').toLowerCase().endsWith('.csv');
+  const safeText=String(text??'');
+  const content=isCsv && !safeText.startsWith('﻿') ? ('﻿'+safeText) : safeText;
+  const blob=new Blob([content],{type:isCsv?'text/csv;charset=utf-8':'text/plain;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);
+}
 async function exportTable(table){ const {data:rows,error}=await sb.from(table).select('*'); if(error) return msg(error.message,'err'); download(`${table}.csv`, toCSV(rows||[])); }
 function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent)); const csv=['المشرف,المشروع,عدد السجلات,الساعات المطلوبة,الساعات الفعلية,وقت الانتقال,نسبة العمل,حالة الأداء',...rows.map(r=>r.map(x=>'"'+x+'"').join(','))].join('\n'); download('monthly.csv',csv); }
 async function initSupervisor(){ const u=requireRole('supervisor'); if(!u) return; await loadAll(); data.projects=data.projects.filter(p=>String(p.supervisor_id)===String(u.id)); data.workers=data.workers.filter(w=>String(workerSupId(w))===String(u.id)); data.logs=data.logs.filter(l=>String(l.supervisor_id)===String(u.id)); const supProjectIds = new Set(data.projects.map(p=>String(p.id))); data.tickets=data.tickets.filter(t=>String(t.supervisor_id)===String(u.id) || String(t.created_by)===String(u.id) || supProjectIds.has(String(t.project_id))); $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`; fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','اختر المشروع'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today(); renderSupervisorAttendanceList(); renderTimeLogs(); }
@@ -2126,3 +2141,29 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
   };
 })();
 
+
+
+/* ===== V79: Contract services real cloud refresh + Arabic CSV export fix ===== */
+(function(){
+  window.refreshContractServices = async function(){
+    try{
+      const {data:services,error}=await sb.from('contract_services').select('*').order('service_date',{ascending:true,nullsFirst:false});
+      if(error){ data.contract_services=[]; data.contract_services_error=error.message; msg('خطأ تحميل الخدمات: '+error.message,'err'); }
+      else { data.contract_services=services||[]; data.contract_services_error=''; msg('تم تحديث الخدمات: '+data.contract_services.length); }
+      if(typeof renderContractServices==='function') renderContractServices();
+      if(typeof renderSupervisorServices==='function') renderSupervisorServices();
+    }catch(e){ msg('خطأ تحميل الخدمات: '+(e.message||e),'err'); }
+  };
+  window.exportContractServicesCSV=function(){
+    const rows=[['المشروع','المسؤول','الخدمة','القيمة كما في الجدول','التاريخ','الحالة','جدولة ذكية','تاريخ التنفيذ','ملاحظات']];
+    (typeof getServiceList==='function'?getServiceList():(data.contract_services||[])).forEach(s=>rows.push([s.project_name,s.responsible,s.service_name,s.service_value||s.raw_value||'',(typeof dval==='function'?dval(s.service_date):(s.service_date||'')),s.service_status,(typeof dval==='function'?dval(s.smart_scheduled_date):(s.smart_scheduled_date||'')),s.executed_at?(typeof fmt==='function'?fmt(s.executed_at):s.executed_at):'',s.execution_note||'']));
+    const csv='﻿'+rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('
+');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='contract_services_utf8.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+})();

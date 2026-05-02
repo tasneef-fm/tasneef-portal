@@ -143,7 +143,7 @@
             <p>تظهر البيانات بنفس القيم الموجودة في جدول الخدمات، مع إمكانية الجدولة الذكية وتسجيل التنفيذ.</p>
           </div>
           <div class="actions">
-            <button class="light" onclick="renderContractServices()">تحديث الخدمات</button>
+            <button class="light" onclick="refreshContractServices()">تحديث الخدمات</button>
             <button onclick="smartScheduleServices()">جدولة ذكية للخدمات غير المنفذة</button>
             <button class="light" onclick="exportContractServicesCSV()">تصدير CSV</button>
           </div>
@@ -303,6 +303,6 @@
     <section id="export" class="page hidden"><div class="card"><h2>التصدير</h2><p>صدّر بيانات النظام الحالية بصيغة CSV.</p><div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div></div></section>
   </main>
 </div>
-<script src="app.js?v=73"></script>
+<script src="app.js?v=79?v=73"></script>
 </body>
 </html>
