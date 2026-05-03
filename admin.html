@@ -136,7 +136,72 @@
         <div class="filters"><input id="contractSearch" oninput="renderContracts()" placeholder="بحث باسم المشروع"><select id="contractFilterStatus" onchange="renderContracts()"><option value="">كل الحالات</option><option value="active">نشط</option><option value="soon">قريب الانتهاء</option><option value="expired">منتهي</option><option value="missing">بيانات ناقصة</option></select></div>
         <div class="table-wrap"><table><thead><tr><th>المشروع</th><th>العمائر</th><th>الشقق</th><th>بداية العقد</th><th>نهاية العقد</th><th>الأيام المتبقية</th><th>حالة العقد</th><th>إجراء</th></tr></thead><tbody id="contractsBody"></tbody></table></div>
       </div>
-      <div class="card"><h2>الخدمات السنوية</h2><p>هذه الواجهة جاهزة للمرحلة التالية: إضافة خدمات مثل غسيل الخزانات، مكافحة الحشرات، المصاعد، والدفاع المدني وربطها بكل عقد.</p></div>
+      <div class="card services-console" id="contractServicesCard">
+        <div class="services-topbar">
+          <div>
+            <h2>الخدمات التعاقدية حسب جدول الإكسل</h2>
+            <p>إدارة الخدمات المرتبطة بالعقود، تسجيل التنفيذ، المتابعة، والجدولة الذكية للخدمات غير المنفذة.</p>
+          </div>
+          <div class="service-tabs">
+            <button class="light" id="contractsTabBtn" onclick="showContractsSubTab('contracts')">العقود</button>
+            <button id="servicesTabBtn" onclick="showContractsSubTab('services')">الخدمات</button>
+          </div>
+        </div>
+
+        <div id="contractsSubTab" class="contract-subtab hidden">
+          <p class="footer-note">تبويب العقود بالأعلى يحتوي على تواريخ البداية والنهاية والتنبيهات. استخدم تبويب الخدمات للمتابعة التفصيلية للخدمات.</p>
+        </div>
+
+        <div id="servicesSubTab" class="contract-subtab">
+          <div class="kpis small services-kpis">
+            <div class="kpi"><small>إجمالي الخدمات</small><b id="servicesTotalCount">0</b></div>
+            <div class="kpi"><small>المستحقة الآن</small><b id="servicesDueCount">0</b></div>
+            <div class="kpi"><small>منجزة</small><b id="servicesDoneCount">0</b></div>
+            <div class="kpi"><small>قريبة خلال 7 أيام</small><b id="servicesSoonCount">0</b></div>
+            <div class="kpi"><small>متأخرة</small><b id="servicesLateCount">0</b></div>
+            <div class="kpi"><small>مراجعة / غير منفذة</small><b id="servicesReviewCount">0</b></div>
+          </div>
+
+          <div class="filters services-filters">
+            <input id="serviceSearch" oninput="renderContractServices()" placeholder="بحث باسم المشروع أو الخدمة أو القيمة">
+            <select id="serviceFilterProject" onchange="renderContractServices()"><option value="">كل المشاريع</option></select>
+            <select id="serviceFilterSupervisor" onchange="renderContractServices()"><option value="">كل المشرفين</option></select>
+            <select id="serviceFilterStatus" onchange="renderContractServices()"><option value="">كل الحالات</option><option value="due">مستحقة</option><option value="soon">قريبة</option><option value="done">منجزة</option><option value="late">متأخرة</option><option value="review">مراجعة / غير منفذة</option></select>
+            <select id="serviceFilterType" onchange="renderContractServices()"><option value="">كل أنواع الخدمة</option></select>
+            <input id="serviceFilterDate" type="date" onchange="renderContractServices()" title="الاستحقاق القادم">
+            <button class="light" onclick="resetServiceFilters()">إعادة تعيين</button>
+          </div>
+
+          <div class="table-head">
+            <h2>جدول الخدمات</h2>
+            <div class="actions">
+              <button onclick="openNewContractService()">إضافة خدمة</button>
+              <button class="light" onclick="renderContractServices()">تحديث الخدمات</button>
+              <button class="light" onclick="smartScheduleContractServices()">جدولة ذكية للخدمات غير المنفذة</button>
+              <button class="light" onclick="exportContractServicesCSV()">تصدير CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap services-table-wrap">
+            <table>
+              <thead><tr><th>المشروع</th><th>المشرف</th><th>الخدمة</th><th>القيمة كما في الجدول</th><th>عدد الزيارات</th><th>المنفذ</th><th>المتبقي</th><th>آخر تنفيذ</th><th>الاستحقاق القادم</th><th>الحالة</th><th>إجراء</th></tr></thead>
+              <tbody id="contractServicesBody"></tbody>
+            </table>
+          </div>
+
+          <div class="grid two services-panels">
+            <div class="card inner-card">
+              <div class="table-head"><h2>الجدولة الذكية للخدمات غير المنفذة</h2><button class="light" onclick="smartScheduleContractServices()">اقتراح جدول</button></div>
+              <p class="footer-note">اقتراح مواعيد تنفيذ حسب الأولوية، مع تجاهل الخدمات المنجزة وخارج العقد.</p>
+              <div id="smartServicesList" class="quick-list"></div>
+            </div>
+            <div class="card inner-card">
+              <div class="table-head"><h2>نافذة الخدمات للمشرف</h2><button class="light" onclick="showSupervisorServicesPreview()">عرض</button></div>
+              <p class="footer-note">نفس البيانات ستظهر للمشرف في نافذة الخدمات، كل مشرف يرى خدمات مشاريعه فقط.</p>
+              <div id="supervisorServicesPreview" class="quick-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section id="workers" class="page hidden">

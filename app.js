@@ -12,7 +12,7 @@ const fmt = d => d ? new Date(d).toLocaleString('ar-SA') : '-';
 const timeOnly = d => d ? new Date(d).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) : '-';
 const minsToText = m => { m=Number(m||0); const h=Math.floor(m/60), mm=m%60; return `${h}:${String(mm).padStart(2,'0')}`; };
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[] };
+let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[], contractServices:[] };
 function msg(text, type='ok'){ const el=$('globalMsg')||$('loginMsg'); if(!el) return; el.className='msg '+(type==='err'?'err':''); el.textContent=text; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),4000); }
 function playAppSound(type){ try{ const files={checkin:'sounds/checkin.wav', checkout:'sounds/checkout.wav', ticket:'sounds/ticket.wav'}; const src=files[type]; if(!src) return; const a=new Audio(src); a.volume=0.75; a.play().catch(()=>{}); }catch(e){} }
 function requireRole(role){ const u=session(); if(!u){ location.href='index.html'; return null; } if(role && u.role!==role){ location.href = u.role==='admin' ? 'admin.html' : (u.role==='technician' ? 'technician.html' : 'supervisor.html'); return null; } return u; }
@@ -29,17 +29,18 @@ async function login(){
 }
 function logout(){ clearSession(); location.href='index.html'; }
 async function loadAll(){
-  const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
+  const [users, projects, workers, attendance, logs, tickets, contractServices] = await Promise.all([
     sb.from('app_users').select('*').order('id'),
     sb.from('projects').select('*').order('id'),
     sb.from('workers').select('*').order('id'),
     sb.from('attendance').select('*').order('attendance_date',{ascending:false}),
     sb.from('time_logs').select('*').order('check_in',{ascending:false}),
-    sb.from('tickets').select('*').order('created_at',{ascending:false})
+    sb.from('tickets').select('*').order('created_at',{ascending:false}),
+    sb.from('contract_services').select('*').order('id')
   ]);
-  for(const r of [users,projects,workers,attendance,logs,tickets]) if(r.error) console.warn(r.error.message);
+  for(const r of [users,projects,workers,attendance,logs,tickets,contractServices]) if(r.error) console.warn(r.error.message);
   data.users = users.data || []; data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false); data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false); data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
-  data.projects = projects.data || []; data.workers = workers.data || []; data.attendance = attendance.data || []; data.logs = logs.data || []; data.tickets = tickets.data || [];
+  data.projects = projects.data || []; data.workers = workers.data || []; data.attendance = attendance.data || []; data.logs = logs.data || []; data.tickets = tickets.data || []; data.contractServices = contractServices.data || [];
 }
 function fillSelect(id, rows, label='name', allLabel=null, value='id'){ const el=$(id); if(!el) return; el.innerHTML = (allLabel!==null?`<option value="">${allLabel}</option>`:'') + rows.map(r=>`<option value="${r[value]}">${esc(r[label]||r.full_name||r.username)}</option>`).join(''); }
 function supervisorName(id){ return data.users.find(u=>String(u.id)===String(id))?.full_name || data.supervisors.find(u=>String(u.id)===String(id))?.full_name || '-'; }
@@ -58,10 +59,13 @@ function hydrateForms(){
   fillSelect('manageWorkerSelect', workers, 'name', 'اختر العامل');
   ['logProject','dailyProject','attendanceProject','ticketProject','workerProject','workerFilterProject'].forEach(id=>fillSelect(id,pros,'name','الكل'));
   fillSelect('projectSupervisor',sups,'full_name','بدون مشرف'); fillSelect('workerSupervisor',sups,'full_name','بدون مشرف'); fillSelect('attendanceWorker',workers,'name','اختر العامل');
+  fillSelect('serviceFilterProject', pros, 'name', 'كل المشاريع');
+  fillSelect('serviceFilterSupervisor', sups, 'full_name', 'كل المشرفين');
+  hydrateServiceTypes();
   if($('logDate')&&!$('logDate').value) $('logDate').value=today(); if($('dailyDate')&&!$('dailyDate').value) $('dailyDate').value=today(); if($('attendanceDate')&&!$('attendanceDate').value) $('attendanceDate').value=today(); if($('attendanceFilterDate')&&!$('attendanceFilterDate').value) $('attendanceFilterDate').value=today(); if($('monthlyMonth')&&!$('monthlyMonth').value) $('monthlyMonth').value=today().slice(0,7);
 }
-function renderAll(){ renderDashboard(); renderTimeLogs(); renderUsers(); renderProjects(); renderWorkers(); renderAttendance(); renderMonthly(); renderTickets(); renderAlerts(); }
-function showPage(id, btn){ document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden')); $(id)?.classList.remove('hidden'); document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active')); btn?.classList.add('active'); renderAll(); }
+function renderAll(){ renderDashboard(); renderTimeLogs(); renderUsers(); renderProjects(); renderWorkers(); renderAttendance(); renderMonthly(); renderTickets(); renderAlerts(); renderContractServices(); }
+function showPage(id, btn){ document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden')); $(id)?.classList.remove('hidden'); document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active')); btn?.classList.add('active'); renderAll(); if(id==='contracts') showContractsSubTab('services'); }
 function renderDashboard(){ if(!$('kpiUsers')) return; $('kpiUsers').textContent=data.users.length; $('kpiProjects').textContent=data.projects.length; $('kpiWorkers').textContent=data.workers.length; $('kpiTodayLogs').textContent=data.logs.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===today()).length; const div=$('todaySummary'); if(div) div.innerHTML = data.supervisors.map(s=>{ const logs=data.logs.filter(l=>String(l.supervisor_id)===String(s.id)&&(l.log_date||String(l.check_in||'').slice(0,10))===today()); const mins=logs.reduce((a,l)=>a+(l.duration_minutes||minutesBetween(l.check_in,l.check_out)),0); return `<div class="summary-item"><b>${esc(s.full_name)}</b><br>عدد التسجيلات: ${logs.length}<br>إجمالي الوقت: ${minsToText(mins)}</div>`; }).join('') || '<div class="summary-item">لا توجد تسجيلات اليوم</div>'; }
 function setNow(id){ $(id).value=nowTime(); }
 function clearLogForm(){ ['logId','logIn','logOut','logTravel','logNotes'].forEach(id=>{ if($(id)) $(id).value=id==='logTravel'?'0':''; }); if($('logDate')) $('logDate').value=today(); if($('logVisitType')) $('logVisitType').value='surface'; $('logFormTitle') && ($('logFormTitle').textContent='تسجيل دخول / خروج'); }
@@ -2129,3 +2133,165 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
   window.assistantPrintLast=function(){if(!assistantLastReply)return msg('لا يوجد رد للطباعة','err'); const w=window.open('','_blank'); w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>مساعد تصنيف</title><style>body{font-family:Tahoma,Arial;padding:30px;line-height:1.9;white-space:pre-wrap;color:#0A4033}</style></head><body>${safe(assistantLastReply)}<script>window.onload=()=>setTimeout(()=>print(),300)<\/script></body></html>`); w.document.close();};
   window.assistantClear=function(){assistantMessages=[]; assistantLastReply=''; renderTasneefAssistant();};
 })();
+
+
+/* ===== V85 Contract Services Console ===== */
+function showContractsSubTab(tab){
+  const contracts=$('contractsSubTab'), services=$('servicesSubTab');
+  if(contracts) contracts.classList.toggle('hidden', tab!=='contracts');
+  if(services) services.classList.toggle('hidden', tab!=='services');
+  $('contractsTabBtn')?.classList.toggle('light', tab!=='contracts');
+  $('servicesTabBtn')?.classList.toggle('light', tab!=='services');
+  if(tab==='services') renderContractServices();
+}
+function normalizeArV85(s){return String(s||'').trim().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ')}
+function stripProjectDateV85(s){
+  return String(s||'').replace(/\s*[-–—]?\s*\d{1,2}[\/-]\d{1,2}[\/-]?\d{0,4}\s*$/,'').replace(/\s*\(.*?\d{1,2}.*?\)\s*$/,'').trim();
+}
+function csVal(s, keys, fallback=''){
+  for(const k of keys){ if(s && s[k]!==undefined && s[k]!==null && String(s[k]).trim()!=='') return s[k]; }
+  return fallback;
+}
+function csProjectObj(s){
+  const pid=csVal(s,['project_id'],null);
+  if(pid) return data.projects.find(p=>String(p.id)===String(pid));
+  const raw=stripProjectDateV85(csVal(s,['project_name','project','اسم المشروع','المشروع'],''));
+  const n=normalizeArV85(raw);
+  return data.projects.find(p=>normalizeArV85(p.name)===n || normalizeArV85(p.name).includes(n) || n.includes(normalizeArV85(p.name)));
+}
+function csProjectName(s){return csProjectObj(s)?.name || stripProjectDateV85(csVal(s,['project_name','project','اسم المشروع','المشروع'],'-'));}
+function csSupervisorId(s){return csProjectObj(s)?.supervisor_id || csVal(s,['supervisor_id'],null);}
+function csSupervisorName(s){return csVal(s,['supervisor_name','responsible','manager','المسؤول','المشرف'],'') || supervisorName(csSupervisorId(s));}
+function csServiceName(s){return csVal(s,['service_name','service','service_type','type','الخدمة','نوع الخدمة'],'خدمة');}
+function csSheetValue(s){return csVal(s,['sheet_value','value_in_sheet','raw_value','value','القيمة كما في الجدول','القيمة'],'-');}
+function csVisits(s){return Number(csVal(s,['required_visits','visits_count','visit_count','عدد الزيارات','visits'],0))||0;}
+function csDone(s){return Number(csVal(s,['executed_visits','done_visits','completed_visits','المنفذ'],0))||0;}
+function csRemaining(s){const x=csVal(s,['remaining_visits','remaining','المتبقي'],null); if(x!==null && x!==undefined && String(x)!=='') return Number(x)||0; const v=csVisits(s), d=csDone(s); return Math.max(v-d,0);}
+function csLastDate(s){return isoDate(csVal(s,['last_execution_date','last_done_date','executed_at','execution_date','آخر تنفيذ'],''));}
+function csDueDate(s){return isoDate(csVal(s,['next_due_date','scheduled_date','due_date','الاستحقاق القادم','تاريخ الخدمة'],''));}
+function csExecutor(s){return csVal(s,['executor','executed_by','vendor','company','المنفذ'],'-');}
+function csNotes(s){return csVal(s,['notes','remarks','ملاحظات'],'');}
+function csStatusKey(s){
+  const explicit=normalizeArV85(csVal(s,['status','الحالة'],''));
+  const val=normalizeArV85([explicit, csSheetValue(s), csNotes(s)].join(' '));
+  const due=csDueDate(s); const t=today();
+  if(val.includes('خارج العقد')) return 'out';
+  if(val.includes('منجز') || val.includes('تم التنفيذ') || val.includes('تمت') || (csRemaining(s)===0 && csVisits(s)>0)) return 'done';
+  if(val.includes('متاخر') || (due && due<t)) return 'late';
+  if(due){ const diff=Math.round((new Date(due+'T00:00:00')-new Date(t+'T00:00:00'))/86400000); if(diff>=0 && diff<=7) return 'soon'; if(diff===0) return 'due'; }
+  if(val.includes('مستحق') || val.includes('لم تنفذ') || val.includes('غير منفذ')) return 'due';
+  if(val.includes('مراجعه') || val.includes('راجع') || val.includes('عند الاحتياج') || !String(csSheetValue(s)||'').trim()) return 'review';
+  return 'review';
+}
+function csStatusText(key){return {done:'منجزة',due:'مستحقة',soon:'قريبة',late:'متأخرة',review:'مراجعة',out:'خارج العقد'}[key]||'مراجعة'}
+function csBadgeClass(key){return key==='done'?'green':key==='late'?'red':key==='soon'?'amber':key==='due'?'':key==='out'?'neutral':'amber'}
+function hydrateServiceTypes(){
+  const el=$('serviceFilterType'); if(!el) return;
+  const current=el.value;
+  const types=[...new Set((data.contractServices||[]).map(csServiceName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+  el.innerHTML='<option value="">كل أنواع الخدمة</option>'+types.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+  el.value=current;
+}
+function getFilteredContractServices(){
+  let rows=[...(data.contractServices||[])];
+  const q=normalizeArV85($('serviceSearch')?.value||'');
+  const pid=$('serviceFilterProject')?.value||'';
+  const sid=$('serviceFilterSupervisor')?.value||'';
+  const st=$('serviceFilterStatus')?.value||'';
+  const typ=$('serviceFilterType')?.value||'';
+  const d=$('serviceFilterDate')?.value||'';
+  if(q) rows=rows.filter(s=>normalizeArV85([csProjectName(s),csSupervisorName(s),csServiceName(s),csSheetValue(s),csNotes(s)].join(' ')).includes(q));
+  if(pid) rows=rows.filter(s=>String(csProjectObj(s)?.id||s.project_id||'')===String(pid));
+  if(sid) rows=rows.filter(s=>String(csSupervisorId(s)||'')===String(sid));
+  if(st) rows=rows.filter(s=>csStatusKey(s)===st);
+  if(typ) rows=rows.filter(s=>csServiceName(s)===typ);
+  if(d) rows=rows.filter(s=>csDueDate(s)===d);
+  return rows;
+}
+function renderContractServices(){
+  if(!$('contractServicesBody')) return;
+  hydrateServiceTypes();
+  const rows=getFilteredContractServices();
+  const all=data.contractServices||[];
+  const counts={total:all.length,due:0,soon:0,done:0,late:0,review:0};
+  all.forEach(s=>{const k=csStatusKey(s); if(k==='due')counts.due++; else if(k==='soon')counts.soon++; else if(k==='done')counts.done++; else if(k==='late')counts.late++; else if(k==='review')counts.review++;});
+  if($('servicesTotalCount')) $('servicesTotalCount').textContent=counts.total;
+  if($('servicesDueCount')) $('servicesDueCount').textContent=counts.due;
+  if($('servicesDoneCount')) $('servicesDoneCount').textContent=counts.done;
+  if($('servicesSoonCount')) $('servicesSoonCount').textContent=counts.soon;
+  if($('servicesLateCount')) $('servicesLateCount').textContent=counts.late;
+  if($('servicesReviewCount')) $('servicesReviewCount').textContent=counts.review;
+  $('contractServicesBody').innerHTML = rows.slice(0,200).map(s=>{
+    const k=csStatusKey(s);
+    return `<tr>
+      <td><b>${esc(csProjectName(s))}</b></td><td>${esc(csSupervisorName(s))}</td><td>${esc(csServiceName(s))}</td><td>${esc(csSheetValue(s))}</td><td>${csVisits(s)||'-'}</td><td>${esc(csExecutor(s))}</td><td>${csRemaining(s)}</td><td>${esc(csLastDate(s)||'-')}</td><td>${esc(csDueDate(s)||'-')}</td><td><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></td>
+      <td class="row-actions"><button onclick="executeContractService(${Number(s.id)||0})">تسجيل تنفيذ</button><button class="light" onclick="editContractService(${Number(s.id)||0})">تعديل</button><button class="light" onclick="whatsappContractService(${Number(s.id)||0})">واتساب</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="11">لا توجد خدمات. شغّل ملف SQL الخاص بالخدمات أو أضف خدمة جديدة.</td></tr>';
+  renderSmartServicesList(); showSupervisorServicesPreview(false);
+}
+function resetServiceFilters(){['serviceSearch','serviceFilterProject','serviceFilterSupervisor','serviceFilterStatus','serviceFilterType','serviceFilterDate'].forEach(id=>{if($(id))$(id).value=''}); renderContractServices();}
+function serviceById(id){return (data.contractServices||[]).find(s=>String(s.id)===String(id));}
+async function executeContractService(id){
+  const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
+  const d=prompt('تاريخ التنفيذ', today()); if(!d) return;
+  const executor=prompt('المنفذ / الشركة المنفذة', csExecutor(s)==='-'?'':csExecutor(s)) || '';
+  const notes=prompt('ملاحظات التنفيذ', csNotes(s)||'') || '';
+  const done=(csDone(s)||0)+1; const visits=csVisits(s)||done; const remaining=Math.max(visits-done,0);
+  const row={last_execution_date:d, execution_date:d, executed_visits:done, remaining_visits:remaining, executor, notes, status:remaining>0?'مستحقة':'منجزة'};
+  const {error}=await sb.from('contract_services').update(row).eq('id',id);
+  if(error) return msg(error.message,'err'); msg('تم تسجيل تنفيذ الخدمة'); await refreshAll();
+}
+async function editContractService(id){
+  const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
+  const service=prompt('اسم الخدمة', csServiceName(s)); if(!service) return;
+  const value=prompt('القيمة كما في الجدول', csSheetValue(s)) ?? csSheetValue(s);
+  const due=prompt('تاريخ الاستحقاق القادم YYYY-MM-DD', csDueDate(s)||'') || null;
+  const status=prompt('الحالة: منجزة / مستحقة / قريبة / متأخرة / مراجعة / خارج العقد', csStatusText(csStatusKey(s))) || csStatusText(csStatusKey(s));
+  const notes=prompt('ملاحظات', csNotes(s)||'') || '';
+  const {error}=await sb.from('contract_services').update({service_name:service, sheet_value:value, next_due_date:due, status, notes}).eq('id',id);
+  if(error) return msg(error.message,'err'); msg('تم تعديل الخدمة'); await refreshAll();
+}
+async function openNewContractService(){
+  const project=prompt('اسم المشروع كما في التطبيق'); if(!project) return;
+  const service=prompt('اسم الخدمة'); if(!service) return;
+  const p=data.projects.find(x=>normalizeArV85(x.name)===normalizeArV85(project)) || data.projects.find(x=>normalizeArV85(x.name).includes(normalizeArV85(project)));
+  const due=prompt('تاريخ الاستحقاق YYYY-MM-DD', today()) || null;
+  const visits=Number(prompt('عدد الزيارات المطلوبة', '1')||1);
+  const row={project_id:p?.id||null, project_name:p?.name||project, supervisor_id:p?.supervisor_id||null, supervisor_name:p?supervisorName(p.supervisor_id):'', service_name:service, sheet_value:'إضافة يدوية', required_visits:visits, executed_visits:0, remaining_visits:visits, next_due_date:due, status:'مستحقة', notes:'أضيفت من التطبيق'};
+  const {error}=await sb.from('contract_services').insert(row);
+  if(error) return msg(error.message,'err'); msg('تمت إضافة الخدمة'); await refreshAll();
+}
+function whatsappContractService(id){
+  const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
+  const txt=`السلام عليكم ورحمة الله وبركاته\n\nتقرير خدمة تعاقدية\nالمشروع: ${csProjectName(s)}\nالخدمة: ${csServiceName(s)}\nالحالة: ${csStatusText(csStatusKey(s))}\nالاستحقاق القادم: ${csDueDate(s)||'-'}\nآخر تنفيذ: ${csLastDate(s)||'-'}\nالمتبقي: ${csRemaining(s)}\n\nشركة تصنيف لإدارة المرافق`;
+  window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+}
+function renderSmartServicesList(){
+  const el=$('smartServicesList'); if(!el) return;
+  const candidates=(data.contractServices||[]).filter(s=>!['done','out'].includes(csStatusKey(s))).sort((a,b)=>{
+    const order={late:0,due:1,soon:2,review:3}; return (order[csStatusKey(a)]??9)-(order[csStatusKey(b)]??9);
+  }).slice(0,8);
+  el.innerHTML=candidates.map((s,i)=>{ const dd=csDueDate(s)||new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10); const k=csStatusKey(s); return `<div class="quick-item"><span><b>${esc(csServiceName(s))}</b><br><small>${esc(csProjectName(s))} — ${esc(dd)}</small></span><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></div>`; }).join('') || '<div class="quick-item">لا توجد خدمات تحتاج جدولة</div>';
+}
+function showSupervisorServicesPreview(scroll=true){
+  const el=$('supervisorServicesPreview'); if(!el) return;
+  const sid=$('serviceFilterSupervisor')?.value || (data.supervisors[0]?.id||'');
+  const rows=(data.contractServices||[]).filter(s=>String(csSupervisorId(s)||'')===String(sid) && !['done','out'].includes(csStatusKey(s))).slice(0,6);
+  el.innerHTML=rows.map(s=>`<div class="quick-item"><span><b>${esc(csServiceName(s))}</b><br><small>${esc(csProjectName(s))} — ${esc(csDueDate(s)||'-')}</small></span><span class="badge ${csBadgeClass(csStatusKey(s))}">${csStatusText(csStatusKey(s))}</span></div>`).join('') || '<div class="quick-item">لا توجد خدمات مخصصة للمشرف المختار</div>';
+  if(scroll) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+async function smartScheduleContractServices(){
+  const rows=(data.contractServices||[]).filter(s=>!['done','out'].includes(csStatusKey(s))).slice(0,20);
+  if(!rows.length) return msg('لا توجد خدمات غير منفذة للجدولة');
+  let base=new Date(); let updates=[];
+  rows.forEach((s,i)=>{ const d=new Date(base.getTime()+(i+1)*86400000); const ds=d.toISOString().slice(0,10); updates.push(sb.from('contract_services').update({next_due_date:ds, scheduled_date:ds, status:csStatusKey(s)==='late'?'متأخرة':'مستحقة'}).eq('id',s.id)); });
+  const results=await Promise.all(updates); const err=results.find(r=>r.error)?.error; if(err) return msg(err.message,'err'); msg('تمت الجدولة الذكية للخدمات غير المنفذة'); await refreshAll();
+}
+function exportContractServicesCSV(){
+  const rows=getFilteredContractServices();
+  const header=['المشروع','المشرف','الخدمة','القيمة كما في الجدول','عدد الزيارات','المنفذ','المتبقي','آخر تنفيذ','الاستحقاق القادم','الحالة','ملاحظات'];
+  const lines=[header,...rows.map(s=>[csProjectName(s),csSupervisorName(s),csServiceName(s),csSheetValue(s),csVisits(s),csExecutor(s),csRemaining(s),csLastDate(s)||'',csDueDate(s)||'',csStatusText(csStatusKey(s)),csNotes(s)])];
+  const csv='\uFEFF'+lines.map(r=>r.map(c=>'"'+String(c??'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='contract_services.csv'; a.click(); URL.revokeObjectURL(a.href);
+}
