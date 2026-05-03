@@ -139,8 +139,8 @@
       <div class="card services-console" id="contractServicesCard">
         <div class="services-topbar">
           <div>
-            <h2>الخدمات التعاقدية حسب جدول الإكسل</h2>
-            <p>إدارة الخدمات المرتبطة بالعقود، تسجيل التنفيذ، المتابعة، والجدولة الذكية للخدمات غير المنفذة.</p>
+            <h2>الخدمات التعاقدية</h2>
+            <p>إضافة الخدمات يدويًا، تسجيل التنفيذ، متابعة الاستحقاقات، والجدولة الذكية للخدمات غير المنفذة.</p>
           </div>
           <div class="service-tabs">
             <button class="light" id="contractsTabBtn" onclick="showContractsSubTab('contracts')">العقود</button>
@@ -163,7 +163,7 @@
           </div>
 
           <div class="filters services-filters">
-            <input id="serviceSearch" oninput="renderContractServices()" placeholder="بحث باسم المشروع أو الخدمة أو القيمة">
+            <input id="serviceSearch" oninput="renderContractServices()" placeholder="بحث باسم المشروع أو الخدمة أو الملاحظات">
             <select id="serviceFilterProject" onchange="renderContractServices()"><option value="">كل المشاريع</option></select>
             <select id="serviceFilterSupervisor" onchange="renderContractServices()"><option value="">كل المشرفين</option></select>
             <select id="serviceFilterStatus" onchange="renderContractServices()"><option value="">كل الحالات</option><option value="due">مستحقة</option><option value="soon">قريبة</option><option value="done">منجزة</option><option value="late">متأخرة</option><option value="review">مراجعة / غير منفذة</option></select>
@@ -183,7 +183,7 @@
           </div>
           <div class="table-wrap services-table-wrap">
             <table>
-              <thead><tr><th>المشروع</th><th>المشرف</th><th>الخدمة</th><th>القيمة كما في الجدول</th><th>عدد الزيارات</th><th>المنفذ</th><th>المتبقي</th><th>آخر تنفيذ</th><th>الاستحقاق القادم</th><th>الحالة</th><th>إجراء</th></tr></thead>
+              <thead><tr><th>المشروع</th><th>المشرف</th><th>الخدمة</th><th>نوع الخدمة</th><th>التكرار</th><th>عدد الزيارات</th><th>المنفذ</th><th>المنفذ فعليًا</th><th>المتبقي</th><th>آخر تنفيذ</th><th>الاستحقاق القادم</th><th>الحالة</th><th>ملاحظات</th><th>إجراء</th></tr></thead>
               <tbody id="contractServicesBody"></tbody>
             </table>
           </div>
