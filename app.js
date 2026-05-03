@@ -2145,7 +2145,8 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
 })();
 
 
-/* ===== V85 Contract Services Console ===== */
+
+/* ===== V89 Manual Contract Services - Clean Rebuild ===== */
 function showContractsSubTab(tab){
   const contracts=$('contractsSubTab'), services=$('servicesSubTab');
   if(contracts) contracts.classList.toggle('hidden', tab!=='contracts');
@@ -2154,46 +2155,45 @@ function showContractsSubTab(tab){
   $('servicesTabBtn')?.classList.toggle('light', tab!=='services');
   if(tab==='services') renderContractServices();
 }
-function normalizeArV85(s){return String(s||'').trim().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ')}
-function csVal(s, keys, fallback=''){
-  for(const k of keys){ if(s && s[k]!==undefined && s[k]!==null && String(s[k]).trim()!=='') return s[k]; }
-  return fallback;
-}
+function normalizeArV89(s){return String(s||'').trim().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ')}
 function csProjectObj(s){
-  const pid=csVal(s,['project_id'],null);
-  if(pid) return data.projects.find(p=>String(p.id)===String(pid));
-  const raw=csVal(s,['project_name','project'],'');
-  const n=normalizeArV85(raw);
-  return data.projects.find(p=>normalizeArV85(p.name)===n || normalizeArV85(p.name).includes(n) || n.includes(normalizeArV85(p.name)));
+  const pid=s?.project_id;
+  if(pid){const p=data.projects.find(x=>String(x.id)===String(pid)); if(p) return p;}
+  const n=normalizeArV89(s?.project_name||'');
+  if(!n) return null;
+  return data.projects.find(p=>normalizeArV89(p.name)===n || normalizeArV89(p.name).includes(n) || n.includes(normalizeArV89(p.name))) || null;
 }
-function csProjectName(s){return csProjectObj(s)?.name || csVal(s,['project_name','project'],'-');}
-function csSupervisorId(s){return csVal(s,['supervisor_id'],null) || csProjectObj(s)?.supervisor_id || null;}
-function csSupervisorName(s){return csVal(s,['supervisor_name'],'') || supervisorName(csSupervisorId(s));}
-function csServiceName(s){return csVal(s,['service_name','service_type'],'خدمة');}
-function csServiceType(s){return csVal(s,['service_type','service_category'],'') || csServiceName(s) || '-';}
-function csFrequency(s){return csVal(s,['frequency'],'مرة واحدة');}
-function csVisits(s){return Number(csVal(s,['visit_count','required_visits'],1))||1;}
-function csDone(s){return Number(csVal(s,['executed_count','executed_visits'],0))||0;}
-function csRemaining(s){const x=csVal(s,['remaining_count','remaining_visits'],null); if(x!==null && x!==undefined && String(x)!=='') return Number(x)||0; return Math.max(csVisits(s)-csDone(s),0);}
-function csLastDate(s){return isoDate(csVal(s,['last_execution_date','execution_date'],''));}
-function csDueDate(s){return isoDate(csVal(s,['next_due_date','due_date','service_date','smart_schedule_date'],''));}
-function csExecutor(s){return csVal(s,['executor_name','executor'],'-');}
-function csNotes(s){return csVal(s,['notes','service_value','raw_value'],'');}
+function csProjectName(s){return csProjectObj(s)?.name || s?.project_name || '-'}
+function csSupervisorId(s){return s?.supervisor_id || csProjectObj(s)?.supervisor_id || null}
+function csSupervisorName(s){return s?.supervisor_name || supervisorName(csSupervisorId(s)) || '-'}
+function csServiceName(s){return s?.service_name || '-'}
+function csServiceType(s){return s?.service_type || s?.service_name || 'أخرى'}
+function csFrequency(s){return s?.frequency || 'مرة واحدة'}
+function csVisits(s){return Number(s?.visit_count||1)||1}
+function csDone(s){return Number(s?.executed_count||0)||0}
+function csRemaining(s){const rem=s?.remaining_count; if(rem!==undefined&&rem!==null&&String(rem)!=='') return Math.max(Number(rem)||0,0); return Math.max(csVisits(s)-csDone(s),0)}
+function csLastDate(s){return isoDate(s?.last_execution_date||'')}
+function csDueDate(s){return isoDate(s?.next_due_date||'')}
+function csExecutor(s){return s?.executor_name || '-'}
+function csNotes(s){return s?.notes || ''}
 function csStatusKey(s){
-  const explicit=normalizeArV85(csVal(s,['status','service_status'],''));
+  const explicit=normalizeArV89(s?.status||'');
   const due=csDueDate(s); const t=today();
   if(explicit.includes('خارج')) return 'out';
+  if(explicit.includes('متوقف')) return 'stopped';
   if(explicit.includes('منجز')) return 'done';
   if(explicit.includes('متاخر')) return 'late';
   if(explicit.includes('قريب')) return 'soon';
   if(explicit.includes('مستحق')) return 'due';
-  if(explicit.includes('دوري')) return 'review';
+  if(explicit.includes('مراجعه') || explicit.includes('غير منفذ')) return 'review';
   if(due && due<t) return 'late';
   if(due){ const diff=Math.round((new Date(due+'T00:00:00')-new Date(t+'T00:00:00'))/86400000); if(diff>=0 && diff<=7) return 'soon'; }
-  return explicit ? 'review' : 'due';
+  if(csRemaining(s)<=0 && csDone(s)>0) return 'done';
+  return 'due';
 }
-function csStatusText(key){return {done:'منجزة',due:'مستحقة',soon:'قريبة',late:'متأخرة',review:'مراجعة',out:'خارج العقد'}[key]||'مستحقة'}
-function csBadgeClass(key){return key==='done'?'green':key==='late'?'red':key==='soon'?'amber':key==='due'?'':key==='out'?'neutral':'amber'}
+function csStatusText(key){return {done:'منجزة',due:'مستحقة',soon:'قريبة',late:'متأخرة',review:'مراجعة / غير منفذة',out:'خارج العقد',stopped:'متوقفة'}[key]||'مستحقة'}
+function csBadgeClass(key){return key==='done'?'green':key==='late'?'red':key==='soon'?'amber':key==='out'?'neutral':key==='stopped'?'neutral':'amber'}
+function serviceById(id){return (data.contractServices||[]).find(s=>String(s.id)===String(id));}
 function hydrateServiceTypes(){
   const el=$('serviceFilterType'); if(!el) return;
   const current=el.value;
@@ -2203,19 +2203,19 @@ function hydrateServiceTypes(){
 }
 function getFilteredContractServices(){
   let rows=[...(data.contractServices||[])];
-  const q=normalizeArV85($('serviceSearch')?.value||'');
+  const q=normalizeArV89($('serviceSearch')?.value||'');
   const pid=$('serviceFilterProject')?.value||'';
   const sid=$('serviceFilterSupervisor')?.value||'';
   const st=$('serviceFilterStatus')?.value||'';
   const typ=$('serviceFilterType')?.value||'';
   const d=$('serviceFilterDate')?.value||'';
-  if(q) rows=rows.filter(s=>normalizeArV85([csProjectName(s),csSupervisorName(s),csServiceName(s),csServiceType(s),csNotes(s)].join(' ')).includes(q));
+  if(q) rows=rows.filter(s=>normalizeArV89([csProjectName(s),csSupervisorName(s),csServiceName(s),csServiceType(s),csNotes(s)].join(' ')).includes(q));
   if(pid) rows=rows.filter(s=>String(csProjectObj(s)?.id||s.project_id||'')===String(pid));
   if(sid) rows=rows.filter(s=>String(csSupervisorId(s)||'')===String(sid));
   if(st) rows=rows.filter(s=>csStatusKey(s)===st);
   if(typ) rows=rows.filter(s=>csServiceType(s)===typ);
-  if(d) rows=rows.filter(s=>csDueDate(s)===d);
-  return rows;
+  if(d) rows=rows.filter(s=>csDueDate(s)===d || csLastDate(s)===d);
+  return rows.sort((a,b)=>String(csDueDate(a)||'9999').localeCompare(String(csDueDate(b)||'9999')) || String(csProjectName(a)).localeCompare(String(csProjectName(b)),'ar'));
 }
 function renderContractServices(){
   if(!$('contractServicesBody')) return;
@@ -2223,116 +2223,111 @@ function renderContractServices(){
   const rows=getFilteredContractServices();
   const all=data.contractServices||[];
   const counts={total:all.length,due:0,soon:0,done:0,late:0,review:0};
-  all.forEach(s=>{const k=csStatusKey(s); if(k==='due')counts.due++; else if(k==='soon')counts.soon++; else if(k==='done')counts.done++; else if(k==='late')counts.late++; else if(k==='review')counts.review++;});
+  all.forEach(s=>{const k=csStatusKey(s); if(k==='done')counts.done++; else if(k==='late')counts.late++; else if(k==='soon')counts.soon++; else if(k==='review')counts.review++; else if(k==='due')counts.due++;});
   if($('servicesTotalCount')) $('servicesTotalCount').textContent=counts.total;
   if($('servicesDueCount')) $('servicesDueCount').textContent=counts.due;
   if($('servicesDoneCount')) $('servicesDoneCount').textContent=counts.done;
   if($('servicesSoonCount')) $('servicesSoonCount').textContent=counts.soon;
   if($('servicesLateCount')) $('servicesLateCount').textContent=counts.late;
   if($('servicesReviewCount')) $('servicesReviewCount').textContent=counts.review;
-  const emptyMsg = data.contractServicesError ? ('تعذر تحميل الخدمات من قاعدة البيانات: ' + esc(data.contractServicesError)) : 'لا توجد خدمات بعد. اضغط إضافة خدمة وأدخلها يدويًا.';
-  $('contractServicesBody').innerHTML = rows.slice(0,300).map(s=>{
+  const emptyMsg = data.contractServicesError ? ('تعذر تحميل الخدمات: '+esc(data.contractServicesError)) : 'لا توجد خدمات بعد. اضغط إضافة خدمة وأدخلها يدويًا.';
+  $('contractServicesBody').innerHTML = rows.slice(0,500).map(s=>{
     const k=csStatusKey(s);
     return `<tr>
-      <td><b>${esc(csProjectName(s))}</b></td><td>${esc(csSupervisorName(s))}</td><td>${esc(csServiceName(s))}</td><td>${esc(csServiceType(s))}</td><td>${esc(csFrequency(s))}</td><td>${csVisits(s)||1}</td><td>${esc(csExecutor(s))}</td><td>${csDone(s)}</td><td>${csRemaining(s)}</td><td>${esc(csLastDate(s)||'-')}</td><td>${esc(csDueDate(s)||'-')}</td><td><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></td><td>${esc(csNotes(s)||'-')}</td>
+      <td><b>${esc(csProjectName(s))}</b></td>
+      <td>${esc(csSupervisorName(s))}</td>
+      <td><b>${esc(csServiceName(s))}</b></td>
+      <td>${esc(csServiceType(s))}</td>
+      <td>${esc(csFrequency(s))}</td>
+      <td>${csVisits(s)}</td>
+      <td>${esc(csExecutor(s))}</td>
+      <td>${csDone(s)}</td>
+      <td>${csRemaining(s)}</td>
+      <td>${esc(csLastDate(s)||'-')}</td>
+      <td>${esc(csDueDate(s)||'-')}</td>
+      <td><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></td>
+      <td>${esc(csNotes(s)||'-')}</td>
       <td class="row-actions"><button onclick="executeContractService(${Number(s.id)||0})">تسجيل تنفيذ</button><button class="light" onclick="editContractService(${Number(s.id)||0})">تعديل</button><button class="light" onclick="whatsappContractService(${Number(s.id)||0})">واتساب</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="14">${emptyMsg}</td></tr>`;
-  renderSmartServicesList(); showSupervisorServicesPreview(false);
+  renderSmartServicesList();
+  showSupervisorServicesPreview(false);
 }
 function resetServiceFilters(){['serviceSearch','serviceFilterProject','serviceFilterSupervisor','serviceFilterStatus','serviceFilterType','serviceFilterDate'].forEach(id=>{if($(id))$(id).value=''}); renderContractServices();}
-function serviceById(id){return (data.contractServices||[]).find(s=>String(s.id)===String(id));}
+function projectPromptMatch(project){
+  const p=data.projects.find(x=>String(x.id)===String(project)) || data.projects.find(x=>normalizeArV89(x.name)===normalizeArV89(project)) || data.projects.find(x=>normalizeArV89(x.name).includes(normalizeArV89(project)) || normalizeArV89(project).includes(normalizeArV89(x.name)));
+  return p||null;
+}
+async function openNewContractService(){
+  const project=prompt('اسم المشروع كما هو في التطبيق'); if(!project) return;
+  const p=projectPromptMatch(project); if(!p) return msg('لم أجد المشروع. اكتب الاسم كما يظهر في التطبيق.','err');
+  const service=prompt('اسم الخدمة مثال: غسيل خزانات علوية / مكافحة حشرات'); if(!service) return;
+  const type=prompt('نوع الخدمة', service) || service;
+  const freq=prompt('التكرار: سنوي / ربع سنوي / شهري / عند الاحتياج', 'سنوي') || 'سنوي';
+  const visits=Number(prompt('عدد الزيارات المطلوبة خلال العقد', '1')||1);
+  const due=prompt('تاريخ الاستحقاق القادم YYYY-MM-DD', today()) || null;
+  const notes=prompt('ملاحظات', '') || '';
+  const sid=p.supervisor_id||null; const supName=supervisorName(sid)||'';
+  const row={project_id:p.id, project_name:p.name, supervisor_id:sid, supervisor_name:supName, service_name:service, service_type:type, frequency:freq, visit_count:visits, executed_count:0, remaining_count:visits, last_execution_date:null, next_due_date:due, status:'مستحقة', executor_name:'', notes, created_at:new Date().toISOString(), updated_at:new Date().toISOString()};
+  const {error}=await sb.from('contract_services').insert(row);
+  if(error) return msg(error.message,'err');
+  resetServiceFilters();
+  if($('serviceSearch')) $('serviceSearch').value=service;
+  msg('تمت إضافة الخدمة بنجاح');
+  await refreshAll();
+}
+async function editContractService(id){
+  const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
+  const service=prompt('اسم الخدمة', csServiceName(s)); if(!service) return;
+  const type=prompt('نوع الخدمة', csServiceType(s)) || service;
+  const freq=prompt('التكرار', csFrequency(s)) || 'مرة واحدة';
+  const visits=Number(prompt('عدد الزيارات المطلوبة', String(csVisits(s)||1))||1);
+  const executed=Number(prompt('عدد الزيارات المنفذة', String(csDone(s)||0))||0);
+  const due=prompt('تاريخ الاستحقاق القادم YYYY-MM-DD', csDueDate(s)||'') || null;
+  const last=prompt('آخر تنفيذ YYYY-MM-DD', csLastDate(s)||'') || null;
+  const status=prompt('الحالة: مستحقة / قريبة / متأخرة / منجزة / مراجعة / خارج العقد', csStatusText(csStatusKey(s))) || csStatusText(csStatusKey(s));
+  const executor=prompt('المنفذ / الشركة المنفذة', csExecutor(s)==='-'?'':csExecutor(s)) || '';
+  const notes=prompt('ملاحظات', csNotes(s)||'') || '';
+  const remaining=Math.max(visits-executed,0);
+  const {error}=await sb.from('contract_services').update({service_name:service, service_type:type, frequency:freq, visit_count:visits, executed_count:executed, remaining_count:remaining, next_due_date:due, last_execution_date:last, status, executor_name:executor, notes, updated_at:new Date().toISOString()}).eq('id',id);
+  if(error) return msg(error.message,'err');
+  msg('تم تعديل الخدمة'); await refreshAll();
+}
 async function executeContractService(id){
   const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
   const d=prompt('تاريخ التنفيذ', today()); if(!d) return;
   const executor=prompt('المنفذ / الشركة المنفذة', csExecutor(s)==='-'?'':csExecutor(s)) || '';
   const notes=prompt('ملاحظات التنفيذ', csNotes(s)||'') || '';
-  const done=(csDone(s)||0)+1; const visits=csVisits(s)||done; const remaining=Math.max(visits-done,0);
-  const st=remaining>0?'مستحقة':'منجزة'; const row={last_execution_date:d, execution_date:d, executed_count:done, remaining_count:remaining, executor_name:executor, responsible:executor||csSupervisorName(s), notes, status:st, service_status:st, service_value:csServiceName(s), raw_value:csServiceName(s), updated_at:new Date().toISOString()};
-  const {error}=await sb.from('contract_services').update(row).eq('id',id);
-  if(error) return msg(error.message,'err'); msg('تم تسجيل تنفيذ الخدمة'); await refreshAll();
-}
-async function editContractService(id){
-  const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
-  const service=prompt('اسم الخدمة', csServiceName(s)); if(!service) return;
-  const type=prompt('نوع الخدمة', csServiceType(s)==='-'?'':csServiceType(s)) || '';
-  const freq=prompt('التكرار', csFrequency(s)) || 'مرة واحدة';
-  const visits=Number(prompt('عدد الزيارات المطلوبة', String(csVisits(s)||1))||1);
-  const due=prompt('تاريخ الاستحقاق القادم YYYY-MM-DD', csDueDate(s)||'') || null;
-  const status=prompt('الحالة: منجزة / مستحقة / قريبة / متأخرة / مراجعة / خارج العقد', csStatusText(csStatusKey(s))) || csStatusText(csStatusKey(s));
-  const notes=prompt('ملاحظات', csNotes(s)||'') || '';
-  const remaining=Math.max(visits-(csDone(s)||0),0);
-  const {error}=await sb.from('contract_services').update({service_name:service, service_type:type, service_value:service, raw_value:service, frequency:freq, visit_count:visits, remaining_count:remaining, next_due_date:due, service_date:due, status, service_status:status, notes, updated_at:new Date().toISOString()}).eq('id',id);
-  if(error) return msg(error.message,'err'); msg('تم تعديل الخدمة'); await refreshAll();
-}
-async function openNewContractService(){
-  const project=prompt('اسم المشروع كما في التطبيق'); if(!project) return;
-  const service=prompt('اسم الخدمة'); if(!service) return;
-  const p=data.projects.find(x=>normalizeArV85(x.name)===normalizeArV85(project)) || data.projects.find(x=>normalizeArV85(x.name).includes(normalizeArV85(project)) || normalizeArV85(project).includes(normalizeArV85(x.name)));
-  const type=prompt('نوع الخدمة', service) || service;
-  const freq=prompt('التكرار', 'سنوي') || 'سنوي';
-  const due=prompt('تاريخ الاستحقاق YYYY-MM-DD', today()) || null;
-  const visits=Number(prompt('عدد الزيارات المطلوبة', '1')||1);
-  const notes=prompt('ملاحظات', '') || '';
-  const supName = p ? supervisorName(p.supervisor_id) : '';
-  const row={
-    project_id:p?.id||null,
-    project_name:p?.name||project,
-    supervisor_id:p?.supervisor_id||null,
-    supervisor_name:supName,
-    responsible:supName,
-    service_name:service,
-    service_type:type,
-    service_value:service,
-    raw_value:service,
-    frequency:freq,
-    visit_count:visits,
-    executed_count:0,
-    remaining_count:visits,
-    next_due_date:due,
-    service_date:due,
-    status:'مستحقة',
-    service_status:'مستحقة',
-    notes,
-    source_file:'manual',
-    created_at:new Date().toISOString(),
-    updated_at:new Date().toISOString()
-  };
-  const {error}=await sb.from('contract_services').insert(row);
+  const done=(csDone(s)||0)+1; const visits=Math.max(csVisits(s)||1, done); const remaining=Math.max(visits-done,0);
+  let next=null;
+  if(remaining>0){ next=prompt('تاريخ الاستحقاق القادم للزيارة التالية YYYY-MM-DD', csDueDate(s)||'') || null; }
+  const st=remaining>0?'مستحقة':'منجزة';
+  const {error}=await sb.from('contract_services').update({last_execution_date:d, executed_count:done, remaining_count:remaining, executor_name:executor, notes, status:st, next_due_date:next, updated_at:new Date().toISOString()}).eq('id',id);
   if(error) return msg(error.message,'err');
-  // اعرض الخدمة الجديدة مباشرة بدل أن تبقى مخفية بفلاتر قديمة
-  if($('serviceFilterProject')) $('serviceFilterProject').value = p?.id ? String(p.id) : '';
-  if($('serviceFilterSupervisor')) $('serviceFilterSupervisor').value = p?.supervisor_id ? String(p.supervisor_id) : '';
-  if($('serviceFilterStatus')) $('serviceFilterStatus').value = '';
-  if($('serviceFilterType')) $('serviceFilterType').value = '';
-  if($('serviceFilterDate')) $('serviceFilterDate').value = due || '';
-  if($('serviceSearch')) $('serviceSearch').value = service;
-  msg('تمت إضافة الخدمة وظهورها في الجدول'); await refreshAll();
+  msg('تم تسجيل تنفيذ الخدمة'); await refreshAll();
 }
 function whatsappContractService(id){
   const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
-  const txt=`السلام عليكم ورحمة الله وبركاته\n\nتقرير خدمة تعاقدية\nالمشروع: ${csProjectName(s)}\nالخدمة: ${csServiceName(s)}\nالحالة: ${csStatusText(csStatusKey(s))}\nالاستحقاق القادم: ${csDueDate(s)||'-'}\nآخر تنفيذ: ${csLastDate(s)||'-'}\nالمتبقي: ${csRemaining(s)}\nملاحظات: ${csNotes(s)||'-'}\n\nشركة تصنيف لإدارة المرافق`;
+  const txt=`السلام عليكم ورحمة الله وبركاته\n\nتقرير خدمة تعاقدية\nالمشروع: ${csProjectName(s)}\nالمشرف: ${csSupervisorName(s)}\nالخدمة: ${csServiceName(s)}\nالحالة: ${csStatusText(csStatusKey(s))}\nعدد الزيارات: ${csVisits(s)}\nالمنفذ: ${csDone(s)}\nالمتبقي: ${csRemaining(s)}\nآخر تنفيذ: ${csLastDate(s)||'-'}\nالاستحقاق القادم: ${csDueDate(s)||'-'}\nملاحظات: ${csNotes(s)||'-'}\n\nشركة تصنيف لإدارة المرافق`;
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 }
 function renderSmartServicesList(){
   const el=$('smartServicesList'); if(!el) return;
-  const candidates=(data.contractServices||[]).filter(s=>!['done','out'].includes(csStatusKey(s))).sort((a,b)=>{
-    const order={late:0,due:1,soon:2,review:3}; return (order[csStatusKey(a)]??9)-(order[csStatusKey(b)]??9);
-  }).slice(0,8);
-  el.innerHTML=candidates.map((s,i)=>{ const dd=csDueDate(s)||new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10); const k=csStatusKey(s); return `<div class="quick-item"><span><b>${esc(csServiceName(s))}</b><br><small>${esc(csProjectName(s))} — ${esc(dd)}</small></span><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></div>`; }).join('') || '<div class="quick-item">لا توجد خدمات تحتاج جدولة</div>';
+  const rows=(data.contractServices||[]).filter(s=>!['done','out','stopped'].includes(csStatusKey(s))).sort((a,b)=>{const order={late:0,due:1,soon:2,review:3}; return (order[csStatusKey(a)]??9)-(order[csStatusKey(b)]??9);}).slice(0,8);
+  el.innerHTML=rows.map((s,i)=>{const dd=csDueDate(s)||new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10); const k=csStatusKey(s); return `<div class="quick-item"><span><b>${esc(csServiceName(s))}</b><br><small>${esc(csProjectName(s))} — ${esc(dd)}</small></span><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></div>`}).join('') || '<div class="quick-item">لا توجد خدمات تحتاج جدولة</div>';
 }
 function showSupervisorServicesPreview(scroll=true){
   const el=$('supervisorServicesPreview'); if(!el) return;
   const sid=$('serviceFilterSupervisor')?.value || (data.supervisors[0]?.id||'');
-  const rows=(data.contractServices||[]).filter(s=>String(csSupervisorId(s)||'')===String(sid) && !['done','out'].includes(csStatusKey(s))).slice(0,6);
+  const rows=(data.contractServices||[]).filter(s=>String(csSupervisorId(s)||'')===String(sid) && !['done','out','stopped'].includes(csStatusKey(s))).slice(0,6);
   el.innerHTML=rows.map(s=>`<div class="quick-item"><span><b>${esc(csServiceName(s))}</b><br><small>${esc(csProjectName(s))} — ${esc(csDueDate(s)||'-')}</small></span><span class="badge ${csBadgeClass(csStatusKey(s))}">${csStatusText(csStatusKey(s))}</span></div>`).join('') || '<div class="quick-item">لا توجد خدمات مخصصة للمشرف المختار</div>';
   if(scroll) el.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 async function smartScheduleContractServices(){
-  const rows=(data.contractServices||[]).filter(s=>!['done','out'].includes(csStatusKey(s))).slice(0,20);
+  const rows=(data.contractServices||[]).filter(s=>!['done','out','stopped'].includes(csStatusKey(s))).sort((a,b)=>{const order={late:0,due:1,soon:2,review:3}; return (order[csStatusKey(a)]??9)-(order[csStatusKey(b)]??9);}).slice(0,20);
   if(!rows.length) return msg('لا توجد خدمات غير منفذة للجدولة');
   let base=new Date(); let updates=[];
-  rows.forEach((s,i)=>{ const d=new Date(base.getTime()+(i+1)*86400000); const ds=d.toISOString().slice(0,10); updates.push(sb.from('contract_services').update({next_due_date:ds, smart_schedule_date:ds, status:csStatusKey(s)==='late'?'متأخرة':'مستحقة', updated_at:new Date().toISOString()}).eq('id',s.id)); });
+  rows.forEach((s,i)=>{ const d=new Date(base.getTime()+(i+1)*86400000); const ds=d.toISOString().slice(0,10); updates.push(sb.from('contract_services').update({next_due_date:ds, status:csStatusKey(s)==='late'?'متأخرة':'مستحقة', updated_at:new Date().toISOString()}).eq('id',s.id)); });
   const results=await Promise.all(updates); const err=results.find(r=>r.error)?.error; if(err) return msg(err.message,'err'); msg('تمت الجدولة الذكية للخدمات غير المنفذة'); await refreshAll();
 }
 function exportContractServicesCSV(){
