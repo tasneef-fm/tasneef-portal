@@ -2170,17 +2170,17 @@ function csProjectName(s){return csProjectObj(s)?.name || csVal(s,['project_name
 function csSupervisorId(s){return csVal(s,['supervisor_id'],null) || csProjectObj(s)?.supervisor_id || null;}
 function csSupervisorName(s){return csVal(s,['supervisor_name'],'') || supervisorName(csSupervisorId(s));}
 function csServiceName(s){return csVal(s,['service_name','service_type'],'خدمة');}
-function csServiceType(s){return csVal(s,['service_type'],'-');}
+function csServiceType(s){return csVal(s,['service_type','service_category'],'') || csServiceName(s) || '-';}
 function csFrequency(s){return csVal(s,['frequency'],'مرة واحدة');}
 function csVisits(s){return Number(csVal(s,['visit_count','required_visits'],1))||1;}
 function csDone(s){return Number(csVal(s,['executed_count','executed_visits'],0))||0;}
 function csRemaining(s){const x=csVal(s,['remaining_count','remaining_visits'],null); if(x!==null && x!==undefined && String(x)!=='') return Number(x)||0; return Math.max(csVisits(s)-csDone(s),0);}
 function csLastDate(s){return isoDate(csVal(s,['last_execution_date','execution_date'],''));}
-function csDueDate(s){return isoDate(csVal(s,['next_due_date','due_date','smart_schedule_date'],''));}
+function csDueDate(s){return isoDate(csVal(s,['next_due_date','due_date','service_date','smart_schedule_date'],''));}
 function csExecutor(s){return csVal(s,['executor_name','executor'],'-');}
-function csNotes(s){return csVal(s,['notes'],'');}
+function csNotes(s){return csVal(s,['notes','service_value','raw_value'],'');}
 function csStatusKey(s){
-  const explicit=normalizeArV85(csVal(s,['status'],''));
+  const explicit=normalizeArV85(csVal(s,['status','service_status'],''));
   const due=csDueDate(s); const t=today();
   if(explicit.includes('خارج')) return 'out';
   if(explicit.includes('منجز')) return 'done';
@@ -2248,7 +2248,7 @@ async function executeContractService(id){
   const executor=prompt('المنفذ / الشركة المنفذة', csExecutor(s)==='-'?'':csExecutor(s)) || '';
   const notes=prompt('ملاحظات التنفيذ', csNotes(s)||'') || '';
   const done=(csDone(s)||0)+1; const visits=csVisits(s)||done; const remaining=Math.max(visits-done,0);
-  const row={last_execution_date:d, execution_date:d, executed_count:done, remaining_count:remaining, executor_name:executor, notes, status:remaining>0?'مستحقة':'منجزة', updated_at:new Date().toISOString()};
+  const st=remaining>0?'مستحقة':'منجزة'; const row={last_execution_date:d, execution_date:d, executed_count:done, remaining_count:remaining, executor_name:executor, responsible:executor||csSupervisorName(s), notes, status:st, service_status:st, service_value:csServiceName(s), raw_value:csServiceName(s), updated_at:new Date().toISOString()};
   const {error}=await sb.from('contract_services').update(row).eq('id',id);
   if(error) return msg(error.message,'err'); msg('تم تسجيل تنفيذ الخدمة'); await refreshAll();
 }
@@ -2262,7 +2262,7 @@ async function editContractService(id){
   const status=prompt('الحالة: منجزة / مستحقة / قريبة / متأخرة / مراجعة / خارج العقد', csStatusText(csStatusKey(s))) || csStatusText(csStatusKey(s));
   const notes=prompt('ملاحظات', csNotes(s)||'') || '';
   const remaining=Math.max(visits-(csDone(s)||0),0);
-  const {error}=await sb.from('contract_services').update({service_name:service, service_type:type, frequency:freq, visit_count:visits, remaining_count:remaining, next_due_date:due, status, notes, updated_at:new Date().toISOString()}).eq('id',id);
+  const {error}=await sb.from('contract_services').update({service_name:service, service_type:type, service_value:service, raw_value:service, frequency:freq, visit_count:visits, remaining_count:remaining, next_due_date:due, service_date:due, status, service_status:status, notes, updated_at:new Date().toISOString()}).eq('id',id);
   if(error) return msg(error.message,'err'); msg('تم تعديل الخدمة'); await refreshAll();
 }
 async function openNewContractService(){
@@ -2274,9 +2274,40 @@ async function openNewContractService(){
   const due=prompt('تاريخ الاستحقاق YYYY-MM-DD', today()) || null;
   const visits=Number(prompt('عدد الزيارات المطلوبة', '1')||1);
   const notes=prompt('ملاحظات', '') || '';
-  const row={project_id:p?.id||null, project_name:p?.name||project, supervisor_id:p?.supervisor_id||null, supervisor_name:p?supervisorName(p.supervisor_id):'', service_name:service, service_type:type, frequency:freq, visit_count:visits, executed_count:0, remaining_count:visits, next_due_date:due, status:'مستحقة', notes, source_file:'manual', created_at:new Date().toISOString(), updated_at:new Date().toISOString()};
+  const supName = p ? supervisorName(p.supervisor_id) : '';
+  const row={
+    project_id:p?.id||null,
+    project_name:p?.name||project,
+    supervisor_id:p?.supervisor_id||null,
+    supervisor_name:supName,
+    responsible:supName,
+    service_name:service,
+    service_type:type,
+    service_value:service,
+    raw_value:service,
+    frequency:freq,
+    visit_count:visits,
+    executed_count:0,
+    remaining_count:visits,
+    next_due_date:due,
+    service_date:due,
+    status:'مستحقة',
+    service_status:'مستحقة',
+    notes,
+    source_file:'manual',
+    created_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
   const {error}=await sb.from('contract_services').insert(row);
-  if(error) return msg(error.message,'err'); msg('تمت إضافة الخدمة'); await refreshAll();
+  if(error) return msg(error.message,'err');
+  // اعرض الخدمة الجديدة مباشرة بدل أن تبقى مخفية بفلاتر قديمة
+  if($('serviceFilterProject')) $('serviceFilterProject').value = p?.id ? String(p.id) : '';
+  if($('serviceFilterSupervisor')) $('serviceFilterSupervisor').value = p?.supervisor_id ? String(p.supervisor_id) : '';
+  if($('serviceFilterStatus')) $('serviceFilterStatus').value = '';
+  if($('serviceFilterType')) $('serviceFilterType').value = '';
+  if($('serviceFilterDate')) $('serviceFilterDate').value = due || '';
+  if($('serviceSearch')) $('serviceSearch').value = service;
+  msg('تمت إضافة الخدمة وظهورها في الجدول'); await refreshAll();
 }
 function whatsappContractService(id){
   const s=serviceById(id); if(!s) return msg('الخدمة غير موجودة','err');
