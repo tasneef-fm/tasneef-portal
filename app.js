@@ -2035,3 +2035,184 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
 
   setTimeout(()=>{ try{ if($('monthlyBody')) renderMonthly(); }catch(e){} }, 800);
 })();
+
+// ===== V83 Tasneef Internal Assistant - Free templates/rules, no API =====
+(function(){
+  window.tasneefAssistantHistory = window.tasneefAssistantHistory || [];
+  window.tasneefAssistantLastReply = window.tasneefAssistantLastReply || '';
+
+  function assistantEsc(s){ return String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+  function normAr(s){ return String(s||'').trim().replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').toLowerCase(); }
+  function assistantDate(){ try{ return new Date().toLocaleDateString('ar-SA'); }catch(e){ return today(); } }
+  function assistantTime(){ try{ return new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return nowTime(); } }
+  function findProjectInText(text){
+    const n = normAr(text);
+    return (data.projects||[]).find(p => n.includes(normAr(p.name))) || null;
+  }
+  function currentMonth(){ return ($('monthlyMonth')?.value || today().slice(0,7)); }
+  function getMonthLogs(month){
+    return (data.logs||[]).filter(l => String(l.log_date || l.check_in || '').slice(0,7) === month && l.check_in && l.check_out);
+  }
+  function getTodayLogs(){
+    const d = $('dailyDate')?.value || today();
+    return (data.logs||[]).filter(l => (l.log_date || String(l.check_in||'').slice(0,10)) === d);
+  }
+  function openLogsText(){
+    const d = $('dailyDate')?.value || today();
+    const rows = (data.logs||[]).filter(l => (l.log_date || String(l.check_in||'').slice(0,10)) === d && l.check_in && !l.check_out);
+    if(!rows.length) return `لا توجد سجلات مفتوحة بدون خروج بتاريخ ${d}.`;
+    return `السجلات المفتوحة بدون خروج بتاريخ ${d}:\n` + rows.map((l,i)=>`${i+1}. المشرف: ${supervisorName(l.supervisor_id)} | المشروع: ${projectName(l.project_id)} | دخول: ${timeOnly(l.check_in)}`).join('\n');
+  }
+  function todayAnalysisText(){
+    const d = $('dailyDate')?.value || today();
+    const logs = getTodayLogs();
+    const completed = logs.filter(l=>l.check_in && l.check_out);
+    const open = logs.filter(l=>l.check_in && !l.check_out);
+    const totalMins = completed.reduce((a,l)=>a + (Number(l.duration_minutes)||minutesBetween(l.check_in,l.check_out)),0);
+    const bySup = new Map();
+    completed.forEach(l=>{
+      const sid=String(l.supervisor_id||'');
+      if(!bySup.has(sid)) bySup.set(sid,{count:0,mins:0});
+      const x=bySup.get(sid); x.count++; x.mins += (Number(l.duration_minutes)||minutesBetween(l.check_in,l.check_out));
+    });
+    const supLines = [...bySup.entries()].map(([sid,x])=>`- ${supervisorName(sid)}: ${x.count} سجلات مكتملة، إجمالي ${minsToText(x.mins)}`).join('\n') || '- لا توجد سجلات مكتملة.';
+    return `ملخص تشغيل اليوم ${d}:\n\nإجمالي السجلات: ${logs.length}\nالسجلات المكتملة: ${completed.length}\nالسجلات المفتوحة: ${open.length}\nإجمالي ساعات العمل داخل المشاريع: ${minsToText(totalMins)}\n\nحسب المشرفين:\n${supLines}\n\n${open.length ? 'تنبيه: يوجد سجلات مفتوحة تحتاج تسجيل خروج أو مراجعة.' : 'الوضع جيد: لا توجد سجلات مفتوحة.'}`;
+  }
+  function monthlyUnderTimeText(){
+    const month = currentMonth();
+    let rows = [];
+    try{
+      if(typeof monthlyRowsV60 === 'function') rows = monthlyRowsV60();
+      else if(typeof monthlyBaseRowsV59 === 'function') rows = monthlyBaseRowsV59();
+    }catch(e){ rows=[]; }
+    if(!rows.length){
+      const logs = getMonthLogs(month);
+      const grouped = new Map();
+      logs.forEach(l=>{
+        const key=(l.supervisor_id||'')+'|'+(l.project_id||'');
+        if(!grouped.has(key)) grouped.set(key,{s:l.supervisor_id,p:l.project_id,a:0,r:0});
+        const g=grouped.get(key); const actual=Number(l.duration_minutes)||minutesBetween(l.check_in,l.check_out); const req=logRequiredMinutes(l);
+        g.a += actual; g.r += req;
+      });
+      rows=[...grouped.values()].map(r=>({...r,diff:r.a-r.r,st:(r.a-r.r)<-5?'ناقص وقت':((r.a-r.r)>5?'زيادة وقت':'ضمن الوقت')}));
+    }
+    const under = rows.filter(r => (r.st||'').includes('ناقص') || Number(r.diff||0) < -5);
+    if(!under.length) return `لا توجد مشاريع ناقصة وقت في شهر ${month} حسب البيانات الحالية.`;
+    return `المشاريع الناقصة وقت في شهر ${month}:\n` + under.map((r,i)=>`${i+1}. ${projectName(r.p)} | المشرف: ${supervisorName(r.s)} | الفعلي: ${minsToText(r.a)} | المطلوب: ${minsToText(r.r)} | النقص: ${minsToText(Math.abs(r.diff||0))}`).join('\n');
+  }
+  function ticketsLateText(){
+    const now = Date.now();
+    const rows = (data.tickets||[]).filter(t => (t.status||'open') !== 'closed').map(t=>{
+      const created = new Date(t.created_at || t.date || now).getTime();
+      const hours = Math.max(0, Math.round((now-created)/36e5));
+      return {...t,hours};
+    }).filter(t=>t.hours>=24).sort((a,b)=>b.hours-a.hours);
+    if(!rows.length) return 'لا توجد تكتات مفتوحة أكثر من 24 ساعة حسب البيانات الحالية.';
+    return 'التكتات المتأخرة أكثر من 24 ساعة:\n' + rows.map((t,i)=>`${i+1}. ${projectName(t.project_id)} | ${t.title||'تكت'} | الحالة: ${t.status||'مفتوح'} | مفتوح منذ ${t.hours} ساعة`).join('\n');
+  }
+  function projectWorkersText(projectId){
+    const names = [...new Set((data.workers||[]).filter(w=>String(workerProjectId(w))===String(projectId) && (w.status||'active')!=='inactive').map(w=>w.name).filter(Boolean))];
+    return names.join('، ') || '-';
+  }
+  function reportTemplate(type, p, extra){
+    const project = p?.name || extractProjectNameFallback(extra) || '[اسم المشروع]';
+    const date = assistantDate();
+    if(type==='pest') return `تقرير مكافحة الحشرات\n\nالمشروع: ${project}\nالتاريخ: ${date}\n\nتم تنفيذ أعمال مكافحة الحشرات في المشروع وفق الإجراءات المعتمدة، وشملت معالجة المناطق المستهدفة داخل المرافق المشتركة ومتابعة المواقع التي قد تكون سببًا في ظهور الحشرات.\n\nتم توجيه الفريق بالمتابعة الدورية والتأكد من جودة التنفيذ، مع الالتزام بإجراءات السلامة أثناء العمل.\n\nملاحظات:\n${extra || 'لا توجد ملاحظات إضافية.'}\n\nشركة تصنيف لإدارة المرافق`;
+    if(type==='tank') return `تقرير تنظيف الخزانات\n\nالمشروع: ${project}\nالتاريخ: ${date}\n\nتم تنفيذ أعمال تنظيف وغسيل الخزانات حسب الخطة التشغيلية، مع العناية بإزالة الرواسب وتنظيف الجدران والأرضيات الداخلية للخزان، والتأكد من جاهزية الموقع بعد الانتهاء.\n\nتم تنفيذ العمل من قبل الفريق المختص، وسيتم متابعة أي ملاحظات تظهر لاحقًا.\n\nملاحظات:\n${extra || 'تم الانتهاء من العمل بصورة جيدة.'}\n\nشركة تصنيف لإدارة المرافق`;
+    if(type==='maintenance') return `تقرير صيانة\n\nالمشروع: ${project}\nالتاريخ: ${date}\n\nتمت مباشرة بلاغ الصيانة في المشروع، وفحص الموقع من قبل الفريق المختص، واتخاذ الإجراء اللازم حسب طبيعة الملاحظة.\n\nالإجراء المنفذ:\n${extra || 'تمت المعالجة والمتابعة.'}\n\nشركة تصنيف لإدارة المرافق`;
+    return `تقرير أعمال نظافة\n\nالمشروع: ${project}\nالتاريخ: ${date}\n\nتم تنفيذ أعمال النظافة بالمشروع وفق الخطة التشغيلية المعتمدة، وشملت تنظيف المواقع المستهدفة ورفع الملاحظات الظاهرة والتأكد من جاهزية المرافق المشتركة.\n\nملاحظات:\n${extra || 'تم التنفيذ بصورة جيدة.'}\n\nشركة تصنيف لإدارة المرافق`;
+  }
+  function whatsappTemplate(type, p, extra){
+    const project = p?.name || extractProjectNameFallback(extra) || '[اسم المشروع]';
+    if(type==='tank') return `السلام عليكم ورحمة الله وبركاته\n\nنفيدكم بأنه تم تحديد موعد غسيل الخزانات لمشروع ${project}.\n\nالموعد: ${extra || 'حسب الجدول المعتمد'}\n\nنأمل من الجميع أخذ العلم، شاكرين لكم تعاونكم.\n\nشركة تصنيف لإدارة المرافق`;
+    if(type==='pest') return `السلام عليكم ورحمة الله وبركاته\n\nنفيدكم بأنه سيتم تنفيذ أعمال مكافحة الحشرات في مشروع ${project}.\n\nالموعد: ${extra || 'حسب الجدول المعتمد'}\n\nيرجى إغلاق النوافذ واتباع تعليمات الفريق أثناء التنفيذ.\n\nشركة تصنيف لإدارة المرافق`;
+    if(type==='ticket') return `تم إغلاق التكت\n\nاسم المشروع: ${project}\nوصف المشكلة: ${extra || '[وصف المشكلة]'}\nحالة المشكلة: مغلق\nالتاريخ: ${assistantDate()}\nالوقت: ${assistantTime()}\n\nشركة تصنيف لإدارة المرافق`;
+    return `السلام عليكم ورحمة الله وبركاته\n\nبخصوص مشروع ${project}:\n${extra || 'نفيدكم بأنه تم تنفيذ المطلوب وسيتم المتابعة من قبل الفريق المختص.'}\n\nشركة تصنيف لإدارة المرافق`;
+  }
+  function designTemplate(text){
+    const p = findProjectInText(text); const project = p?.name || extractProjectNameFallback(text) || '[اسم المشروع]';
+    let title='إشعار هام'; let body='يرجى من السكان الكرام أخذ العلم والالتزام بما ورد في هذا الإشعار.';
+    if(normAr(text).includes('قمامه')||normAr(text).includes('نفايات')){ title='موعد جمع النفايات'; body='نود إشعاركم بأن موعد جمع النفايات سيكون حسب الوقت المحدد أدناه، ونأمل إخراج النفايات في الوقت المناسب حفاظًا على نظافة المشروع.'; }
+    if(normAr(text).includes('خزانات')){ title='إشعار غسيل الخزانات'; body='نود إشعاركم بأنه سيتم تنفيذ أعمال غسيل الخزانات، وقد يترتب على ذلك ضعف أو انقطاع مؤقت للمياه أثناء فترة العمل.'; }
+    if(normAr(text).includes('سيارات')||normAr(text).includes('ابعاد')){ title='تنبيه إبعاد السيارات'; body='يرجى من السكان الكرام إبعاد السيارات عن الموقع المحدد خلال فترة العمل، وذلك لتمكين الفريق من تنفيذ الأعمال بأمان.'; }
+    return `تصميم إعلان جاهز للطباعة\n\nالعنوان: ${title}\nالمشروع: ${project}\n\nالنص المقترح:\n${body}\n\nالوقت / الموعد:\n${extractTimePhrase(text) || '[اكتب الموعد هنا]'}\n\nشركة تصنيف لإدارة المرافق`;
+  }
+  function extractProjectNameFallback(text){
+    const m = String(text||'').match(/مشروع\s+([^\n،,.]+)/); return m ? m[1].trim() : '';
+  }
+  function extractTimePhrase(text){
+    const m = String(text||'').match(/(?:الساعة|من الساعة|غدا|غدًا|اليوم|يوم)\s*([^\n]+)/); return m ? m[0].trim() : '';
+  }
+  function assistantAnswer(text){
+    const n = normAr(text); const p = findProjectInText(text); const extra = String(text||'').trim();
+    if(!extra) return assistantHelp();
+    if(n.includes('سجلات مفتوح') || n.includes('بدون خروج') || n.includes('لم يسجل خروج')) return openLogsText();
+    if(n.includes('حلل تشغيل اليوم') || n.includes('ملخص تشغيل اليوم') || n.includes('تحليل اليوم')) return todayAnalysisText();
+    if(n.includes('ناقص') && (n.includes('شهر') || n.includes('الوقت'))) return monthlyUnderTimeText();
+    if(n.includes('تكت') && (n.includes('متاخر') || n.includes('متأخر') || n.includes('مفتوح'))) return ticketsLateText();
+    if(n.includes('عمال') && p) return `عمال مشروع ${p.name}:\n${projectWorkersText(p.id)}`;
+    if(n.includes('تقرير')){
+      if(n.includes('حشرات') || n.includes('مكافحه')) return reportTemplate('pest',p,extra);
+      if(n.includes('خزان') || n.includes('خزانات')) return reportTemplate('tank',p,extra);
+      if(n.includes('صيانه') || n.includes('صيانة')) return reportTemplate('maintenance',p,extra);
+      return reportTemplate('cleaning',p,extra);
+    }
+    if(n.includes('رساله') || n.includes('رسالة') || n.includes('واتس') || n.includes('واتساب')){
+      if(n.includes('خزان') || n.includes('خزانات')) return whatsappTemplate('tank',p,extra);
+      if(n.includes('حشرات') || n.includes('مكافحه')) return whatsappTemplate('pest',p,extra);
+      if(n.includes('تكت')) return whatsappTemplate('ticket',p,extra);
+      return whatsappTemplate('general',p,extra);
+    }
+    if(n.includes('صمم') || n.includes('تصميم') || n.includes('اعلان') || n.includes('إعلان') || n.includes('اشعار') || n.includes('إشعار')) return designTemplate(text);
+    if(n.includes('ماذا تستطيع') || n.includes('مساعدة') || n.includes('ساعدني')) return assistantHelp();
+    return assistantFallback(text);
+  }
+  function assistantHelp(){
+    return `يمكنني مساعدتك في:\n\n1. كتابة تقارير تشغيلية\nمثال: اكتب تقرير مكافحة حشرات لمشروع صفاء 50\n\n2. كتابة رسائل واتساب\nمثال: اكتب رسالة غسيل خزانات لمشروع صفاء 65 غدًا الساعة 8 صباحًا\n\n3. تحليل بيانات التشغيل\nمثال: ما السجلات المفتوحة اليوم؟\nمثال: ما المشاريع الناقصة وقت هذا الشهر؟\n\n4. تصميم نص إعلان جاهز للطباعة\nمثال: صمم إعلان جمع قمامة لمشروع صفا 28 الساعة 4 عصرًا\n\nملاحظة: هذا مساعد داخلي مجاني يعمل بالقوالب وبيانات التطبيق، وليس API مدفوع.`;
+  }
+  function assistantFallback(text){
+    return `لم أفهم الطلب بشكل كامل، لكن أقدر أساعدك بهذه الطرق:\n\n${assistantHelp()}\n\nطلبك كان:\n${text}`;
+  }
+  function addAssistantMessage(role, text){
+    window.tasneefAssistantHistory.push({role,text,at:new Date().toISOString()});
+    if(role==='bot') window.tasneefAssistantLastReply = text;
+    renderTasneefAssistant();
+  }
+  window.renderTasneefAssistant = function(){
+    const box = $('assistantChat'); if(!box) return;
+    if(!window.tasneefAssistantHistory.length){
+      box.innerHTML = `<div class="assistant-msg bot">${assistantEsc(assistantHelp())}<div class="assistant-suggestions"><span class="chip" onclick="assistantQuick('ما السجلات المفتوحة اليوم؟')">السجلات المفتوحة</span><span class="chip" onclick="assistantQuick('اكتب تقرير تنظيف خزانات لمشروع صفاء 65')">تقرير خزانات</span><span class="chip" onclick="assistantQuick('صمم إعلان جمع قمامة لمشروع وجود الياسمين الساعة 4 عصرًا')">تصميم إعلان</span></div></div>`;
+      return;
+    }
+    box.innerHTML = window.tasneefAssistantHistory.map(m=>`<div class="assistant-msg ${m.role==='user'?'user':'bot'}">${assistantEsc(m.text)}</div>`).join('');
+    box.scrollTop = box.scrollHeight;
+  };
+  window.tasneefAssistantSend = function(){
+    const input = $('assistantInput'); if(!input) return;
+    const text = input.value.trim(); if(!text) return;
+    input.value='';
+    addAssistantMessage('user', text);
+    const reply = assistantAnswer(text);
+    addAssistantMessage('bot', reply);
+  };
+  window.assistantQuick = function(text){ const input=$('assistantInput'); if(input) input.value=text; tasneefAssistantSend(); };
+  window.copyAssistantLastReply = function(){
+    const txt = window.tasneefAssistantLastReply || '';
+    if(!txt) return msg('لا يوجد رد لنسخه','err');
+    if(typeof copyText==='function') copyText(txt); else navigator.clipboard?.writeText(txt);
+    msg('تم نسخ الرد');
+  };
+  window.sendAssistantLastWhatsapp = function(){
+    const txt = window.tasneefAssistantLastReply || '';
+    if(!txt) return msg('لا يوجد رد لإرساله','err');
+    window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
+  };
+  window.printAssistantLastReply = function(){
+    const txt = window.tasneefAssistantLastReply || '';
+    if(!txt) return msg('لا يوجد رد للطباعة','err');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>مساعد تصنيف</title><style>body{font-family:Tahoma,Arial,sans-serif;padding:30px;line-height:1.9;color:#10231d}.page{border:2px solid #0A4033;border-radius:18px;padding:24px}.head{border-bottom:3px solid #0A4033;margin-bottom:18px;padding-bottom:12px}h1{color:#0A4033;margin:0}.content{white-space:pre-wrap;font-size:15px}</style></head><body><div class="page"><div class="head"><h1>شركة تصنيف</h1><p>مساعد تصنيف التشغيلي — المسؤول: وائل شاكر</p></div><div class="content">${assistantEsc(txt)}</div></div><script>window.onload=function(){window.print()}</script></body></html>`;
+    const w=window.open('','_blank'); if(!w) return msg('المتصفح منع فتح نافذة الطباعة','err'); w.document.open(); w.document.write(html); w.document.close();
+  };
+  window.clearAssistantChat = function(){ window.tasneefAssistantHistory=[]; window.tasneefAssistantLastReply=''; renderTasneefAssistant(); };
+  setTimeout(()=>{ try{ renderTasneefAssistant(); }catch(e){} }, 1000);
+})();
