@@ -2726,3 +2726,173 @@ function rmReset(){ rmPhotosByService={}; if($('rmPreview')) $('rmPreview').inne
   document.addEventListener('DOMContentLoaded', ()=>setTimeout(()=>{ rmEnsureInitV93(); bindReportMakerEventsV93(); }, 300));
   setTimeout(()=>{ rmEnsureInitV93(); bindReportMakerEventsV93(); }, 1000);
 })();
+
+/* =========================================================
+   V94 - إصلاح جذري لصانع التقارير: المشاريع + رفع الصور + تحميل آمن
+   ========================================================= */
+(function(){
+  // اجعل المتغيرات الأساسية متاحة لكل الإضافات القديمة التي تبحث عنها على window
+  try{ window.sb = sb; }catch(e){}
+  try{ window.data = data; }catch(e){}
+  const rmEscV94 = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  function rmSetProjectOptionsV94(projects){
+    const sel = document.getElementById('rmProject');
+    if(!sel) return;
+    const current = sel.value;
+    const list = Array.isArray(projects) ? projects : [];
+    sel.innerHTML = list.length
+      ? '<option value="">اختر المشروع</option>' + list.map(p=>`<option value="${p.id}">${rmEscV94(p.name)}</option>`).join('')
+      : '<option value="">لا توجد مشاريع - اضغط تحديث البيانات</option>';
+    if(current && [...sel.options].some(o=>o.value===String(current))) sel.value = current;
+  }
+
+  async function rmLoadProjectsV94(force=false){
+    const sel = document.getElementById('rmProject');
+    if(!sel) return [];
+    try{
+      if(!force && Array.isArray(data.projects) && data.projects.length){
+        rmSetProjectOptionsV94(data.projects);
+        return data.projects;
+      }
+      sel.innerHTML = '<option value="">جاري تحميل المشاريع...</option>';
+      const res = await sb.from('projects').select('id,name,supervisor_id,status').order('name',{ascending:true}).limit(1000);
+      if(res.error) throw res.error;
+      data.projects = res.data || [];
+      window.data = data;
+      rmSetProjectOptionsV94(data.projects);
+      return data.projects;
+    }catch(e){
+      console.error('rmLoadProjectsV94 failed', e);
+      sel.innerHTML = `<option value="">تعذر تحميل المشاريع: ${rmEscV94(e.message||e)}</option>`;
+      if(typeof msg==='function') msg('تعذر تحميل المشاريع في صانع التقارير: '+(e.message||e),'err');
+      return [];
+    }
+  }
+
+  // تهيئة صانع التقارير بدون الاعتماد على الدوال القديمة التي كانت تستخدم safe غير معرّفة
+  function rmEnsureInitV94(){
+    const box=document.getElementById('rmServicesBox');
+    const serviceSel=document.getElementById('rmPhotoService');
+    if(box && !box.dataset.v94Ready && Array.isArray(window.rmServiceTemplates || rmServiceTemplates)){
+      const templates = window.rmServiceTemplates || rmServiceTemplates;
+      box.innerHTML = templates.map((s,i)=>`<label><input type="checkbox" class="rm-service" value="${s.key}" ${i<6?'checked':''}> ${rmEscV94(s.short)}</label>`).join('');
+      box.dataset.v94Ready='1';
+    }
+    if(serviceSel && !serviceSel.dataset.v94Ready && Array.isArray(window.rmServiceTemplates || rmServiceTemplates)){
+      const templates = window.rmServiceTemplates || rmServiceTemplates;
+      serviceSel.innerHTML = templates.map(s=>`<option value="${s.key}">${rmEscV94(s.short)}</option>`).join('');
+      serviceSel.dataset.v94Ready='1';
+    }
+    const d=document.getElementById('rmDate');
+    if(d && !d.value && typeof today==='function') d.value=today();
+    const p=document.getElementById('rmPeriod');
+    if(p && !p.value) p.value='الربع السنوي';
+    rmLoadProjectsV94(false);
+  }
+
+  function rmReadFilesV94(input){
+    const serviceKey = document.getElementById('rmPhotoService')?.value || 'daily';
+    const files = Array.from(input?.files || []);
+    if(!files.length) return;
+    window.rmPhotosByService = (typeof rmPhotosByService !== 'undefined') ? rmPhotosByService : {};
+    rmPhotosByService[serviceKey] = rmPhotosByService[serviceKey] || [];
+    let pending = files.length;
+    files.forEach(file=>{
+      if(!file.type.startsWith('image/')){ pending--; return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        rmPhotosByService[serviceKey].push({name:file.name, url:reader.result});
+        if(typeof rmRenderPhotoPreview==='function') rmRenderPhotoPreview();
+        if(--pending<=0 && typeof msg==='function') msg('تم رفع الصور وإضافتها للمعاينة');
+      };
+      reader.onerror = () => {
+        console.error('تعذر قراءة الصورة', file.name);
+        if(--pending<=0 && typeof msg==='function') msg('تعذر قراءة بعض الصور','err');
+      };
+      reader.readAsDataURL(file);
+    });
+    input.value='';
+  }
+
+  // استبدال دالة رفع الصور بدالة مؤكدة
+  window.rmAddPhotos = function(){
+    try{ rmReadFilesV94(document.getElementById('rmPhotos')); }
+    catch(e){ console.error(e); if(typeof msg==='function') msg('تعذر رفع الصور: '+(e.message||e),'err'); }
+  };
+
+  function rmBindV94(){
+    const input=document.getElementById('rmPhotos');
+    if(input && !input.dataset.v94Bound){
+      input.addEventListener('change', ()=>window.rmAddPhotos());
+      input.dataset.v94Bound='1';
+    }
+    const psel=document.getElementById('rmProject');
+    if(psel && !psel.dataset.v94Bound){
+      psel.addEventListener('focus', ()=>rmLoadProjectsV94(true));
+      psel.addEventListener('click', ()=>{ if(!data.projects?.length) rmLoadProjectsV94(true); });
+      psel.dataset.v94Bound='1';
+    }
+  }
+
+  // تحميل آمن للبيانات، ولا يتعطل التطبيق بسبب time_logs أو أي جدول آخر
+  async function safeFetchV94(label, query, fallback=[]){
+    try{
+      const res = await query;
+      if(res.error){ console.warn(label, res.error.message); return fallback; }
+      return res.data || fallback;
+    }catch(e){ console.warn(label, e.message||e); return fallback; }
+  }
+
+  window.loadAll = async function(){
+    const now = (typeof today==='function') ? today() : new Date().toISOString().slice(0,10);
+    const month = now.slice(0,7);
+    const start = month + '-01';
+    const endDate = new Date(Number(month.slice(0,4)), Number(month.slice(5,7)), 0).toISOString().slice(0,10);
+
+    const [users, projects, workers, attendance, todayLogs, tickets, services] = await Promise.all([
+      safeFetchV94('app_users', sb.from('app_users').select('*').order('id'), []),
+      safeFetchV94('projects', sb.from('projects').select('*').order('id'), []),
+      safeFetchV94('workers', sb.from('workers').select('*').order('id').limit(3000), []),
+      safeFetchV94('attendance', sb.from('attendance').select('*').gte('attendance_date', start).lte('attendance_date', endDate).order('attendance_date',{ascending:false}).limit(2000), []),
+      safeFetchV94('time_logs_today', sb.from('time_logs').select('id,user_id,supervisor_id,project_id,log_date,check_in,check_out,duration_minutes,required_minutes,time_difference_minutes,time_status,travel_minutes,visit_type,notes,created_at').eq('log_date', now).order('check_in',{ascending:false}).limit(1000), []),
+      safeFetchV94('tickets', sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(1000), []),
+      safeFetchV94('contract_services', sb.from('contract_services').select('*').order('id',{ascending:false}).limit(1000), [])
+    ]);
+
+    data.users = users;
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.projects = projects;
+    data.workers = workers;
+    data.attendance = attendance;
+    data.logs = todayLogs;
+    data.tickets = tickets;
+    data.contractServices = services;
+    window.data = data;
+    rmEnsureInitV94();
+  };
+
+  const oldRefresh = window.refreshAll;
+  window.refreshAll = async function(){
+    try{ await window.loadAll(); }
+    catch(e){ console.error('refreshAll V94', e); if(typeof msg==='function') msg('تعذر تحميل بعض البيانات، التطبيق مستمر بالعمل','err'); }
+    try{ hydrateForms(); }catch(e){ console.warn('hydrateForms V94', e); }
+    try{ renderAll(); }catch(e){ console.warn('renderAll V94', e); }
+    try{ rmEnsureInitV94(); rmBindV94(); }catch(e){ console.warn('reportMaker init V94', e); }
+  };
+
+  const oldShow = window.showPage;
+  window.showPage = function(id, btn){
+    const r = oldShow ? oldShow(id, btn) : undefined;
+    if(id==='reportMaker') setTimeout(()=>{ rmEnsureInitV94(); rmBindV94(); rmLoadProjectsV94(false); }, 80);
+    return r;
+  };
+
+  window.rmRefreshProjects = () => rmLoadProjectsV94(true);
+  window.rmEnsureInitV94 = rmEnsureInitV94;
+
+  document.addEventListener('DOMContentLoaded', ()=>setTimeout(()=>{ rmEnsureInitV94(); rmBindV94(); }, 500));
+  setTimeout(()=>{ rmEnsureInitV94(); rmBindV94(); }, 1200);
+  console.log('V94 report maker fix loaded');
+})();
