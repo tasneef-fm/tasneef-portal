@@ -2543,7 +2543,12 @@ function makeService(type=''){
 function addPremiumService(type=''){
   premiumServicesState.push(makeService(type));
   renderPremiumServicesEditor();
+  setTimeout(()=>{ document.querySelectorAll('.service-editor-card')[premiumServicesState.length-1]?.scrollIntoView({behavior:'smooth',block:'center'}); },50);
 }
+function addSelectedPremiumService(){ addPremiumService($('premiumAddServiceType')?.value || 'مكافحة الحشرات'); }
+function countServiceImages(s){ return (s.before_images||[]).length + (s.during_images||[]).length + (s.after_images||[]).length; }
+function movePremiumService(i,dir){ const j=i+dir; if(j<0||j>=premiumServicesState.length) return; [premiumServicesState[i],premiumServicesState[j]]=[premiumServicesState[j],premiumServicesState[i]]; renderPremiumServicesEditor(); }
+
 function removePremiumService(i){ if(!confirm('حذف هذه الخدمة من التقرير؟')) return; premiumServicesState.splice(i,1); renderPremiumServicesEditor(); }
 function setPremiumServiceField(i, field, value){ if(premiumServicesState[i]) premiumServicesState[i][field]=value; }
 function serviceTypeOptions(selected){ return PREMIUM_SERVICE_TYPES.map(t=>`<option ${t===selected?'selected':''}>${esc(t)}</option>`).join(''); }
@@ -2552,20 +2557,24 @@ function renderPremiumServicesEditor(){
   if(!premiumServicesState.length) premiumServicesState=[makeService('مكافحة الحشرات')];
   box.innerHTML = premiumServicesState.map((s,i)=>`
     <div class="service-editor-card">
-      <div class="service-editor-head"><b>بوابة خدمة رقم ${i+1}</b><button class="danger" onclick="removePremiumService(${i})">حذف</button></div>
-      <div class="split"><div><label>نوع الخدمة</label><select onchange="setPremiumServiceField(${i},'service_type',this.value); setPremiumServiceField(${i},'title',this.value); renderPremiumServicesEditor()">${serviceTypeOptions(s.service_type)}</select></div><div><label>عنوان الخدمة</label><input value="${esc(s.title||'')}" oninput="setPremiumServiceField(${i},'title',this.value)"></div></div>
-      <label>وصف الخدمة</label><textarea oninput="setPremiumServiceField(${i},'service_description',this.value)" placeholder="وصف مختصر للخدمة">${esc(s.service_description||'')}</textarea>
+      <div class="service-editor-head">
+        <div class="service-title-line"><span class="service-number">${i+1}</span><div><b>${esc(s.title||s.service_type||'خدمة')}</b><div class="service-counts"><span class="service-chip">قبل: ${(s.before_images||[]).length}</span><span class="service-chip">أثناء: ${(s.during_images||[]).length}</span><span class="service-chip">بعد: ${(s.after_images||[]).length}</span><span class="service-chip">الإجمالي: ${countServiceImages(s)}</span></div></div></div>
+        <div class="row-actions"><button class="light" onclick="movePremiumService(${i},-1)">↑</button><button class="light" onclick="movePremiumService(${i},1)">↓</button><button class="danger" onclick="removePremiumService(${i})">حذف</button></div>
+      </div>
+      <div class="split"><div><label>نوع الخدمة</label><select onchange="setPremiumServiceField(${i},'service_type',this.value); if(!premiumServicesState[${i}].title || PREMIUM_SERVICE_TYPES.includes(premiumServicesState[${i}].title)) setPremiumServiceField(${i},'title',this.value); renderPremiumServicesEditor()">${serviceTypeOptions(s.service_type)}</select></div><div><label>عنوان الخدمة الظاهر للعميل</label><input value="${esc(s.title||'')}" oninput="setPremiumServiceField(${i},'title',this.value)"></div></div>
+      <label>وصف الخدمة</label><textarea oninput="setPremiumServiceField(${i},'service_description',this.value)" placeholder="وصف مختصر للخدمة يظهر داخل التقرير">${esc(s.service_description||'')}</textarea>
       <label>نطاق العمل</label><textarea oninput="setPremiumServiceField(${i},'scope_work',this.value)" placeholder="مثال: الممرات، المداخل، المناور، غرف الخدمات">${esc(s.scope_work||'')}</textarea>
       <div class="stage-grid">
-        ${renderStageBox(i,'before_images','قبل التنفيذ',s.before_images)}
-        ${renderStageBox(i,'during_images','أثناء التنفيذ',s.during_images)}
-        ${renderStageBox(i,'after_images','بعد التنفيذ',s.after_images)}
+        ${renderStageBox(i,'before_images','قبل التنفيذ','صور توضح حالة الموقع قبل العمل',s.before_images)}
+        ${renderStageBox(i,'during_images','أثناء التنفيذ','صور توثيق تنفيذ الخدمة',s.during_images)}
+        ${renderStageBox(i,'after_images','بعد التنفيذ','صور النتيجة النهائية',s.after_images)}
       </div>
-      <label>ملاحظات الإدارة على الخدمة</label><textarea oninput="setPremiumServiceField(${i},'notes',this.value)">${esc(s.notes||'')}</textarea>
+      <label>ملاحظات الإدارة على الخدمة</label><textarea oninput="setPremiumServiceField(${i},'notes',this.value)" placeholder="اختياري ولا يظهر إذا تركته فارغًا">${esc(s.notes||'')}</textarea>
     </div>`).join('');
 }
-function renderStageBox(i, field, title, imgs=[]){
-  return `<div class="stage-box"><h4>${title}</h4><input type="file" accept="image/*" multiple onchange="handlePremiumImages(${i},'${field}',this)"><div class="img-previews">${(imgs||[]).map((im,j)=>`<div class="preview-img"><img src="${im.data||im.url||''}" alt=""><button onclick="removePremiumImage(${i},'${field}',${j})">×</button></div>`).join('')}</div><small>${(imgs||[]).length} صورة</small></div>`;
+function renderStageBox(i, field, title, hint, imgs=[]){
+  imgs=imgs||[];
+  return `<div class="stage-box"><h4>${title}</h4><small>${hint}</small><label class="stage-upload">+ اختيار صور ${title}<input type="file" accept="image/*" multiple onchange="handlePremiumImages(${i},'${field}',this)"></label><div class="img-previews">${imgs.map((im,j)=>`<div class="preview-img"><img src="${im.data||im.url||''}" alt=""><button onclick="removePremiumImage(${i},'${field}',${j})">×</button></div>`).join('')}</div><small>${imgs.length ? imgs.length + ' صورة مضافة' : 'لن يظهر هذا القسم للعميل إذا لم تضف صورًا'}</small></div>`;
 }
 function removePremiumImage(i,field,j){ premiumServicesState[i]?.[field]?.splice(j,1); renderPremiumServicesEditor(); }
 async function handlePremiumImages(i, field, input){
