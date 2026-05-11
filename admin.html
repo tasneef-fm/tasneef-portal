@@ -423,7 +423,7 @@
       <div class="page-head">
         <div>
           <h1>المصروفات والمخزون</h1>
-          <h2>V108 Inventory Approval Workflow</h2>
+          <h2>V115 Inventory Product Reports</h2>
           <p>نظام مبسط لإدارة مصروفات المشاريع ومتابعة الأصناف وحركة الصرف والإدخال.</p>
         </div>
         <div class="actions"><button onclick="financeLoadAll(true)">تحديث</button><button class="light" onclick="financeOpenNewProject()">+ إضافة مشروع</button></div>
@@ -483,14 +483,15 @@
         <div class="report-premium-wrap">
           <div class="card report-form-card">
             <h2>إضافة / تعديل صنف</h2><input type="hidden" id="inventoryItemId">
-            <label>اسم الصنف</label><input id="inventoryItemName" placeholder="مثال: لمبة LED 18W">
+            <div class="split"><div><label>اسم الصنف</label><input id="inventoryItemName" placeholder="مثال: لمبة LED 18W"></div><div><label>الرقم التسلسلي</label><input id="inventoryItemSerial" placeholder="يولد تلقائيًا عند الحفظ"></div></div>
             <div class="split"><div><label>التصنيف</label><select id="inventoryItemCategory"><option>كهرباء</option><option>سباكة</option><option>نظافة</option><option>مكافحة حشرات</option><option>تكييف</option><option>زراعة</option><option>معدات</option><option>أخرى</option></select></div><div><label>وحدة القياس</label><input id="inventoryItemUnit" placeholder="حبة / كرتون / لتر / متر"></div></div>
+            <label>صورة المنتج</label><label class="stage-upload">+ اختيار صورة المنتج<input type="file" accept="image/*" onchange="inventoryHandleItemImage(this)"></label><div id="inventoryItemImagePreview" class="img-previews"></div>
             <div class="split"><div><label>الكمية الحالية</label><input type="number" id="inventoryItemQty" step="0.01"></div><div><label>حد التنبيه الأدنى</label><input type="number" id="inventoryItemMin" step="0.01" value="0"></div></div>
             <div class="split"><div><label>سعر الوحدة</label><input type="number" id="inventoryItemCost" step="0.01"></div><div><label>المورد</label><input id="inventoryItemSupplier"></div></div>
             <label>ملاحظات</label><textarea id="inventoryItemNotes"></textarea>
             <div class="actions"><button onclick="inventorySaveItem(this)">حفظ الصنف</button><button class="light" onclick="inventoryClearItemForm()">تفريغ</button></div>
           </div>
-          <div class="card"><h2>قائمة المخزون</h2><div class="table-wrap"><table><thead><tr><th>الصنف</th><th>التصنيف</th><th>الكمية</th><th>الوحدة</th><th>حد التنبيه</th><th>سعر الوحدة</th><th>المورد</th><th>إجراء</th></tr></thead><tbody id="inventoryItemsBody"></tbody></table></div></div>
+          <div class="card"><h2>قائمة المخزون</h2><div class="table-wrap"><table><thead><tr><th>الصورة</th><th>الرقم التسلسلي</th><th>الصنف</th><th>التصنيف</th><th>الكمية</th><th>الوحدة</th><th>حد التنبيه</th><th>سعر الوحدة</th><th>المورد</th><th>إجراء</th></tr></thead><tbody id="inventoryItemsBody"></tbody></table></div></div>
         </div>
       </div>
 
@@ -546,6 +547,7 @@
           <div class="card"><h2>مصروفات حسب المشروع</h2><div class="table-wrap"><table><thead><tr><th>المشروع</th><th>إجمالي المصروفات</th><th>عدد العمليات</th></tr></thead><tbody id="expenseByProjectBody"></tbody></table></div></div>
           <div class="card"><h2>صرف المخزون حسب المشروع</h2><div class="table-wrap"><table><thead><tr><th>المشروع</th><th>عدد الحركات</th><th>إجمالي الكميات المصروفة</th></tr></thead><tbody id="stockOutByProjectBody"></tbody></table></div></div>
           <div class="card"><h2>استهلاك المشرفين حسب المشروع</h2><div class="table-wrap"><table><thead><tr><th>المشرف</th><th>المشروع</th><th>عدد الطلبات</th><th>إجمالي الكمية</th></tr></thead><tbody id="stockOutBySupervisorBody"></tbody></table></div></div>
+          <div class="card wide-card"><h2>تقرير تفصيلي للاستهلاك: ماذا استُخدم وخلال كم يوم</h2><div class="table-wrap"><table><thead><tr><th>المشروع</th><th>المشرف / المستلم</th><th>الصنف</th><th>إجمالي الكمية</th><th>عدد العمليات</th><th>من تاريخ</th><th>إلى تاريخ</th><th>مدة الاستخدام</th></tr></thead><tbody id="inventoryUsageDetailBody"></tbody></table></div></div>
         </div>
       </div>
     </section>
@@ -583,6 +585,6 @@
     <section id="export" class="page hidden"><div class="card"><h2>التصدير</h2><p>صدّر بيانات النظام الحالية بصيغة CSV.</p><div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div></div></section>
   </main>
 </div>
-<script src="app.js?v=113"></script>
+<script src="app.js?v=115"></script>
 </body>
 </html>

@@ -42,3 +42,5 @@
 .approval-step{border:1px solid var(--line);background:#fbfdfc;border-radius:14px;padding:12px;display:flex;align-items:center;gap:8px;justify-content:space-between;color:var(--brand);font-weight:700}
 .approval-step input[type=checkbox]{width:auto}.approval-step input[type=number]{width:70px;padding:7px;text-align:center}
 @media(max-width:900px){.approval-grid{grid-template-columns:1fr 1fr}}@media(max-width:560px){.approval-grid{grid-template-columns:1fr}}
+
+.inventory-thumb{width:56px;height:56px;object-fit:contain;border-radius:12px;border:1px solid var(--border);background:#fff;cursor:pointer;padding:3px}.wide-card{grid-column:1 / -1}.muted{color:var(--muted)}

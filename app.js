@@ -2795,7 +2795,7 @@ async function supervisorInventoryLoad(){
     data.inventoryItems=items.data||[];
     data.inventoryRequests=(reqs.data||[]).filter(r=>String(r.supervisor_id)===String(u.id));
     fillSelect('supInventoryRequestProject', data.projects, 'name', 'اختر المشروع');
-    const itemEl=$('supInventoryRequestItem'); if(itemEl) itemEl.innerHTML='<option value="">اختر الصنف</option>'+data.inventoryItems.map(i=>`<option value="${i.id}">${esc(i.name)} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join('');
+    const itemEl=$('supInventoryRequestItem'); if(itemEl) itemEl.innerHTML='<option value="">اختر الصنف</option>'+data.inventoryItems.map(i=>`<option value="${i.id}">${esc(i.name)} ${i.serial_number?'('+esc(i.serial_number)+')':''} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join('');
     if($('supInventoryRequestDate') && !$('supInventoryRequestDate').value) $('supInventoryRequestDate').value=today();
     renderSupervisorInventoryRequests();
   }catch(e){ console.warn(e); }
@@ -2888,9 +2888,9 @@ function financeClearExpenseForm(){ ['financeExpenseId','financeExpenseSubtotal'
 function financeRenderExpenses(){ const b=$('financeExpensesBody'); if(!b) return; let rows=financeFilterRows(data.financeExpenses||[],'expense_date'); const cat=$('financeExpenseTypeFilter')?.value; if(cat) rows=rows.filter(e=>e.category===cat); b.innerHTML=rows.map(e=>`<tr><td>${esc(e.expense_date||'')}</td><td>${esc(e.project_name||financeProjectName(e.project_id))}</td><td>${esc(e.category||'')}</td><td>${esc(e.supplier||'-')}</td><td>${money(e.total)}</td><td>${esc(e.payment_method||'')}</td><td class="row-actions"><button onclick="financeEditExpense('${e.id}')">تعديل</button><button class="danger" onclick="financeDelete('finance_expenses','${e.id}')">حذف</button></td></tr>`).join('')||`<tr><td colspan="7">${data.financeError||'لا توجد مصروفات'}</td></tr>`; }
 function financeEditExpense(id){ const e=(data.financeExpenses||[]).find(x=>String(x.id)===String(id)); if(!e) return; $('financeExpenseId').value=e.id; $('financeExpenseProject').value=e.project_id||''; $('financeExpenseCategory').value=e.category||'مصروف عام'; $('financeExpenseDate').value=e.expense_date||today(); $('financeExpenseSubtotal').value=e.subtotal||0; $('financeExpenseVat').value=e.vat||0; $('financeExpenseTotal').value=e.total||0; $('financeExpenseSupplier').value=e.supplier||''; $('financeExpenseMethod').value=e.payment_method||'تحويل'; $('financeExpenseNotes').value=e.notes||''; financeShowTab('expenses',document.querySelectorAll('.finance-tab')[1]); $('financeExpenseId')?.scrollIntoView({behavior:'smooth'}); }
 async function financeOpenNewProject(){ const name=prompt('اسم المشروع الجديد'); if(!name) return; try{ const row={name:name.trim(),status:'active',required_daily_minutes:180,friday_minutes:90,operation_type:'daily_visit',visit_type_default:'surface'}; const {data:newp,error}=await sb.from('projects').insert(row).select('*').single(); if(error) throw error; data.projects.unshift(newp); financeHydrateForms(); financeRenderAll(); msg('تم إضافة المشروع'); }catch(e){ msg(e.message||String(e),'err'); } }
-function inventoryFillItemSelect(){ const el=$('inventoryMovementItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
+function inventoryFillItemSelect(){ const el=$('inventoryMovementItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} ${i.serial_number?'('+esc(i.serial_number)+')':''} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
 
-function inventoryFillRequestSelect(){ const el=$('inventoryRequestItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
+function inventoryFillRequestSelect(){ const el=$('inventoryRequestItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} ${i.serial_number?'('+esc(i.serial_number)+')':''} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
 function financeFillSupervisorSelect(){ const el=$('inventoryRequestSupervisor'); if(!el) return; const rows=(data.supervisors||[]).length?data.supervisors:(data.users||[]); el.innerHTML='<option value="">اختر المشرف</option>'+ rows.map(u=>`<option value="${u.id}">${esc(u.full_name||u.username||u.name)}</option>`).join(''); }
 
 const INVENTORY_APPROVAL_ROLES={
@@ -3052,10 +3052,65 @@ function inventoryRenderRequests(){
 }
 
 
-async function inventorySaveItem(btn){ try{ if(btn) btn.disabled=true; const name=($('inventoryItemName')?.value||'').trim(); if(!name) throw new Error('اسم الصنف مطلوب'); const row={name,category:$('inventoryItemCategory')?.value||'أخرى',unit:$('inventoryItemUnit')?.value||'حبة',quantity:num($('inventoryItemQty')?.value),min_quantity:num($('inventoryItemMin')?.value),unit_cost:num($('inventoryItemCost')?.value),supplier:$('inventoryItemSupplier')?.value||'',notes:$('inventoryItemNotes')?.value||''}; const id=$('inventoryItemId')?.value; const res=id?await sb.from('inventory_items').update(row).eq('id',id):await sb.from('inventory_items').insert(row); if(res.error) throw res.error; msg('تم حفظ الصنف'); inventoryClearItemForm(); await financeLoadAll(); }catch(e){ msg(e.message||String(e),'err'); } finally{ if(btn) btn.disabled=false; } }
-function inventoryClearItemForm(){ ['inventoryItemId','inventoryItemName','inventoryItemUnit','inventoryItemQty','inventoryItemMin','inventoryItemCost','inventoryItemSupplier','inventoryItemNotes'].forEach(id=>$(id)&&($(id).value='')); if($('inventoryItemCategory')) $('inventoryItemCategory').value='كهرباء'; if($('inventoryItemMin')) $('inventoryItemMin').value=0; }
-function inventoryRenderItems(){ const b=$('inventoryItemsBody'); if(!b) return; const q=($('financeSearch')?.value||'').trim(); let rows=[...(data.inventoryItems||[])]; if(q) rows=rows.filter(i=>[i.name,i.category,i.supplier,i.notes].join(' ').includes(q)); b.innerHTML=rows.map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(i.category||'')}</td><td>${num(i.quantity)<=num(i.min_quantity)?`<span class="badge red">${num(i.quantity)}</span>`:num(i.quantity)}</td><td>${esc(i.unit||'')}</td><td>${num(i.min_quantity)}</td><td>${money(i.unit_cost)}</td><td>${esc(i.supplier||'-')}</td><td class="row-actions"><button onclick="inventoryEditItem('${i.id}')">تعديل</button><button class="danger" onclick="financeDelete('inventory_items','${i.id}')">حذف</button></td></tr>`).join('')||`<tr><td colspan="8">${data.financeError||'لا توجد أصناف مخزون'}</td></tr>`; inventoryFillItemSelect(); inventoryFillRequestSelect(); financeFillSupervisorSelect(); inventoryLoadApprovalSettings(); }
-function inventoryEditItem(id){ const i=(data.inventoryItems||[]).find(x=>String(x.id)===String(id)); if(!i) return; $('inventoryItemId').value=i.id; $('inventoryItemName').value=i.name||''; $('inventoryItemCategory').value=i.category||'أخرى'; $('inventoryItemUnit').value=i.unit||''; $('inventoryItemQty').value=i.quantity||0; $('inventoryItemMin').value=i.min_quantity||0; $('inventoryItemCost').value=i.unit_cost||0; $('inventoryItemSupplier').value=i.supplier||''; $('inventoryItemNotes').value=i.notes||''; financeShowTab('inventory',document.querySelectorAll('.finance-tab')[2]); $('inventoryItemId')?.scrollIntoView({behavior:'smooth'}); }
+function inventoryGenerateSerial(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const stamp=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  return `INV-${stamp}`;
+}
+function inventoryRenderItemImagePreview(){
+  const box=$('inventoryItemImagePreview'); if(!box) return;
+  const src=inventoryItemImageData || '';
+  box.innerHTML = src ? `<div class="preview-img"><img src="${src}" alt="صورة المنتج"><button onclick="inventoryItemImageData=''; inventoryRenderItemImagePreview()">×</button></div>` : '<small class="muted">لا توجد صورة مضافة</small>';
+}
+async function inventoryHandleItemImage(input){
+  const f=(input.files||[])[0]; if(!f) return;
+  try{ inventoryItemImageData=await compressImageToDataUrl(f, 1000, .82); inventoryRenderItemImagePreview(); msg('تمت إضافة صورة المنتج'); }
+  catch(e){ msg('تعذر تجهيز صورة المنتج','err'); }
+}
+async function inventorySaveItem(btn){
+  try{
+    if(btn) btn.disabled=true;
+    const name=($('inventoryItemName')?.value||'').trim();
+    if(!name) throw new Error('اسم الصنف مطلوب');
+    const row={
+      name,
+      serial_number: ($('inventoryItemSerial')?.value||'').trim() || inventoryGenerateSerial(),
+      image_url: inventoryItemImageData || null,
+      category:$('inventoryItemCategory')?.value||'أخرى',
+      unit:$('inventoryItemUnit')?.value||'حبة',
+      quantity:num($('inventoryItemQty')?.value),
+      min_quantity:num($('inventoryItemMin')?.value),
+      unit_cost:num($('inventoryItemCost')?.value),
+      supplier:$('inventoryItemSupplier')?.value||'',
+      notes:$('inventoryItemNotes')?.value||''
+    };
+    const id=$('inventoryItemId')?.value;
+    const res=id?await sb.from('inventory_items').update(row).eq('id',id):await sb.from('inventory_items').insert(row);
+    if(res.error) throw res.error;
+    msg('تم حفظ الصنف');
+    inventoryClearItemForm(); await financeLoadAll();
+  }catch(e){ msg(e.message||String(e),'err'); }
+  finally{ if(btn) btn.disabled=false; }
+}
+function inventoryClearItemForm(){ ['inventoryItemId','inventoryItemName','inventoryItemSerial','inventoryItemUnit','inventoryItemQty','inventoryItemMin','inventoryItemCost','inventoryItemSupplier','inventoryItemNotes'].forEach(id=>$(id)&&($(id).value='')); inventoryItemImageData=''; inventoryRenderItemImagePreview(); if($('inventoryItemCategory')) $('inventoryItemCategory').value='كهرباء'; if($('inventoryItemMin')) $('inventoryItemMin').value=0; }
+function inventoryRenderItems(){
+  const b=$('inventoryItemsBody'); if(!b) return;
+  const q=($('financeSearch')?.value||'').trim(); let rows=[...(data.inventoryItems||[])];
+  if(q) rows=rows.filter(i=>[i.name,i.serial_number,i.category,i.supplier,i.notes].join(' ').includes(q));
+  b.innerHTML=rows.map(i=>{
+    const img=i.image_url?`<img src="${i.image_url}" class="inventory-thumb" onclick="openImageLightbox([{data:'${String(i.image_url).replace(/'/g,"\'")}'}],0)">`:'-';
+    return `<tr><td>${img}</td><td>${esc(i.serial_number||'-')}</td><td><b>${esc(i.name)}</b></td><td>${esc(i.category||'')}</td><td>${num(i.quantity)<=num(i.min_quantity)?`<span class="badge red">${num(i.quantity)}</span>`:num(i.quantity)}</td><td>${esc(i.unit||'')}</td><td>${num(i.min_quantity)}</td><td>${money(i.unit_cost)}</td><td>${esc(i.supplier||'-')}</td><td class="row-actions"><button onclick="inventoryEditItem('${i.id}')">تعديل</button><button class="danger" onclick="financeDelete('inventory_items','${i.id}')">حذف</button></td></tr>`;
+  }).join('')||`<tr><td colspan="10">${data.financeError||'لا توجد أصناف مخزون'}</td></tr>`;
+  inventoryFillItemSelect(); inventoryFillRequestSelect(); financeFillSupervisorSelect(); inventoryLoadApprovalSettings();
+}
+function inventoryEditItem(id){
+  const i=(data.inventoryItems||[]).find(x=>String(x.id)===String(id)); if(!i) return;
+  $('inventoryItemId').value=i.id; $('inventoryItemName').value=i.name||''; $('inventoryItemSerial').value=i.serial_number||'';
+  $('inventoryItemCategory').value=i.category||'أخرى'; $('inventoryItemUnit').value=i.unit||''; $('inventoryItemQty').value=i.quantity||0; $('inventoryItemMin').value=i.min_quantity||0; $('inventoryItemCost').value=i.unit_cost||0; $('inventoryItemSupplier').value=i.supplier||''; $('inventoryItemNotes').value=i.notes||'';
+  inventoryItemImageData=i.image_url||''; inventoryRenderItemImagePreview();
+  financeShowTab('inventory',document.querySelectorAll('.finance-tab')[2]); $('inventoryItemId')?.scrollIntoView({behavior:'smooth'});
+}
 async function inventorySaveMovement(btn){ try{ if(btn) btn.disabled=true; const itemId=$('inventoryMovementItem')?.value; if(!itemId) throw new Error('اختر الصنف'); const item=(data.inventoryItems||[]).find(i=>String(i.id)===String(itemId)); const type=$('inventoryMovementType')?.value||'out', qty=num($('inventoryMovementQty')?.value); if(qty<=0) throw new Error('الكمية مطلوبة'); const pid=$('inventoryMovementProject')?.value||null; const row={item_id:Number(itemId),item_name:item?.name||'',movement_type:type,quantity:qty,movement_date:$('inventoryMovementDate')?.value||today(),project_id:pid?Number(pid):null,project_name:pid?projectName(pid):'',receiver:$('inventoryMovementReceiver')?.value||'',reason:$('inventoryMovementReason')?.value||'',notes:$('inventoryMovementNotes')?.value||''}; const id=$('inventoryMovementId')?.value; if(id) throw new Error('تعديل حركة المخزون غير متاح؛ احذف الحركة وأضف حركة جديدة للحفاظ على دقة الرصيد'); const res=await sb.from('inventory_movements').insert(row); if(res.error) throw res.error; let newQty=num(item?.quantity); if(type==='in') newQty+=qty; else if(type==='out') newQty-=qty; else if(type==='adjust') newQty=qty; const upd=await sb.from('inventory_items').update({quantity:newQty}).eq('id',itemId); if(upd.error) throw upd.error; msg('تم حفظ حركة المخزون وتحديث الرصيد'); inventoryClearMovementForm(); await financeLoadAll(); }catch(e){ msg(e.message||String(e),'err'); } finally{ if(btn) btn.disabled=false; } }
 function inventoryClearMovementForm(){ ['inventoryMovementId','inventoryMovementItem','inventoryMovementQty','inventoryMovementReceiver','inventoryMovementReason','inventoryMovementNotes'].forEach(id=>$(id)&&($(id).value='')); if($('inventoryMovementType')) $('inventoryMovementType').value='out'; if($('inventoryMovementDate')) $('inventoryMovementDate').value=today(); if($('inventoryMovementProject')) $('inventoryMovementProject').value=''; }
 function inventoryRenderMovements(){ const b=$('inventoryMovementsBody'); if(!b) return; let rows=financeFilterRows(data.inventoryMovements||[],'movement_date'); b.innerHTML=rows.map(m=>{ const type=m.movement_type==='in'?'إدخال':(m.movement_type==='out'?'صرف':'تعديل رصيد'); const cls=m.movement_type==='out'?'amber':(m.movement_type==='in'?'green':''); return `<tr><td>${esc(m.movement_date||'')}</td><td><b>${esc(m.item_name||'')}</b></td><td><span class="badge ${cls}">${type}</span></td><td>${num(m.quantity)}</td><td>${esc(m.project_name||financeProjectName(m.project_id)||'-')}</td><td>${esc(m.receiver||'-')}</td><td><button class="danger" onclick="financeDelete('inventory_movements','${m.id}',true)">حذف</button></td></tr>`; }).join('')||`<tr><td colspan="7">${data.financeError||'لا توجد حركة مخزون'}</td></tr>`; }
@@ -3063,6 +3118,14 @@ function financeRenderReports(){
   const ep=$('expenseByProjectBody'); if(ep){ const map={}; (financeFilterRows(data.financeExpenses||[],'expense_date')).forEach(e=>{ const k=e.project_name||financeProjectName(e.project_id)||'بدون مشروع'; map[k]=map[k]||{total:0,count:0}; map[k].total+=num(e.total); map[k].count++; }); const rows=Object.entries(map).sort((a,b)=>b[1].total-a[1].total); ep.innerHTML=rows.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${money(v.total)}</td><td>${v.count}</td></tr>`).join('')||'<tr><td colspan="3">لا توجد بيانات</td></tr>'; }
   const sp=$('stockOutByProjectBody'); if(sp){ const map={}; (data.inventoryMovements||[]).filter(m=>m.movement_type==='out').forEach(m=>{ const k=m.project_name||financeProjectName(m.project_id)||'بدون مشروع'; map[k]=map[k]||{qty:0,count:0}; map[k].qty+=num(m.quantity); map[k].count++; }); const rows=Object.entries(map).sort((a,b)=>b[1].count-a[1].count); sp.innerHTML=rows.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v.count}</td><td>${v.qty}</td></tr>`).join('')||'<tr><td colspan="3">لا توجد بيانات</td></tr>'; }
   const sr=$('stockOutBySupervisorBody'); if(sr){ const map={}; (data.inventoryRequests||[]).filter(r=>r.status==='approved').forEach(r=>{ const k=(r.supervisor_name||supervisorName(r.supervisor_id)||'بدون مشرف')+'||'+(r.project_name||financeProjectName(r.project_id)||'بدون مشروع'); map[k]=map[k]||{qty:0,count:0,supervisor:r.supervisor_name||supervisorName(r.supervisor_id),project:r.project_name||financeProjectName(r.project_id)}; map[k].qty+=num(r.quantity); map[k].count++; }); const rows=Object.values(map).sort((a,b)=>b.qty-a.qty); sr.innerHTML=rows.map(v=>`<tr><td>${esc(v.supervisor)}</td><td>${esc(v.project)}</td><td>${v.count}</td><td>${v.qty}</td></tr>`).join('')||'<tr><td colspan="4">لا توجد بيانات</td></tr>'; }
+  const ud=$('inventoryUsageDetailBody'); if(ud){
+    const rowsMap={};
+    const addRow=(project,person,item,qty,date)=>{ const k=[project||'بدون مشروع',person||'بدون مستلم',item||'بدون صنف'].join('||'); rowsMap[k]=rowsMap[k]||{project,person,item,qty:0,count:0,dates:[]}; rowsMap[k].qty+=num(qty); rowsMap[k].count++; if(date) rowsMap[k].dates.push(String(date).slice(0,10)); };
+    (data.inventoryRequests||[]).filter(r=>r.status==='approved').forEach(r=>addRow(r.project_name||financeProjectName(r.project_id), r.supervisor_name||supervisorName(r.supervisor_id), r.item_name, r.quantity, r.request_date||r.created_at));
+    (data.inventoryMovements||[]).filter(m=>m.movement_type==='out').forEach(m=>addRow(m.project_name||financeProjectName(m.project_id), m.receiver, m.item_name, m.quantity, m.movement_date||m.created_at));
+    const rows=Object.values(rowsMap).map(v=>{ v.dates.sort(); const first=v.dates[0]||'-', last=v.dates[v.dates.length-1]||'-'; let days='يوم واحد'; if(first!=='-'&&last!=='-'){ const d=Math.max(1,Math.round((new Date(last)-new Date(first))/86400000)+1); days=d+' يوم'; } return {...v,first,last,days}; }).sort((a,b)=>b.qty-a.qty);
+    ud.innerHTML=rows.map(v=>`<tr><td>${esc(v.project)}</td><td>${esc(v.person)}</td><td>${esc(v.item)}</td><td>${v.qty}</td><td>${v.count}</td><td>${esc(v.first)}</td><td>${esc(v.last)}</td><td>${esc(v.days)}</td></tr>`).join('')||'<tr><td colspan="8">لا توجد بيانات استهلاك</td></tr>';
+  }
 }
 async function financeDelete(table,id){
   if(!confirm('تأكيد الحذف؟')) return;
@@ -3367,5 +3430,294 @@ function financeResetFilters(){ ['financeSearch','financeProjectFilter','finance
   window.addEventListener('load', function(){
     setTimeout(()=>{ injectPermissionsBoxV113(); applyCurrentPermissionsV113(); }, 250);
     setTimeout(()=>{ injectPermissionsBoxV113(); applyCurrentPermissionsV113(); }, 1000);
+  });
+})();
+
+/* ===== V114: hard sidebar permissions fix + live session refresh ===== */
+(function(){
+  'use strict';
+
+  const PERMISSIONS_V114 = [
+    ['can_dashboard','لوحة التحكم'],
+    ['can_time_logs','التسجيلات اليومية'],
+    ['can_manage_users','إدارة المستخدمين'],
+    ['can_projects','المشاريع'],
+    ['can_contracts','العقود والخدمات'],
+    ['can_manage_workers','العمال'],
+    ['can_attendance','الحضور والغياب'],
+    ['can_monthly','الأوقات الشهرية'],
+    ['can_tickets','التكتات'],
+    ['can_client_reports','تقارير العملاء'],
+    ['can_client_ratings','تقييمات العملاء'],
+    ['can_expenses_inventory','المصروفات والمخزون'],
+    ['can_inventory_requests','طلبات صرف المخزون'],
+    ['can_manage_inventory','إدارة المخزون'],
+    ['can_alerts','التنبيهات'],
+    ['can_assistant','مساعد تصنيف'],
+    ['can_export','التصدير']
+  ];
+
+  const NAV_PERM_MAP_V114 = {
+    dashboard:'can_dashboard',
+    daily:'can_time_logs',
+    users:'can_manage_users',
+    projects:'can_projects',
+    contracts:'can_contracts',
+    workers:'can_manage_workers',
+    attendance:'can_attendance',
+    monthly:'can_monthly',
+    tickets:'can_tickets',
+    clientReports:'can_client_reports',
+    clientRatings:'can_client_ratings',
+    financeDashboard:'can_expenses_inventory',
+    alerts:'can_alerts',
+    assistant:'can_assistant',
+    export:'can_export'
+  };
+
+  function parsePermsV114(v){
+    if(!v) return {};
+    if(typeof v === 'string'){
+      try { return JSON.parse(v || '{}') || {}; } catch(e){ return {}; }
+    }
+    return v || {};
+  }
+
+  function allV114(v){ return Object.fromEntries(PERMISSIONS_V114.map(([k])=>[k, !!v])); }
+
+  function roleDefaultsV114(role){
+    if(role === 'admin' || role === 'general_manager') return allV114(true);
+    if(role === 'warehouse_manager') return { can_dashboard:true, can_expenses_inventory:true, can_inventory_requests:true, can_manage_inventory:true };
+    if(role === 'operations_manager') return {
+      can_dashboard:true, can_time_logs:true, can_projects:true, can_contracts:true,
+      can_manage_workers:true, can_attendance:true, can_monthly:true, can_tickets:true,
+      can_client_reports:true, can_client_ratings:true, can_expenses_inventory:true,
+      can_inventory_requests:true, can_manage_inventory:false, can_alerts:true,
+      can_assistant:true, can_export:true
+    };
+    if(role === 'financial_manager') return { can_dashboard:true, can_client_reports:true, can_client_ratings:true, can_expenses_inventory:true, can_inventory_requests:true, can_export:true };
+    if(role === 'technician') return { can_dashboard:true, can_tickets:true, can_inventory_requests:true };
+    return { can_dashboard:true, can_time_logs:true, can_attendance:true, can_tickets:true, can_inventory_requests:true };
+  }
+
+  function hasExplicitPermsV114(user){
+    const p = parsePermsV114(user && user.permissions);
+    return Object.keys(p).some(k => k.indexOf('can_') === 0);
+  }
+
+  function normalizePermsV114(user){
+    user = user || (typeof session === 'function' ? session() : null) || {};
+    if(user.role === 'admin' || user.role === 'general_manager') return allV114(true);
+
+    const explicit = parsePermsV114(user.permissions);
+    // مهم: إذا حفظنا صلاحيات للمستخدم، نعتمد على المختار فقط، ولا نرجع نفتح صلاحيات الدور تلقائيًا.
+    if(hasExplicitPermsV114(user)){
+      const out = allV114(false);
+      Object.keys(out).forEach(k => { if(explicit[k] === true) out[k] = true; });
+      // دعم مفاتيح قديمة لو موجودة
+      if(explicit.can_reports === true){ out.can_client_reports = true; out.can_client_ratings = true; }
+      if(explicit.can_journey === true) out.can_dashboard = true;
+      if(explicit.can_edit_time_logs === true) out.can_time_logs = true;
+      return out;
+    }
+    return Object.assign(allV114(false), roleDefaultsV114(user.role));
+  }
+
+  window.getUserPermissionsV72 = normalizePermsV114;
+  window.getUserPermissionsV113 = normalizePermsV114;
+  window.getUserPermissionsV114 = normalizePermsV114;
+
+  function syncCurrentSessionV114(){
+    try{
+      const u = session && session();
+      if(!u || !Array.isArray(data && data.users)) return u;
+      const fresh = data.users.find(x => String(x.id) === String(u.id) || (x.username && x.username === u.username));
+      if(fresh){ setSession(fresh); return fresh; }
+      return u;
+    }catch(e){ return null; }
+  }
+
+  function setPermInputsV114(perms){
+    perms = perms || {};
+    PERMISSIONS_V114.forEach(([key])=>{
+      const el = document.getElementById('perm_'+key);
+      if(el) el.checked = !!perms[key];
+    });
+  }
+
+  function readPermInputsV114(){
+    const out = {};
+    PERMISSIONS_V114.forEach(([key])=>{
+      const el = document.getElementById('perm_'+key);
+      if(el) out[key] = !!el.checked;
+    });
+    return out;
+  }
+
+  function permissionsTextV114(perms){
+    perms = perms || {};
+    const labels = PERMISSIONS_V114.filter(([k])=>perms[k]).map(x=>x[1]);
+    return labels.length ? labels.join('، ') : '-';
+  }
+
+  function injectPermissionsBoxV114(){
+    const active = document.getElementById('userActive');
+    if(!active) return;
+    let box = document.getElementById('userPermissionsBoxV72');
+    const html = '<label>الصلاحيات</label><div class="perm-grid-v72">' + PERMISSIONS_V114.map(([key,label]) =>
+      `<label class="perm-item-v72"><input type="checkbox" id="perm_${key}" data-perm="${key}"> <span>${label}</span></label>`
+    ).join('') + '</div><div class="footer-note">تحدد هذه الصلاحيات ما يظهر للمستخدم داخل التطبيق. إذا أزلت العلامة تختفي الصفحة من القائمة الجانبية فورًا بعد دخول المستخدم.</div>';
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'userPermissionsBoxV72';
+      box.className = 'perm-box-v72';
+      active.parentElement.insertBefore(box, active.nextSibling);
+    }
+    // استبدال كامل دائمًا لمنع بقاء القائمة القديمة.
+    if(box.dataset.v !== '114'){
+      box.innerHTML = html;
+      box.dataset.v = '114';
+    }
+    const role = document.getElementById('userRole');
+    if(role && !role.dataset.permHookedV114){
+      role.dataset.permHookedV114 = '1';
+      role.addEventListener('change', ()=>setPermInputsV114(roleDefaultsV114(role.value)));
+    }
+    if(!document.getElementById('userId')?.value){
+      setPermInputsV114(roleDefaultsV114(role?.value || 'supervisor'));
+    }
+  }
+
+  window.saveUser = async function(){
+    const id = $('userId')?.value;
+    const row = {
+      full_name: $('userFullName')?.value.trim(),
+      username: $('userUsername')?.value.trim(),
+      password: $('userPassword')?.value.trim() || '123456',
+      role: $('userRole')?.value,
+      is_active: $('userActive')?.value === 'true',
+      permissions: readPermInputsV114()
+    };
+    if(!row.full_name || !row.username) return msg('الاسم واسم المستخدم مطلوبان','err');
+    let res = id ? await sb.from('app_users').update(row).eq('id', id) : await sb.from('app_users').insert(row);
+    if(res.error && String(res.error.message||'').includes('permissions')){
+      const safeRow = Object.assign({}, row); delete safeRow.permissions;
+      res = id ? await sb.from('app_users').update(safeRow).eq('id', id) : await sb.from('app_users').insert(safeRow);
+      if(!res.error) msg('تم حفظ المستخدم، لكن عمود الصلاحيات غير موجود. شغّل ملف SQL للصلاحيات','err');
+    }
+    if(res.error) return msg(res.error.message,'err');
+    msg('تم حفظ المستخدم والصلاحيات');
+    if(typeof clearUserForm === 'function') clearUserForm();
+    await refreshAll();
+    syncCurrentSessionV114();
+    injectPermissionsBoxV114();
+    applyCurrentPermissionsV114(true);
+  };
+
+  window.renderUsers = function(){
+    const b = $('usersBody'); if(!b) return;
+    const table = b.closest('table');
+    if(table && table.tHead){
+      table.tHead.innerHTML = '<tr><th>الاسم</th><th>المستخدم</th><th>الدور</th><th>الحالة</th><th>الصلاحيات</th><th>إجراء</th></tr>';
+    }
+    b.innerHTML = (data.users||[]).map(u=>{
+      const perms = normalizePermsV114(u);
+      return `<tr><td>${esc(u.full_name)}</td><td>${esc(u.username)}</td><td><span class="badge">${esc(userRoleLabel(u.role))}</span></td><td><span class="badge ${u.is_active?'green':'red'}">${u.is_active?'نشط':'موقوف'}</span></td><td style="white-space:normal;min-width:220px">${esc(permissionsTextV114(perms))}</td><td class="row-actions"><button onclick="editUser(${u.id})">تعديل</button><button class="danger" onclick="deleteRow('app_users',${u.id})">حذف</button></td></tr>`;
+    }).join('') || '<tr><td colspan="6">لا يوجد مستخدمون</td></tr>';
+  };
+
+  window.editUser = function(id){
+    const u = (data.users||[]).find(x=>String(x.id)===String(id)); if(!u) return;
+    injectPermissionsBoxV114();
+    $('userId').value = u.id;
+    $('userFullName').value = u.full_name || '';
+    $('userUsername').value = u.username || '';
+    $('userPassword').value = u.password || '';
+    $('userRole').value = u.role;
+    $('userActive').value = String(u.is_active !== false);
+    $('userFormTitle').textContent = 'تعديل مستخدم';
+    setPermInputsV114(normalizePermsV114(u));
+  };
+
+  const oldClearUserV114 = window.clearUserForm;
+  window.clearUserForm = function(){
+    if(typeof oldClearUserV114 === 'function') oldClearUserV114.apply(this, arguments);
+    injectPermissionsBoxV114();
+    setPermInputsV114(roleDefaultsV114(document.getElementById('userRole')?.value || 'supervisor'));
+  };
+
+  function getPageFromNavButton(btn){
+    const on = String(btn.getAttribute('onclick') || '');
+    const m = on.match(/showPage\('([^']+)'/);
+    return m ? m[1] : '';
+  }
+
+  function hideButton(btn){
+    btn.classList.add('hidden');
+    btn.style.display = 'none';
+    btn.setAttribute('aria-hidden','true');
+    btn.tabIndex = -1;
+  }
+  function showButton(btn){
+    btn.classList.remove('hidden');
+    btn.style.display = '';
+    btn.removeAttribute('aria-hidden');
+    btn.tabIndex = 0;
+  }
+
+  function applyCurrentPermissionsV114(forceFirst){
+    const u = syncCurrentSessionV114() || (session && session());
+    if(!u) return;
+    const perms = normalizePermsV114(u);
+    document.querySelectorAll('.side .nav:not(.danger)').forEach(btn=>{
+      const page = getPageFromNavButton(btn);
+      const key = NAV_PERM_MAP_V114[page];
+      if(!key) return;
+      if(perms[key]) showButton(btn); else hideButton(btn);
+    });
+
+    const active = document.querySelector('.side .nav.active:not(.danger)');
+    const activePage = active ? getPageFromNavButton(active) : '';
+    const activeKey = NAV_PERM_MAP_V114[activePage];
+    if(forceFirst || !active || (activeKey && !perms[activeKey])){
+      const first = [...document.querySelectorAll('.side .nav:not(.danger)')].find(b => b.style.display !== 'none' && !b.classList.contains('hidden'));
+      if(first && first !== active) first.click();
+    }
+  }
+  window.applyCurrentPermissionsV113 = applyCurrentPermissionsV114;
+  window.applyCurrentPermissionsV114 = applyCurrentPermissionsV114;
+
+  const oldShowPageV114 = window.showPage;
+  window.showPage = function(id, btn){
+    const u = syncCurrentSessionV114() || (session && session());
+    const key = NAV_PERM_MAP_V114[id];
+    if(u && key && !normalizePermsV114(u)[key]){
+      msg('ليست لديك صلاحية الدخول لهذه الصفحة','err');
+      applyCurrentPermissionsV114(true);
+      return;
+    }
+    if(typeof oldShowPageV114 === 'function') oldShowPageV114(id, btn);
+    setTimeout(()=>applyCurrentPermissionsV114(false), 0);
+  };
+
+  const oldHydrateV114 = window.hydrateForms;
+  window.hydrateForms = function(){
+    if(typeof oldHydrateV114 === 'function') oldHydrateV114.apply(this, arguments);
+    injectPermissionsBoxV114();
+    setTimeout(()=>applyCurrentPermissionsV114(false), 0);
+  };
+
+  const oldRefreshAllV114 = window.refreshAll;
+  window.refreshAll = async function(){
+    if(typeof oldRefreshAllV114 === 'function') await oldRefreshAllV114.apply(this, arguments);
+    syncCurrentSessionV114();
+    injectPermissionsBoxV114();
+    applyCurrentPermissionsV114(false);
+  };
+
+  window.addEventListener('load', function(){
+    setTimeout(()=>{ syncCurrentSessionV114(); injectPermissionsBoxV114(); applyCurrentPermissionsV114(true); }, 200);
+    setTimeout(()=>{ syncCurrentSessionV114(); injectPermissionsBoxV114(); applyCurrentPermissionsV114(true); }, 900);
+    setTimeout(()=>{ syncCurrentSessionV114(); injectPermissionsBoxV114(); applyCurrentPermissionsV114(true); }, 1800);
   });
 })();
