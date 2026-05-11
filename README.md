@@ -48,3 +48,10 @@ V96:
 
 V104 Finance RLS Fix:
 - إذا ظهر خطأ row-level security policy على المصروفات أو الفواتير، شغّل الملف schema_update_v103_finance_core.sql الموجود في هذه النسخة لأنه يحتوي إصلاح الصلاحيات.
+
+
+## V106
+- إصلاح خطأ num is not defined.
+- إضافة طلبات صرف المخزون بمسار اعتماد: المدير التشغيلي ثم المالي ثم العام.
+- بعد اعتماد المدير العام يتم إنشاء حركة صرف وتحديث كمية المخزون تلقائيًا.
+- شغّل schema_update_v106_expenses_inventory_requests.sql في Supabase.
