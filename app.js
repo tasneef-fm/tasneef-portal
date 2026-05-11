@@ -1618,18 +1618,23 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
 
   function injectPermissionsBox(){
     const formTitle = document.getElementById('userFormTitle');
-    if(!formTitle || document.getElementById('userPermissionsBoxV72')) return;
+    if(!formTitle) return;
     const active = document.getElementById('userActive');
     if(!active) return;
-    const box = document.createElement('div');
-    box.id = 'userPermissionsBoxV72';
-    box.className = 'perm-box-v72';
-    box.innerHTML = '<label>الصلاحيات</label><div class="perm-grid-v72">' + PERMISSIONS_V72.map(([key,label]) =>
+    let box = document.getElementById('userPermissionsBoxV72');
+    const html = '<label>الصلاحيات</label><div class="perm-grid-v72">' + PERMISSIONS_V72.map(([key,label]) =>
       `<label class="perm-item-v72"><input type="checkbox" id="perm_${key}" data-perm="${key}"> <span>${label}</span></label>`
-    ).join('') + '</div><div class="footer-note">تحدد هذه الصلاحيات ما يظهر للمستخدم داخل التطبيق. المدير يحصل على كل الصلاحيات افتراضيًا.</div>';
-    active.parentElement.insertBefore(box, active.nextSibling);
+    ).join('') + '</div><div class="footer-note">تحدد هذه الصلاحيات ما يظهر للمستخدم داخل التطبيق. مدير عام يحصل على كل الصلاحيات افتراضيًا.</div>';
+    if(!box){
+      box = document.createElement('div');
+      box.id = 'userPermissionsBoxV72';
+      box.className = 'perm-box-v72';
+      active.parentElement.insertBefore(box, active.nextSibling);
+    }
+    const needsRefresh = !box.querySelector('#perm_can_expenses_inventory') || !box.querySelector('#perm_can_inventory_requests') || !box.querySelector('#perm_can_manage_inventory') || !box.textContent.includes('مدير مخازن') === false;
+    if(needsRefresh || !box.querySelector('.perm-grid-v72')) box.innerHTML = html;
     const role = document.getElementById('userRole');
-    if(role) role.addEventListener('change', ()=>setPermInputs(roleDefaults(role.value)));
+    if(role && !role.dataset.permHookedV112){ role.dataset.permHookedV112='1'; role.addEventListener('change', ()=>setPermInputs(roleDefaults(role.value))); }
     setPermInputs(roleDefaults(role?.value || 'supervisor'));
   }
   function readPermInputs(){
@@ -3078,3 +3083,13 @@ async function financeDelete(table,id){
 }
 function financeResetFilters(){ ['financeSearch','financeProjectFilter','financeExpenseTypeFilter'].forEach(id=>$(id)&&($(id).value='')); if($('financeMonthFilter')) $('financeMonthFilter').value=today().slice(0,7); financeRenderAll(); }
 (function(){ const _showPage=window.showPage||showPage; window.showPage=function(id,btn){ _showPage(id,btn); if(id==='financeDashboard'){ financeHydrateForms(); if(!financeLoaded) financeLoadAll(); else financeRenderAll(); } }; })();
+
+
+/* ===== V112: force latest permissions list and approval roles ===== */
+(function(){
+  function refreshPermsV112(){
+    try{ if(typeof hydrateForms==='function') hydrateForms(); }catch(e){}
+    try{ if(typeof renderUsers==='function') renderUsers(); }catch(e){}
+  }
+  window.addEventListener('load', function(){ setTimeout(refreshPermsV112, 300); setTimeout(refreshPermsV112, 1200); });
+})();

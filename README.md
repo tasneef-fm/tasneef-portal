@@ -83,3 +83,6 @@ V104 Finance RLS Fix:
 - لا يظهر زر الاعتماد إلا لصاحب المرحلة المحددة فقط.
 - مدير المخازن لا يستطيع اعتماد الطلب إذا الكمية غير متوفرة في المخزون.
 - شغّل ملف schema_update_v111_warehouse_manager_permissions.sql في Supabase.
+
+
+V112: تحديث قائمة الصلاحيات وإظهار صلاحيات المصروفات والمخزون وطلبات الصرف وإدارة المخزون مع دور مدير مخازن. شغل schema_update_v112_permissions_inventory_roles.sql.
