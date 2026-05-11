@@ -19,7 +19,9 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[], contractServices:[], financeContracts:[], financeInvoices:[], financeReceipts:[], financeExpenses:[], inventoryItems:[], inventoryMovements:[], inventoryRequests:[] };
 function msg(text, type='ok'){ const el=$('globalMsg')||$('loginMsg'); if(!el) return; el.className='msg '+(type==='err'?'err':''); el.textContent=text; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),4000); }
 function playAppSound(type){ try{ const files={checkin:'sounds/checkin.wav', checkout:'sounds/checkout.wav', ticket:'sounds/ticket.wav'}; const src=files[type]; if(!src) return; const a=new Audio(src); a.volume=0.75; a.play().catch(()=>{}); }catch(e){} }
-function requireRole(role){ const u=session(); if(!u){ location.href='index.html'; return null; } if(role && u.role!==role){ location.href = u.role==='admin' ? 'admin.html' : (u.role==='technician' ? 'technician.html' : 'supervisor.html'); return null; } return u; }
+function roleHomeUrl(role){ return ['admin','general_manager','financial_manager','operations_manager'].includes(role) ? 'admin.html' : (role==='technician' ? 'technician.html' : 'supervisor.html'); }
+function isAdminAreaRole(role){ return ['admin','general_manager','financial_manager','operations_manager'].includes(role); }
+function requireRole(role){ const u=session(); if(!u){ location.href='index.html'; return null; } if(role==='admin' && isAdminAreaRole(u.role)) return u; if(role && u.role!==role){ location.href = roleHomeUrl(u.role); return null; } return u; }
 async function login(){
   const username=$('loginUsername').value.trim(), password=$('loginPassword').value.trim();
   if(!username||!password) return msg('أدخل اسم المستخدم وكلمة المرور','err');
@@ -29,7 +31,7 @@ async function login(){
   }
   const {data:u,error}=await sb.from('app_users').select('*').eq('username',username).eq('password',password).eq('is_active',true).maybeSingle();
   if(error||!u) return msg(error?.message || 'بيانات الدخول غير صحيحة','err');
-  setSession(u); location.href = u.role==='admin' ? 'admin.html' : (u.role==='technician' ? 'technician.html' : 'supervisor.html');
+  setSession(u); location.href = roleHomeUrl(u.role);
 }
 function logout(){ clearSession(); location.href='index.html'; }
 async function loadAll(){
@@ -57,6 +59,8 @@ async function loadAll(){
   data.contractServicesError = contractServices.error ? contractServices.error.message : '';
 }
 function fillSelect(id, rows, label='name', allLabel=null, value='id'){ const el=$(id); if(!el) return; el.innerHTML = (allLabel!==null?`<option value="">${allLabel}</option>`:'') + rows.map(r=>`<option value="${r[value]}">${esc(r[label]||r.full_name||r.username)}</option>`).join(''); }
+function userRoleLabel(role){ return ({admin:'مدير عام',general_manager:'مدير عام',financial_manager:'مدير مالي',operations_manager:'مدير تشغيلي',technician:'فني',supervisor:'مشرف'}[role] || role || '-'); }
+function approvalRoleForUser(){ const u=session()||{}; return u.role==='general_manager' ? 'general' : (u.role==='admin' ? 'general' : (u.role==='financial_manager' ? 'finance' : (u.role==='operations_manager' ? 'ops' : ''))); }
 function supervisorName(id){ return data.users.find(u=>String(u.id)===String(id))?.full_name || data.supervisors.find(u=>String(u.id)===String(id))?.full_name || '-'; }
 function projectName(id){ return data.projects.find(p=>String(p.id)===String(id))?.name || '-'; }
 function workerName(id){ return data.workers.find(w=>String(w.id)===String(id))?.name || '-'; }
@@ -177,7 +181,7 @@ function editTimeLog(id){ const l=data.logs.find(x=>x.id===id); if(!l) return; $
 async function deleteRow(table,id){ if(!confirm('تأكيد الحذف؟')) return; const {error}=await sb.from(table).delete().eq('id',id); if(error) return msg(error.message,'err'); msg('تم الحذف'); await refreshAll(); }
 function clearUserForm(){ ['userId','userFullName','userUsername','userPassword'].forEach(id=>$(id)&&($(id).value='')); if($('userRole')) $('userRole').value='supervisor'; if($('userActive')) $('userActive').value='true'; $('userFormTitle')&&($('userFormTitle').textContent='إضافة مستخدم'); }
 async function saveUser(){ const id=$('userId').value; const row={full_name:$('userFullName').value.trim(), username:$('userUsername').value.trim(), password:$('userPassword').value.trim()||'123456', role:$('userRole').value, is_active:$('userActive').value==='true'}; if(!row.full_name||!row.username) return msg('الاسم واسم المستخدم مطلوبان','err'); const res=id?await sb.from('app_users').update(row).eq('id',id):await sb.from('app_users').insert(row); if(res.error) return msg(res.error.message,'err'); msg('تم حفظ المستخدم'); clearUserForm(); await refreshAll(); }
-function renderUsers(){ const b=$('usersBody'); if(!b) return; b.innerHTML=data.users.map(u=>`<tr><td>${esc(u.full_name)}</td><td>${esc(u.username)}</td><td><span class="badge">${u.role==='admin'?'مدير':(u.role==='technician'?'فني':'مشرف')}</span></td><td><span class="badge ${u.is_active?'green':'red'}">${u.is_active?'نشط':'موقوف'}</span></td><td class="row-actions"><button onclick="editUser(${u.id})">تعديل</button><button class="danger" onclick="deleteRow('app_users',${u.id})">حذف</button></td></tr>`).join(''); }
+function renderUsers(){ const b=$('usersBody'); if(!b) return; b.innerHTML=data.users.map(u=>`<tr><td>${esc(u.full_name)}</td><td>${esc(u.username)}</td><td><span class="badge">${esc(userRoleLabel(u.role))}</span></td><td><span class="badge ${u.is_active?'green':'red'}">${u.is_active?'نشط':'موقوف'}</span></td><td class="row-actions"><button onclick="editUser(${u.id})">تعديل</button><button class="danger" onclick="deleteRow('app_users',${u.id})">حذف</button></td></tr>`).join(''); }
 function editUser(id){ const u=data.users.find(x=>x.id===id); if(!u)return; $('userId').value=u.id; $('userFullName').value=u.full_name||''; $('userUsername').value=u.username||''; $('userPassword').value=u.password||''; $('userRole').value=u.role; $('userActive').value=String(u.is_active!==false); $('userFormTitle').textContent='تعديل مستخدم'; }
 function projectOperationText(t){ return t==='full_time'?'دوام كامل':(t==='as_needed'?'حسب الحاجة':'زيارة يومية'); }
 function visitTypeText(t){ return t==='deep'?'نظافة عميقة':'نظافة سطحية'; }
@@ -1677,7 +1681,7 @@ function monthlyReportRowsV58(){return monthlyRowsV60()}
     }
     b.innerHTML=(data.users||[]).map(u=>{
       const perms = getPerms(u);
-      return `<tr><td>${esc(u.full_name)}</td><td>${esc(u.username)}</td><td><span class="badge">${u.role==='admin'?'مدير':(u.role==='technician'?'فني':'مشرف')}</span></td><td><span class="badge ${u.is_active?'green':'red'}">${u.is_active?'نشط':'موقوف'}</span></td><td style="white-space:normal;min-width:220px">${esc(permissionsText(perms))}</td><td class="row-actions"><button onclick="editUser(${u.id})">تعديل</button><button class="danger" onclick="deleteRow('app_users',${u.id})">حذف</button></td></tr>`;
+      return `<tr><td>${esc(u.full_name)}</td><td>${esc(u.username)}</td><td><span class="badge">${esc(userRoleLabel(u.role))}</span></td><td><span class="badge ${u.is_active?'green':'red'}">${u.is_active?'نشط':'موقوف'}</span></td><td style="white-space:normal;min-width:220px">${esc(permissionsText(perms))}</td><td class="row-actions"><button onclick="editUser(${u.id})">تعديل</button><button class="danger" onclick="deleteRow('app_users',${u.id})">حذف</button></td></tr>`;
     }).join('') || '<tr><td colspan="6">لا يوجد مستخدمون</td></tr>';
   };
 
@@ -2790,7 +2794,7 @@ async function supervisorSaveInventoryRequest(btn){
     const qty=num($('supInventoryRequestQty')?.value);
     if(!itemId) throw new Error('اختر الصنف'); if(!pid) throw new Error('اختر المشروع'); if(qty<=0) throw new Error('الكمية مطلوبة');
     const item=(data.inventoryItems||[]).find(i=>String(i.id)===String(itemId));
-    const path=inventoryGetApprovalPath(); const first=path[0]||'warehouse';
+    const path=inventoryGetApprovalPath(); const first=path[0]||'ops';
     const row={item_id:Number(itemId),item_name:item?.name||'',quantity:qty,project_id:Number(pid),project_name:projectName(pid),supervisor_id:u.id,supervisor_name:u.full_name||u.username||'',request_date:$('supInventoryRequestDate')?.value||today(),reason:$('supInventoryRequestReason')?.value||'',notes:$('supInventoryRequestNotes')?.value||'',status:'pending_'+first,current_step:first,approval_path:path,approval_log:[]};
     const {error}=await sb.from('inventory_requests').insert(row); if(error) throw error;
     msg('تم إرسال طلب الصرف للإدارة');
@@ -2875,12 +2879,11 @@ function inventoryFillRequestSelect(){ const el=$('inventoryRequestItem'); if(!e
 function financeFillSupervisorSelect(){ const el=$('inventoryRequestSupervisor'); if(!el) return; const rows=(data.supervisors||[]).length?data.supervisors:(data.users||[]); el.innerHTML='<option value="">اختر المشرف</option>'+ rows.map(u=>`<option value="${u.id}">${esc(u.full_name||u.username||u.name)}</option>`).join(''); }
 
 const INVENTORY_APPROVAL_ROLES={
-  warehouse:'مدير المخازن',
-  ops:'المدير التشغيلي',
-  finance:'المدير المالي',
-  general:'المدير العام'
+  ops:'مدير تشغيلي',
+  finance:'مدير مالي',
+  general:'مدير عام'
 };
-function inventoryDefaultApprovalPath(){ return ['warehouse','ops','finance','general']; }
+function inventoryDefaultApprovalPath(){ return ['ops','finance','general']; }
 function inventoryGetApprovalPath(){
   const saved=localStorage.getItem('tasneef_inventory_approval_path');
   if(saved){ try{ const arr=JSON.parse(saved); if(Array.isArray(arr)&&arr.length) return arr.filter(r=>INVENTORY_APPROVAL_ROLES[r]); }catch(e){} }
@@ -2888,10 +2891,9 @@ function inventoryGetApprovalPath(){
 }
 function inventoryReadApprovalPathFromForm(){
   const items=[
-    {role:'warehouse', checked:$('approvalWarehouse')?.checked, order:num($('approvalWarehouseOrder')?.value)||1},
-    {role:'ops', checked:$('approvalOps')?.checked, order:num($('approvalOpsOrder')?.value)||2},
-    {role:'finance', checked:$('approvalFinance')?.checked, order:num($('approvalFinanceOrder')?.value)||3},
-    {role:'general', checked:$('approvalGeneral')?.checked, order:num($('approvalGeneralOrder')?.value)||4}
+    {role:'ops', checked:$('approvalOps')?.checked, order:num($('approvalOpsOrder')?.value)||1},
+    {role:'finance', checked:$('approvalFinance')?.checked, order:num($('approvalFinanceOrder')?.value)||2},
+    {role:'general', checked:$('approvalGeneral')?.checked, order:num($('approvalGeneralOrder')?.value)||3}
   ].filter(x=>x.checked).sort((a,b)=>a.order-b.order).map(x=>x.role);
   return items.length?items:inventoryDefaultApprovalPath();
 }
@@ -2924,9 +2926,11 @@ function inventoryRequestStatusText(st){
 function inventoryRequestStatusClass(st){ return st==='approved'?'green':(st==='rejected'?'red':'amber'); }
 function inventoryRequestNextRole(st){ return st&&st.startsWith('pending_') ? (INVENTORY_APPROVAL_ROLES[st.replace('pending_','')]||'-') : (st==='approved'?'مكتمل':(st==='rejected'?'مغلق':'-')); }
 function inventoryRequestPath(r){
-  if(Array.isArray(r.approval_path) && r.approval_path.length) return r.approval_path;
-  if(typeof r.approval_path==='string' && r.approval_path){ try{ const p=JSON.parse(r.approval_path); if(Array.isArray(p)&&p.length) return p; }catch(e){} }
-  return ['warehouse','ops','finance','general'].filter(role=>r.status===('pending_'+role) || r[role+'_approved_by'] || ['warehouse','ops','finance','general'].indexOf(role)>=0);
+  let p=null;
+  if(Array.isArray(r.approval_path) && r.approval_path.length) p=r.approval_path;
+  if(!p && typeof r.approval_path==='string' && r.approval_path){ try{ const x=JSON.parse(r.approval_path); if(Array.isArray(x)&&x.length) p=x; }catch(e){} }
+  p=(p&&p.length?p:inventoryDefaultApprovalPath()).filter(role=>INVENTORY_APPROVAL_ROLES[role]);
+  return p.length?p:inventoryDefaultApprovalPath();
 }
 function inventoryRequestStepHtml(r){
   const path=inventoryRequestPath(r);
@@ -2949,7 +2953,7 @@ async function inventorySaveRequest(btn){
     if(!supervisorId) throw new Error('اختر المشرف');
     if(qty<=0) throw new Error('الكمية مطلوبة');
     const path=inventoryGetApprovalPath();
-    const first=path[0]||'warehouse';
+    const first=path[0]||'ops';
     const item=(data.inventoryItems||[]).find(i=>String(i.id)===String(itemId));
     const row={item_id:Number(itemId), item_name:item?.name||'', quantity:qty, project_id:Number(pid), project_name:projectName(pid), supervisor_id:Number(supervisorId), supervisor_name:supervisorName(supervisorId), request_date:$('inventoryRequestDate')?.value||today(), reason:$('inventoryRequestReason')?.value||'', notes:$('inventoryRequestNotes')?.value||'', status:'pending_'+first, current_step:first, approval_path:path, approval_log:[]};
     const {error}=await sb.from('inventory_requests').insert(row);
@@ -2965,6 +2969,7 @@ async function inventoryApproveRequest(id,step,btn){
     const r=(data.inventoryRequests||[]).find(x=>String(x.id)===String(id));
     if(!r) throw new Error('الطلب غير موجود');
     if(r.status!==('pending_'+step)) throw new Error('هذا الطلب ليس في مرحلة '+(INVENTORY_APPROVAL_ROLES[step]||step));
+    if(!inventoryCurrentUserCanApprove(step)) throw new Error('ليس لديك صلاحية اعتماد هذه المرحلة');
     const u=session()||{};
     const approver=u.full_name||u.username||INVENTORY_APPROVAL_ROLES[step]||'مدير';
     const now=new Date().toISOString();
@@ -3000,6 +3005,10 @@ async function inventoryRejectRequest(id,btn){
   const reason=prompt('سبب الرفض؟') || '';
   try{ if(btn) btn.disabled=true; const u=session()||{}; const {error}=await sb.from('inventory_requests').update({status:'rejected',current_step:'closed',rejected_by:u.full_name||u.username||'مدير',rejected_at:new Date().toISOString(),rejection_reason:reason}).eq('id',id); if(error) throw error; msg('تم رفض الطلب'); await financeLoadAll(); }catch(e){ msg(e.message||String(e),'err'); } finally{ if(btn) btn.disabled=false; }
 }
+function inventoryCurrentUserCanApprove(step){
+  const userStep=approvalRoleForUser();
+  return !!step && step===userStep;
+}
 function inventoryRenderRequests(){
   const b=$('inventoryRequestsBody'); if(!b) return;
   inventoryLoadApprovalSettings();
@@ -3009,8 +3018,12 @@ function inventoryRenderRequests(){
     const actions=[];
     if(String(r.status||'').startsWith('pending_')){
       const step=String(r.status).replace('pending_','');
-      actions.push(`<button onclick="inventoryApproveRequest('${r.id}','${step}',this)">اعتماد ${esc(INVENTORY_APPROVAL_ROLES[step]||step)}</button>`);
-      actions.push(`<button class="danger" onclick="inventoryRejectRequest('${r.id}',this)">رفض</button>`);
+      if(inventoryCurrentUserCanApprove(step)){
+        actions.push(`<button onclick="inventoryApproveRequest('${r.id}','${step}',this)">اعتماد ${esc(INVENTORY_APPROVAL_ROLES[step]||step)}</button>`);
+        actions.push(`<button class="danger" onclick="inventoryRejectRequest('${r.id}',this)">رفض</button>`);
+      }else{
+        actions.push(`<span class="badge neutral">بانتظار ${esc(INVENTORY_APPROVAL_ROLES[step]||'المرحلة التالية')}</span>`);
+      }
     }
     return `<tr><td>${esc(r.request_date||'')}</td><td><b>${esc(r.supervisor_name||supervisorName(r.supervisor_id))}</b></td><td>${esc(r.project_name||financeProjectName(r.project_id))}</td><td>${esc(r.item_name||'')}</td><td>${num(r.quantity)}</td><td>${esc(r.reason||'-')}</td><td><span class="badge ${inventoryRequestStatusClass(r.status)}">${inventoryRequestStatusText(r.status)}</span><br><small>المرحلة: ${inventoryRequestNextRole(r.status)}</small>${inventoryRequestStepHtml(r)}</td><td class="row-actions">${actions.join(' ')||'-'}</td></tr>`;
   }).join('')||`<tr><td colspan="8">${data.financeError||'لا توجد طلبات صرف'}</td></tr>`;
