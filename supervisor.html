@@ -10,6 +10,38 @@
 <style>
 .sup-tabs{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px}.sup-tab{background:#fff!important;color:var(--brand)!important;border:1px solid var(--line)!important;box-shadow:0 6px 18px rgba(10,64,51,.05)}.sup-tab.active{background:var(--brand)!important;color:#fff!important}.sup-page{display:none}.sup-page.active{display:block}.sound-btn{background:#fff!important;color:var(--brand)!important;border:1px solid rgba(255,255,255,.6)!important}.summary-card-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-card-mini{border:1px solid var(--line);border-radius:16px;background:#fbfdfc;padding:14px}.summary-card-mini small{display:block;color:var(--muted);margin-bottom:8px}.summary-card-mini b{font-size:26px;color:var(--brand)}.date-filter-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.sup-help{background:#f8fbfa;border:1px dashed var(--line);border-radius:14px;padding:10px;line-height:1.7;color:var(--muted);font-size:13px;margin-bottom:10px}@media(max-width:760px){.sup-tabs{grid-template-columns:repeat(2,1fr);position:sticky;top:0;z-index:50;background:var(--bg);padding:8px;margin:0 0 10px}.summary-card-grid,.date-filter-row{grid-template-columns:1fr}.mobile-shell .card{margin:10px}.hero{align-items:flex-start}.hero .actions{margin:0}}
 </style>
+
+<style>
+/* V137: Smart Service Gateways for supervisor page */
+#supClientDailyReport .smart-daily-report-card{overflow:visible!important;}
+#supClientDailyReport .smart-slides-toolbar{border:0!important;background:transparent!important;padding:4px 0 8px!important;margin:12px 0 8px!important;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+#supClientDailyReport .smart-slides-toolbar h3{font-size:22px;margin:0;color:var(--brand)}
+#supClientDailyReport .smart-slides-toolbar small{display:block;color:#60706a;margin-top:4px;line-height:1.6}
+#supClientDailyReport .inline-add-slide{display:flex;gap:8px;align-items:end;background:#f7fbfa;border:1px solid #dce9e3;border-radius:18px;padding:8px;min-width:280px}
+#supClientDailyReport .inline-add-slide select{min-width:170px}
+#supClientDailyReport .smart-service-slides-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))!important;gap:14px!important;margin:16px 0!important;align-items:stretch!important}
+#supClientDailyReport .smart-service-gateway-v136{appearance:none;text-align:right;background:#fff!important;color:#0A4033!important;border:1px solid #d9e9e2!important;border-radius:22px!important;padding:16px 18px!important;min-height:150px!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:space-between!important;gap:12px!important;box-shadow:0 8px 24px rgba(10,64,51,.05)!important;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease!important;position:relative!important;overflow:hidden!important;width:100%!important}
+#supClientDailyReport .smart-service-gateway-v136:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(10,64,51,.12)!important;border-color:#0b6b50!important}
+#supClientDailyReport .smart-service-gateway-v136.has-images{background:linear-gradient(180deg,#fff,#fbfffd)!important;border-color:#bfe3d5!important}
+#supClientDailyReport .gateway-icon-v136{align-self:flex-end;width:42px;height:42px;border-radius:15px;background:#e9f7f1;display:grid;place-items:center;font-size:22px;line-height:1}
+#supClientDailyReport .gateway-title-v136{font-size:20px;font-weight:900;color:#052e25;align-self:center;text-align:center;margin-top:2px}
+#supClientDailyReport .gateway-badges-v136{display:flex;gap:8px;justify-content:center;align-self:center;flex-wrap:wrap}
+#supClientDailyReport .gateway-badges-v136 span{background:#e7f6ef;color:#07533f;border:1px solid #cceade;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800}
+#supClientDailyReport .gateway-badges-v136 .pending{background:#fff8e8;color:#8a6700;border-color:#ead28d}
+#supClientDailyReport .gateway-badges-v136 .complete{background:#e4f8ed;color:#0a704c;border-color:#bdebd1}
+#supClientDailyReport .gateway-actions-v136{display:flex;width:100%;justify-content:space-between;align-items:center;gap:8px;margin-top:4px}
+#supClientDailyReport .gateway-actions-v136 span:first-child{font-size:12px;color:#6a7b75}
+#supClientDailyReport .gateway-delete-v136{background:#c73535!important;color:#fff!important;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800}
+/* Force modal to be a real overlay in supervisor page */
+.smart-modal-backdrop{position:fixed!important;inset:0!important;background:rgba(0,35,27,.58)!important;z-index:99999!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important}
+.smart-modal-backdrop.hidden{display:none!important}
+.smart-modal-card{background:#fff!important;border-radius:24px!important;width:min(980px,96vw)!important;max-height:90vh!important;overflow:auto!important;box-shadow:0 30px 80px rgba(0,0,0,.28)!important;border:1px solid #cfe3da!important}
+.smart-modal-head{position:sticky!important;top:0!important;z-index:2!important;background:linear-gradient(135deg,#064c3b,#087756)!important;color:white!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:12px!important;padding:16px 20px!important}
+.smart-modal-head h2{margin:0!important;color:white!important}.smart-modal-head p{margin:4px 0 0!important;color:#e3f5ef!important}.smart-modal-head .light{background:#fff!important;color:#064c3b!important;border:0!important}
+#supClientSlideModalBody{padding:18px!important}.smart-slide-edit-head{display:grid!important;grid-template-columns:1fr 1fr!important;gap:12px!important;margin-bottom:14px!important}.smart-stage-grid-modal{display:grid!important;grid-template-columns:repeat(3,1fr)!important;gap:12px!important}.smart-stage-panel{border:1px solid #dce9e3!important;border-radius:18px!important;background:#fbfdfc!important;padding:12px!important}.smart-stage-head{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important}.smart-stage-head small{display:block;color:#60706a;margin-top:4px}.smart-upload-btn{background:#eef6f3;color:#0A4033;border:1px solid #dce6e2;border-radius:12px;padding:8px 10px;font-weight:800;cursor:pointer;margin:0}.smart-upload-btn input{display:none!important}.smart-img-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(84px,1fr))!important;gap:8px!important;margin-top:10px!important}.smart-img-tile{border:1px solid #d6e6df;border-radius:14px;overflow:hidden;background:#f8fbfa;position:relative;min-height:84px}.smart-img-tile img{width:100%;height:84px;object-fit:cover;display:block}.smart-img-tile button{position:absolute;top:4px;left:4px;background:#b83232!important;color:#fff!important;border-radius:999px;padding:3px 7px;font-size:11px}.empty-stage-note{border:1px dashed #d5e7df;border-radius:12px;padding:18px 10px;color:#60706a;text-align:center;background:#fff}
+@media(max-width:760px){#supClientDailyReport .smart-service-slides-grid{grid-template-columns:1fr!important}.smart-slide-edit-head,.smart-stage-grid-modal{grid-template-columns:1fr!important}.smart-modal-backdrop{align-items:flex-end!important;padding:0!important}.smart-modal-card{width:100%!important;max-height:92vh!important;border-radius:22px 22px 0 0!important}.smart-modal-head{padding:14px!important}#supClientDailyReport .inline-add-slide{width:100%!important}}
+</style>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -66,7 +98,7 @@
     <section class="card smart-daily-report-card"><h2>تقرير يومي للعميل</h2><div class="sup-help">المشرف يختار المشروع والتاريخ ثم يرفع الصور داخل شرائح ذكية فقط. النص النهائي، ترتيب العرض، الاعتماد والنشر من لوحة الإدارة.</div>
       <div class="split"><div><label>المشروع</label><select id="supClientReportProject" onchange="supClientReportProjectChanged()"></select></div><div><label>تاريخ التقرير</label><input type="date" id="supClientReportDate"></div></div>
       <input type="hidden" id="supClientReportTitle"><input type="hidden" id="supClientReportSummary">
-      <div class="smart-slides-toolbar"><div><h3>شرائح الخدمات</h3><small>كل شريحة تسمح بـ 9 صور قبل، 9 أثناء، 9 بعد.</small></div><div class="inline-add-slide"><select id="supClientReportServiceType"><option>النظافة اليومية</option><option>إزالة النفايات</option><option>تنظيف الممرات</option><option>تنظيف المصاعد</option><option>تنظيف البيسمنت</option><option>تنظيف الأسطح</option><option>مكافحة الحشرات</option><option>غسيل خزانات</option><option>صيانة كهرباء</option><option>صيانة سباكة</option><option>أخرى</option></select><button type="button" class="light" onclick="supClientAddService()">+ إضافة شريحة</button></div></div>
+      <div class="smart-slides-toolbar"><div><h3>بوابات الخدمات</h3><small>اضغط على بوابة الخدمة لرفع الصور. كل مرحلة تسمح بـ 9 صور.</small></div><div class="inline-add-slide"><select id="supClientReportServiceType"><option>النظافة اليومية</option><option>إزالة النفايات</option><option>تنظيف الممرات</option><option>تنظيف المصاعد</option><option>تنظيف البيسمنت</option><option>تنظيف الأسطح</option><option>مكافحة الحشرات</option><option>غسيل خزانات</option><option>صيانة كهرباء</option><option>صيانة سباكة</option><option>أخرى</option></select><button type="button" class="light" onclick="supClientAddService()">+ إضافة بوابة</button></div></div>
       <div id="supClientServicesEditor" class="smart-service-slides-grid"></div>
       <div class="actions"><button onclick="supClientSaveDailyReport(this)">إرسال التقرير للإدارة</button><button class="light" onclick="supClientReportReset()">تفريغ</button></div>
     </section>
@@ -75,7 +107,7 @@
 
   <div id="supClientSlideModal" class="smart-modal-backdrop hidden">
     <div class="smart-modal-card smart-slide-modal-card">
-      <div class="smart-modal-head"><div><h2 id="supClientSlideModalTitle">شريحة الخدمة</h2><p id="supClientSlideModalSub">ارفع الصور فقط، وأي قسم بدون صور لن يظهر للعميل.</p></div><button type="button" class="light" onclick="supClientCloseSlideModal()">إغلاق</button></div>
+      <div class="smart-modal-head"><div><h2 id="supClientSlideModalTitle">بوابة الخدمة</h2><p id="supClientSlideModalSub">ارفع الصور فقط، وأي قسم بدون صور لن يظهر للعميل.</p></div><button type="button" class="light" onclick="supClientCloseSlideModal()">إغلاق</button></div>
       <div id="supClientSlideModalBody"></div>
     </div>
   </div>
@@ -84,6 +116,6 @@
     <section class="card"><h2>الملخص اليومي</h2><div class="date-filter-row"><div><label>فلتر الأيام</label><select id="summaryRange" onchange="renderSupervisorDailySummary()"><option value="today">اليوم</option><option value="yesterday">أمس</option><option value="week">هذا الأسبوع</option><option value="custom">تاريخ محدد</option></select></div><div><label>تاريخ محدد</label><input type="date" id="summaryDate" onchange="renderSupervisorDailySummary()"></div></div><div id="supervisorSummaryCards" class="summary-card-grid" style="margin-top:12px"></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>البند</th><th>العدد / الوقت</th></tr></thead><tbody id="supervisorSummaryBody"></tbody></table></div></section>
   </section>
 </div>
-<script src="app.js?v=136"></script>
+<script src="app.js?v=137"></script>
 </body>
 </html>
