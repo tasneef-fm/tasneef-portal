@@ -6612,11 +6612,32 @@ function financePrintReport(kind){
     if(mode==='month'){ const m=$('inventoryReportMonth')?.value || today().slice(0,7); return inRange(d, m+'-01', monthEnd(m)); }
     return true;
   }
-  function projectIsKnown(name,id){ return !!id || (window.data?.projects||[]).some(p=>String(p.name||'')===String(name||'')); }
+  function activeCostCenters(){ return (window.data?.costCenters||[]).filter(c=>String(c.status||'active')!=='inactive'); }
+  function findCostCenter(row){
+    if(row?.cost_center_id){
+      const byId = activeCostCenters().find(c=>String(c.id)===String(row.cost_center_id));
+      if(byId) return byId;
+    }
+    const names = [row?.cost_center_name, row?.cost_center, row?.project].filter(Boolean).map(x=>String(x).trim());
+    for(const n of names){
+      const byName = activeCostCenters().find(c=>String(c.name||'').trim()===n);
+      if(byName) return byName;
+    }
+    return null;
+  }
   function costCode(row){
-    const t=String(row.cost_center_type||row.cost_type||'');
-    if(t.includes('إداري')||t.includes('اداري')||t.includes('كلين')||t.includes('عام')||t.toLowerCase().includes('admin')) return 'CN';
-    return projectIsKnown(row.cost_center_name||row.project,row.project_id) ? 'FM' : 'CN';
+    // القاعدة المعتمدة: مركز التكلفة الإداري/القسم/كلين/عام = CN، والمشروع فقط = FM.
+    const c = findCostCenter(row);
+    if(c){
+      const text = [c.type, c.cost_type, c.code, c.name].filter(Boolean).join(' ');
+      if(/إداري|اداري|قسم|عام|شركة|تشغيلي|كلين|clean|admin|CN/i.test(text)) return 'CN';
+      if(c.project_id || /مشروع|project|FM/i.test(text)) return 'FM';
+      return 'CN';
+    }
+    const explicitType = [row?.cost_center_type,row?.cost_type].filter(Boolean).join(' ');
+    if(/إداري|اداري|قسم|عام|شركة|تشغيلي|كلين|clean|admin|CN/i.test(explicitType)) return 'CN';
+    // إذا لا يوجد مركز تكلفة محفوظ، لا نعتبره FM إلا بوجود project_id صريح.
+    return row?.project_id ? 'FM' : 'CN';
   }
   function quickPass(row){
     const q=($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase();
@@ -6632,12 +6653,12 @@ function financePrintReport(kind){
       lineItems(r).forEach(l=>{
         const it=itemById(l.item_id); const out=num(l.quantity); const ret=returnQty(r.id,l.item_id); const consumed=Math.max(0,out-ret);
         const unit=unitBefore(it,l.unit_cost); const val=consumed*unit;
-        rows.push({date,project,project_id:r.project_id,person,person_id:r.supervisor_id,item:l.item_name||it.name||'',item_id:l.item_id,product_code:l.product_code||itemCode(it),barcode:l.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||l.unit||'',out,returned:ret,consumed,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,l.unit_cost),unit_gross:unitGross(it,l.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:r.reason||r.notes||'-',movement_type:'أمر صرف معتمد',ref:'REQ-'+r.id,cost_center_name:r.cost_center_name||project,cost_center_type:r.cost_center_type||'',cost_code:costCode({project,project_id:r.project_id,cost_center_name:r.cost_center_name,cost_center_type:r.cost_center_type})});
+        rows.push({date,project,project_id:r.project_id,person,person_id:r.supervisor_id,item:l.item_name||it.name||'',item_id:l.item_id,product_code:l.product_code||itemCode(it),barcode:l.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||l.unit||'',out,returned:ret,consumed,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,l.unit_cost),unit_gross:unitGross(it,l.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:r.reason||r.notes||'-',movement_type:'أمر صرف معتمد',ref:'REQ-'+r.id,cost_center_id:r.cost_center_id||null,cost_center_name:r.cost_center_name||project,cost_center_type:r.cost_center_type||'',cost_code:costCode({project,project_id:r.project_id,cost_center_id:r.cost_center_id,cost_center_name:r.cost_center_name,cost_center_type:r.cost_center_type})});
       });
     });
     (window.data?.inventoryMovements||[]).filter(m=>['out','consume'].includes(String(m.movement_type)) && !m.request_id).forEach(m=>{
       const it=itemById(m.item_id); const q=num(m.quantity); const unit=unitBefore(it,m.unit_cost); const val=q*unit; const project=m.project_name||projectName(m.project_id)||'بدون مشروع';
-      rows.push({date:dateOnly(m.movement_date||m.created_at||today()),project,project_id:m.project_id,person:m.receiver||'بدون مستلم',item:m.item_name||it.name||'',item_id:m.item_id,product_code:m.product_code||itemCode(it),barcode:m.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||'',out:q,returned:0,consumed:q,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,m.unit_cost),unit_gross:unitGross(it,m.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:m.reason||m.notes||'-',movement_type:m.movement_type==='consume'?'استهلاك مباشر':'صرف مباشر',ref:'MOV-'+m.id,cost_center_name:m.cost_center_name||project,cost_center_type:m.cost_center_type||'',cost_code:costCode({project,project_id:m.project_id,cost_center_name:m.cost_center_name,cost_center_type:m.cost_center_type})});
+      rows.push({date:dateOnly(m.movement_date||m.created_at||today()),project,project_id:m.project_id,person:m.receiver||'بدون مستلم',item:m.item_name||it.name||'',item_id:m.item_id,product_code:m.product_code||itemCode(it),barcode:m.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||'',out:q,returned:0,consumed:q,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,m.unit_cost),unit_gross:unitGross(it,m.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:m.reason||m.notes||'-',movement_type:m.movement_type==='consume'?'استهلاك مباشر':'صرف مباشر',ref:'MOV-'+m.id,cost_center_id:m.cost_center_id||null,cost_center_name:m.cost_center_name||project,cost_center_type:m.cost_center_type||'',cost_code:costCode({project,project_id:m.project_id,cost_center_id:m.cost_center_id,cost_center_name:m.cost_center_name,cost_center_type:m.cost_center_type})});
     });
     return rows;
   }
@@ -6651,7 +6672,7 @@ function financePrintReport(kind){
   }
   function filteredExpenses(){
     const q=($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase(); const code=$('financeReportCostCodeFilter')?.value||''; const pid=$('financeProjectFilter')?.value||'';
-    return [...(window.data?.financeExpenses||[])].filter(e=>datePass(e.expense_date||e.created_at) && (!pid||String(e.project_id)===String(pid)) && (!code||costCode({project:e.project_name||projectName(e.project_id),project_id:e.project_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type})===code) && (!q||[e.project_name,projectName(e.project_id),e.supplier,e.category,e.expense_type,e.notes,e.payment_method].join(' ').toLowerCase().includes(q)) );
+    return [...(window.data?.financeExpenses||[])].filter(e=>datePass(e.expense_date||e.created_at) && (!pid||String(e.project_id)===String(pid)) && (!code||costCode({project:e.project_name||projectName(e.project_id),project_id:e.project_id,cost_center_id:e.cost_center_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type})===code) && (!q||[e.project_name,projectName(e.project_id),e.supplier,e.category,e.expense_type,e.notes,e.payment_method].join(' ').toLowerCase().includes(q)) );
   }
   function table(headers, rows){
     return `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.join(''):`<tr><td colspan="${headers.length}">لا توجد بيانات</td></tr>`}</tbody></table>`;
@@ -6668,7 +6689,7 @@ function financePrintReport(kind){
   }
   function expensesTable(rows){
     const heads=['التاريخ','رمز التكلفة','المشروع / مركز التكلفة','نوع المصروف','المورد','طريقة الدفع','المبلغ قبل الضريبة','VAT 15%','الإجمالي شامل VAT','ملاحظات'];
-    const trs=rows.map(e=>{ const before=num(e.amount || e.subtotal || e.before_vat || (num(e.total)/(1.15))); const vat=('vat' in e)?num(e.vat):before*0.15; const total=num(e.total || before+vat); const pname=e.project_name||projectName(e.project_id)||e.cost_center_name||'بدون مشروع'; const code=costCode({project:pname,project_id:e.project_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type}); return `<tr><td>${esc(dateOnly(e.expense_date||e.created_at))}</td><td>${esc(code)}</td><td>${esc(pname)}</td><td>${esc(e.category||e.expense_type||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.payment_method||'-')}</td><td>${fmtMoney(before)}</td><td>${fmtMoney(vat)}</td><td>${fmtMoney(total)}</td><td>${esc(e.notes||'-')}</td></tr>`; });
+    const trs=rows.map(e=>{ const before=num(e.amount || e.subtotal || e.before_vat || (num(e.total)/(1.15))); const vat=('vat' in e)?num(e.vat):before*0.15; const total=num(e.total || before+vat); const pname=e.project_name||projectName(e.project_id)||e.cost_center_name||'بدون مشروع'; const code=costCode({project:pname,project_id:e.project_id,cost_center_id:e.cost_center_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type}); return `<tr><td>${esc(dateOnly(e.expense_date||e.created_at))}</td><td>${esc(code)}</td><td>${esc(pname)}</td><td>${esc(e.category||e.expense_type||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.payment_method||'-')}</td><td>${fmtMoney(before)}</td><td>${fmtMoney(vat)}</td><td>${fmtMoney(total)}</td><td>${esc(e.notes||'-')}</td></tr>`; });
     return table(heads,trs);
   }
   function totalsBlock(rows, mode){
@@ -6702,9 +6723,206 @@ function financePrintReport(kind){
       else if(kind==='stockReport'){ rows=filteredItems(); htmlTable=stockTable(rows); mode='stock'; }
       else { rows=filteredUsage(); if(kind==='productDetail'){ const prod=$('inventoryReportProduct')?.value||''; if(prod) rows=rows.filter(r=>String(r.item_id)===String(prod)); } htmlTable=detailedUsageTable(rows); mode='usage'; }
       const reportTitle=title(kind); const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(reportTitle)}</title><style>
-        @page{size:A4 landscape;margin:9mm}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;color:#17231f;background:white;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:12px;border:1px solid #aabdb5;min-height:100vh}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0a5a49;padding-bottom:9px;margin-bottom:9px}.brand{display:flex;align-items:center;gap:10px}.brand img{width:56px;height:56px;object-fit:contain}.brand h2{margin:0;font-size:19px;color:#0a5a49}.brand p{margin:3px 0 0;color:#65756f}.report-title{text-align:left}.report-title h1{margin:0;color:#0a5a49;font-size:22px}.report-title p{margin:5px 0 0;color:#66736e}.meta{display:grid;grid-template-columns:1fr 2.4fr 1fr;gap:8px;margin-bottom:9px}.meta div{border:1px solid #d7e4df;background:#f8fbfa;border-radius:8px;padding:7px}.meta b{color:#0a5a49}table{width:100%;border-collapse:collapse;direction:rtl;margin-top:7px}th{background:#0a5a49;color:#fff;font-weight:800}td,th{border:1px solid #8da69d;padding:5px;text-align:center;vertical-align:middle}td:nth-child(3),td:nth-child(9),td:nth-child(10),td:nth-child(24){text-align:right}tbody tr:nth-child(even) td{background:#f6f9f8}.totals-bottom{margin-top:14px;break-inside:avoid}.totals-bottom h3{display:inline-block;margin:0 0 8px;background:#0a5a49;color:white;padding:7px 18px;border-radius:999px;font-size:13px}.totals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.total-card{border:1px solid #cfddd8;border-radius:10px;padding:8px;background:#fff}.total-card span{display:block;color:#62736d;font-size:10px}.total-card b{display:block;color:#0a5a49;font-size:14px;margin-top:4px;direction:ltr;text-align:right}.signs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.sign{height:55px;border:1px dashed #9fb4ac;border-radius:10px;padding:8px}.footer{text-align:center;margin-top:10px;color:#6a766f;border-top:1px solid #d9e6e1;padding-top:7px}
-      </style></head><body><div class="page"><div class="header"><div class="brand"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><div><h2>شركة تصنيف</h2><p>إدارة المرافق والتشغيل والصيانة</p></div></div><div class="report-title"><h1>${esc(reportTitle)}</h1><p>تقرير تفصيلي للمصروفات والمخزون</p></div></div><div class="meta"><div><b>تاريخ الطباعة:</b><br>${esc(new Date().toLocaleString('en-US'))}</div><div><b>الفلاتر المستخدمة:</b><br>${esc(filtersText())}</div><div><b>المستخدم:</b><br>${esc(window.currentUser?.full_name || window.currentUser?.username || 'النظام')}</div></div>${htmlTable}${totalsBlock(rows,mode)}<div class="signs"><div class="sign">إعداد:</div><div class="sign">مراجعة:</div><div class="sign">اعتماد:</div></div><div class="footer">يظهر هذا التقرير جميع التفاصيل والأسعار قبل الضريبة وبعدها وشامل الضريبة حسب الفلاتر الحالية</div></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
+        @page{size:A3 landscape;margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;color:#17231f;background:white;font-size:8.2px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:9px;border:1px solid #aabdb5;min-height:100vh;overflow:visible}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0a5a49;padding-bottom:7px;margin-bottom:7px;break-inside:avoid}.brand{display:flex;align-items:center;gap:8px}.brand img{width:48px;height:48px;object-fit:contain}.brand h2{margin:0;font-size:17px;color:#0a5a49}.brand p{margin:3px 0 0;color:#65756f}.report-title{text-align:left}.report-title h1{margin:0;color:#0a5a49;font-size:20px}.report-title p{margin:4px 0 0;color:#66736e}.meta{display:grid;grid-template-columns:1fr 2.5fr 1fr;gap:6px;margin-bottom:7px;break-inside:avoid}.meta div{border:1px solid #d7e4df;background:#f8fbfa;border-radius:8px;padding:6px}.meta b{color:#0a5a49}table{width:100%;border-collapse:collapse;direction:rtl;margin-top:6px;table-layout:fixed;page-break-inside:auto}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid;page-break-after:auto}th{background:#0a5a49;color:#fff;font-weight:800}td,th{border:1px solid #8da69d;padding:3px;text-align:center;vertical-align:middle;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.35}td:nth-child(3),td:nth-child(9),td:nth-child(10),td:nth-child(24){text-align:right}tbody tr:nth-child(even) td{background:#f6f9f8}.totals-bottom{margin-top:10px;break-inside:avoid;page-break-inside:avoid}.totals-bottom h3{display:inline-block;margin:0 0 6px;background:#0a5a49;color:white;padding:6px 16px;border-radius:999px;font-size:12px}.totals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.total-card{border:1px solid #cfddd8;border-radius:9px;padding:6px;background:#fff}.total-card span{display:block;color:#62736d;font-size:9px}.total-card b{display:block;color:#0a5a49;font-size:12px;margin-top:3px;direction:ltr;text-align:right}.signs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;break-inside:avoid}.sign{height:45px;border:1px dashed #9fb4ac;border-radius:10px;padding:7px}.footer{text-align:center;margin-top:8px;color:#6a766f;border-top:1px solid #d9e6e1;padding-top:6px}.print-hint{font-size:9px;color:#6a766f;margin-top:4px}@media print{body{zoom:.92}}
+      </style></head><body><div class="page"><div class="header"><div class="brand"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><div><h2>شركة تصنيف</h2><p>إدارة المرافق والتشغيل والصيانة</p></div></div><div class="report-title"><h1>${esc(reportTitle)}</h1><p>تقرير تفصيلي للمصروفات والمخزون</p></div></div><div class="meta"><div><b>تاريخ الطباعة:</b><br>${esc(new Date().toLocaleString('en-US'))}</div><div><b>الفلاتر المستخدمة:</b><br>${esc(filtersText())}</div><div><b>المستخدم:</b><br>${esc(window.currentUser?.full_name || window.currentUser?.username || 'النظام')}</div></div>${htmlTable}${totalsBlock(rows,mode)}<div class="signs"><div class="sign">إعداد:</div><div class="sign">مراجعة:</div><div class="sign">اعتماد:</div></div><div class="footer">يظهر هذا التقرير جميع التفاصيل والأسعار قبل الضريبة وبعدها وشامل الضريبة حسب الفلاتر الحالية<br><span class="print-hint">ملاحظة: التقارير الكبيرة مهيأة للطباعة على A3 أفقي حتى تظهر الأعمدة كاملة.</span></div></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
       const w=window.open('','_blank'); if(w){ w.document.write(html); w.document.close(); }
     }catch(e){ console.error(e); if(typeof window.msg==='function') msg('تعذر طباعة التقرير التفصيلي: '+(e.message||e),'err'); }
+  };
+})();
+
+/* ===== V145: Fix FM/CN cost code and large detailed print sizing ===== */
+
+/* ===== V146: A4 auto landscape print + reliable FM/CN cost code ===== */
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const n = v => { const x = Number(String(v ?? 0).replace(/[^0-9.\-]/g,'')); return Number.isFinite(x) ? x : 0; };
+  const qty = v => Number(n(v)).toLocaleString('en-US',{maximumFractionDigits:2});
+  const money = v => Number(n(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' SAR';
+  const today = () => new Date().toISOString().slice(0,10);
+  const dateOnly = v => String(v || '').slice(0,10);
+  const monthEnd = m => { const [y,mo]=String(m||today().slice(0,7)).split('-').map(Number); return `${y}-${String(mo).padStart(2,'0')}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`; };
+  const inRange = (d,a,b) => d >= a && d <= b;
+  const centers = () => (window.data?.costCenters || window.data?.cost_centers || []).filter(c => String(c.status || 'active') !== 'inactive');
+  const projects = () => (window.data?.projects || []);
+  function itemById(id){ return (window.data?.inventoryItems||[]).find(i=>String(i.id)===String(id)) || {}; }
+  function projectName(id){ return (typeof window.financeProjectName==='function' ? window.financeProjectName(id) : '') || (typeof window.projectName==='function' ? window.projectName(id) : '') || projects().find(p=>String(p.id)===String(id))?.name || ''; }
+  function userName(id){ return (typeof window.supervisorName==='function' ? window.supervisorName(id) : '') || (window.data?.users||[]).find(u=>String(u.id)===String(id))?.full_name || ''; }
+  function itemCode(it){ return it.product_code || it.code || it.serial_number || it.sku || it.id || ''; }
+  function itemBarcode(it){ return it.supplier_barcode || it.barcode || it.vendor_barcode || ''; }
+  function normalizeTaxStatus(it){ return String(it.vat_status || it.tax_status || it.vat_type || it.tax_type || '').trim().toLowerCase(); }
+  function isExempt(it){ return /خالي|معفى|exempt|zero|0%|no vat/i.test(normalizeTaxStatus(it)); }
+  function isIncluded(it){ return /شامل|included|include|gross/i.test(normalizeTaxStatus(it)) || it.vat_included === true || it.tax_included === true; }
+  function unitBefore(it, raw){ raw = n(raw); if(isExempt(it)) return raw; if(isIncluded(it)) return raw / 1.15; return raw; }
+  function unitVat(it, raw){ return isExempt(it) ? 0 : unitBefore(it, raw) * 0.15; }
+  function unitGross(it, raw){ return unitBefore(it, raw) + unitVat(it, raw); }
+  function amountVat(it, before){ return isExempt(it) ? 0 : n(before) * 0.15; }
+  function amountGross(it, before){ return n(before) + amountVat(it, before); }
+  function findCostCenter(row){
+    if(row?.cost_center_id){ const c = centers().find(x => String(x.id) === String(row.cost_center_id)); if(c) return c; }
+    const names = [row?.cost_center_name, row?.cost_center, row?.costCenterName].filter(Boolean).map(x=>String(x).trim());
+    for(const name of names){ const c = centers().find(x => String(x.name || '').trim() === name); if(c) return c; }
+    return null;
+  }
+  function projectExistsByName(name){ const s = String(name||'').trim(); return !!s && projects().some(p => String(p.name||'').trim() === s); }
+  function costCode(row){
+    const c = findCostCenter(row);
+    if(c){
+      const type = String(c.type || c.cost_type || c.category || '').trim();
+      const code = String(c.code || c.cost_code || '').trim().toUpperCase();
+      if(code === 'CN' || /اداري|إداري|قسم|عام|شركة|كلين|clean|admin|administrative|department|general|cn/i.test(type)) return 'CN';
+      if(code === 'FM' || c.project_id || /مشروع|project|fm/i.test(type)) return 'FM';
+      // إذا مركز التكلفة غير مربوط بمشروع فهو إداري/عام افتراضًا.
+      return 'CN';
+    }
+    if(row?.cost_center_type && /اداري|إداري|قسم|عام|شركة|كلين|clean|admin|department|cn/i.test(String(row.cost_center_type))) return 'CN';
+    if(row?.project_id) return 'FM';
+    if(row?.project && projectExistsByName(row.project)) return 'FM';
+    return 'CN';
+  }
+  window.inventoryCostCodeV146 = costCode;
+  function lineItems(req){
+    let arr = req?.request_items || req?.items || req?.request_lines || [];
+    if(typeof arr === 'string'){ try{ arr = JSON.parse(arr); }catch(e){ arr = []; } }
+    if(!Array.isArray(arr)) arr = [];
+    if(!arr.length && req?.item_id) arr = [{item_id:req.item_id,item_name:req.item_name,quantity:req.quantity,unit_cost:req.unit_cost}];
+    return arr;
+  }
+  function returnedQty(requestId, itemId){
+    return (window.data?.inventoryMovements||[])
+      .filter(m => String(m.request_id||'') === String(requestId||'') && String(m.item_id||'') === String(itemId||'') && /return|مرتجع/.test(String(m.movement_type||'')))
+      .reduce((a,m)=>a+n(m.quantity),0);
+  }
+  function datePass(d){
+    d = dateOnly(d || today());
+    const mode = $('inventoryReportDateMode')?.value || 'all';
+    if(mode === 'day') return d === ($('inventoryReportDay')?.value || today());
+    if(mode === 'month'){ const m = $('inventoryReportMonth')?.value || today().slice(0,7); return inRange(d, m+'-01', monthEnd(m)); }
+    return true;
+  }
+  function quickTextPass(row){
+    const q = ($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase();
+    if(!q) return true;
+    return Object.values(row).join(' ').toLowerCase().includes(q);
+  }
+  function usageRows(){
+    const rows = [];
+    (window.data?.inventoryRequests||[]).filter(r => String(r.status||'') === 'approved').forEach(r => {
+      const d = dateOnly(r.request_date || r.created_at || today());
+      const project = r.project_name || projectName(r.project_id) || 'بدون مشروع';
+      const person = r.supervisor_name || userName(r.supervisor_id) || 'بدون مستلم';
+      lineItems(r).forEach(l => {
+        const it = itemById(l.item_id);
+        const out = n(l.quantity);
+        const ret = returnedQty(r.id, l.item_id);
+        const cons = Math.max(0, out - ret);
+        const rawUnit = n(l.unit_cost || l.unit_price || it.unit_cost || it.unit_price || 0);
+        const beforeUnit = unitBefore(it, rawUnit);
+        const before = cons * beforeUnit;
+        rows.push({date:d, project, project_id:r.project_id, person, person_id:r.supervisor_id, item:l.item_name||it.name||'', item_id:l.item_id, product_code:itemCode(it), barcode:itemBarcode(it), supplier:it.supplier||'', unit_name:it.unit||'', item_type:it.item_type||it.type||'', category:it.category||'', unit_before:beforeUnit, unit_vat:unitVat(it, rawUnit), unit_gross:unitGross(it, rawUnit), out, returned:ret, consumed:cons, current:n(it.quantity), value_before:before, vat:amountVat(it,before), gross:amountGross(it,before), cost_center_id:r.cost_center_id||'', cost_center_name:r.cost_center_name||project, cost_center_type:r.cost_center_type||'', movement_type:'طلب صرف معتمد', ref:'REQ-'+r.id, reason:r.reason||r.notes||''});
+      });
+    });
+    (window.data?.inventoryMovements||[]).filter(m => ['out','consume'].includes(String(m.movement_type)) && !m.request_id).forEach(m => {
+      const it = itemById(m.item_id);
+      const q = n(m.quantity), rawUnit = n(m.unit_cost || m.unit_price || it.unit_cost || it.unit_price || 0), beforeUnit = unitBefore(it, rawUnit), before = q * beforeUnit;
+      const project = m.project_name || projectName(m.project_id) || 'بدون مشروع';
+      rows.push({date:dateOnly(m.movement_date||m.created_at||today()), project, project_id:m.project_id, person:m.receiver||'بدون مستلم', person_id:m.receiver_id||'', item:m.item_name||it.name||'', item_id:m.item_id, product_code:itemCode(it), barcode:itemBarcode(it), supplier:it.supplier||'', unit_name:it.unit||'', item_type:it.item_type||it.type||'', category:it.category||'', unit_before:beforeUnit, unit_vat:unitVat(it,rawUnit), unit_gross:unitGross(it,rawUnit), out:q, returned:0, consumed:q, current:n(it.quantity), value_before:before, vat:amountVat(it,before), gross:amountGross(it,before), cost_center_id:m.cost_center_id||'', cost_center_name:m.cost_center_name||project, cost_center_type:m.cost_center_type||'', movement_type:'صرف مباشر', ref:'MOV-'+m.id, reason:m.reason||m.notes||''});
+    });
+    return rows;
+  }
+  function filterUsage(rows){
+    const supplier = $('inventoryReportSupplier')?.value || '';
+    const prod = $('inventoryReportProduct')?.value || '';
+    const person = $('inventoryReportPerson')?.value || '';
+    const cc = $('financeReportCostCodeFilter')?.value || '';
+    return rows.filter(r => datePass(r.date) && (!supplier || r.supplier === supplier) && (!prod || String(r.item_id) === String(prod)) && (!person || String(r.person_id) === String(person) || String(r.person) === String(person)) && (!cc || costCode(r) === cc) && quickTextPass(r));
+  }
+  function filteredItems(){
+    const supplier = $('inventoryReportSupplier')?.value || '';
+    const q = ($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase();
+    return (window.data?.inventoryItems||[]).filter(i => (!supplier || i.supplier === supplier) && (!q || [i.name,itemCode(i),itemBarcode(i),i.supplier,i.category,i.item_type,i.type].join(' ').toLowerCase().includes(q)));
+  }
+  function filteredExpenses(){
+    const cc = $('financeReportCostCodeFilter')?.value || '';
+    return (window.data?.financeExpenses||[]).filter(e => datePass(e.expense_date||e.created_at) && (!cc || costCode(e) === cc) && quickTextPass(e));
+  }
+  function table(heads, trs){ return `<table><thead><tr>${heads.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${trs.join('') || `<tr><td colspan="${heads.length}">لا توجد بيانات</td></tr>`}</tbody></table>`; }
+  function usageTable(rows){
+    const heads=['التاريخ','رمز التكلفة','المشروع / مركز التكلفة','المشرف / المستلم','كود المنتج','باركود المورد','اسم المنتج','المورد','الوحدة','سعر الحبة قبل الضريبة','ضريبة الحبة 15%','سعر الحبة شامل','الصادر','المرتجع','المستهلك','المتبقي','القيمة قبل الضريبة','VAT 15%','الإجمالي شامل VAT','نوع الحركة','المرجع','سبب الاستخدام'];
+    const trs = rows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(costCode(r))}</td><td>${esc(r.cost_center_name||r.project||'-')}</td><td>${esc(r.person||'-')}</td><td>${esc(r.product_code||'-')}</td><td>${esc(r.barcode||'-')}</td><td>${esc(r.item||'-')}</td><td>${esc(r.supplier||'-')}</td><td>${esc(r.unit_name||'-')}</td><td>${money(r.unit_before)}</td><td>${money(r.unit_vat)}</td><td>${money(r.unit_gross)}</td><td>${qty(r.out)}</td><td>${qty(r.returned)}</td><td>${qty(r.consumed)}</td><td>${qty(r.current)}</td><td>${money(r.value_before)}</td><td>${money(r.vat)}</td><td>${money(r.gross)}</td><td>${esc(r.movement_type)}</td><td>${esc(r.ref)}</td><td>${esc(r.reason)}</td></tr>`);
+    return table(heads, trs);
+  }
+  function stockTable(items){
+    const heads=['كود المنتج','باركود المورد','اسم المنتج','التصنيف','نوع المنتج','الوحدة','المورد','سعر الحبة قبل الضريبة','ضريبة الحبة 15%','سعر الحبة شامل','الكمية المتبقية','حد إعادة الطلب','قيمة المخزون قبل الضريبة','VAT 15%','Total Value with 15% VAT'];
+    const trs = items.map(i => { const raw=n(i.unit_cost||i.unit_price), unit=unitBefore(i,raw), qtyVal=n(i.quantity), val=qtyVal*unit; return `<tr><td>${esc(itemCode(i))}</td><td>${esc(itemBarcode(i)||'-')}</td><td>${esc(i.name||'-')}</td><td>${esc(i.category||'-')}</td><td>${esc(i.item_type||i.type||'-')}</td><td>${esc(i.unit||'-')}</td><td>${esc(i.supplier||'-')}</td><td>${money(unit)}</td><td>${money(unitVat(i,raw))}</td><td>${money(unitGross(i,raw))}</td><td>${qty(qtyVal)}</td><td>${qty(i.min_quantity)}</td><td>${money(val)}</td><td>${money(amountVat(i,val))}</td><td>${money(amountGross(i,val))}</td></tr>`; });
+    return table(heads, trs);
+  }
+  function expenseTable(rows){
+    const heads=['التاريخ','رمز التكلفة','المشروع / مركز التكلفة','نوع المصروف','المورد','طريقة الدفع','المبلغ قبل الضريبة','VAT 15%','الإجمالي شامل VAT','ملاحظات'];
+    const trs = rows.map(e => { const before=n(e.amount||e.subtotal||e.before_vat||(n(e.total)/1.15)), vat=('vat' in e)?n(e.vat):before*.15, total=n(e.total||before+vat); const row={...e,project:e.project_name||projectName(e.project_id)||e.cost_center_name||''}; return `<tr><td>${esc(dateOnly(e.expense_date||e.created_at))}</td><td>${esc(costCode(row))}</td><td>${esc(row.project||'بدون مركز تكلفة')}</td><td>${esc(e.category||e.expense_type||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.payment_method||'-')}</td><td>${money(before)}</td><td>${money(vat)}</td><td>${money(total)}</td><td>${esc(e.notes||'-')}</td></tr>`; });
+    return table(heads, trs);
+  }
+  function totalsBlock(rows, mode){
+    let out=0, ret=0, cons=0, current=0, before=0, vat=0, gross=0;
+    if(mode==='stock') rows.forEach(i=>{ const unit=unitBefore(i,n(i.unit_cost||i.unit_price)), val=n(i.quantity)*unit; current+=n(i.quantity); before+=val; vat+=amountVat(i,val); gross+=amountGross(i,val); });
+    else if(mode==='expenses') rows.forEach(e=>{ const b=n(e.amount||e.subtotal||e.before_vat||(n(e.total)/1.15)), v=('vat' in e)?n(e.vat):b*.15, g=n(e.total||b+v); before+=b; vat+=v; gross+=g; });
+    else rows.forEach(r=>{ out+=n(r.out); ret+=n(r.returned); cons+=n(r.consumed); current+=n(r.current); before+=n(r.value_before); vat+=n(r.vat); gross+=n(r.gross); });
+    const cards=[['عدد السطور',qty(rows.length)]];
+    if(mode==='usage') cards.push(['إجمالي الصادر',qty(out)],['إجمالي المرتجع',qty(ret)],['إجمالي المستهلك',qty(cons)],['إجمالي المتبقي الحالي',qty(current)]);
+    if(mode==='stock') cards.push(['إجمالي الكمية المتبقية',qty(current)]);
+    cards.push(['Total amount before 15% VAT',money(before)],['Total VAT 15%',money(vat)],['Total Value with 15% VAT',money(gross)]);
+    return `<section class="totals-bottom"><h3>إجماليات نهاية التقرير</h3><div class="totals-grid">${cards.map(([a,b])=>`<div class="total-card"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div></section>`;
+  }
+  function title(kind){ return ({expensesByProject:'تقرير المصروفات التفصيلي',stockOutByProject:'تقرير صرف المخزون حسب المشروع - تفصيلي',stockOutBySupervisor:'تقرير استهلاك المشرفين - تفصيلي',productDetail:'تقرير تفاصيل منتج',stockReport:'تقرير المخزون العام التفصيلي',costCenters:'تقرير مراكز التكلفة التفصيلي',inventoryUsageDetail:'تقرير توضيحي تفصيلي للاستهلاك'})[kind] || 'تقرير'; }
+  function filtersText(){
+    const parts=[]; const mode=$('inventoryReportDateMode')?.value||'all';
+    if(mode==='day') parts.push('اليوم: '+($('inventoryReportDay')?.value||today())); if(mode==='month') parts.push('الشهر: '+($('inventoryReportMonth')?.value||today().slice(0,7)));
+    const cc=$('financeReportCostCodeFilter')?.value; if(cc) parts.push('رمز التكلفة: '+cc);
+    const sup=$('inventoryReportSupplier')?.value; if(sup) parts.push('المورد: '+sup);
+    const prod=$('inventoryReportProduct')?.selectedOptions?.[0]?.textContent; if($('inventoryReportProduct')?.value && prod) parts.push('المنتج: '+prod.trim());
+    const person=$('inventoryReportPerson')?.selectedOptions?.[0]?.textContent; if($('inventoryReportPerson')?.value && person) parts.push('المستلم: '+person.trim());
+    const q=$('financeReportQuickSearch')?.value || $('financeSearch')?.value; if(q) parts.push('بحث: '+q);
+    return parts.join(' | ') || 'كل البيانات';
+  }
+  function activeKind(){ return document.querySelector('.smart-report-panel.active')?.getAttribute('data-report-panel') || document.querySelector('.smart-report-card.active')?.getAttribute('data-report') || 'expensesByProject'; }
+  function openPrint(titleText, htmlTable, rows, mode){
+    const tmp=document.createElement('div'); tmp.innerHTML=htmlTable; const colCount=tmp.querySelectorAll('thead th').length;
+    const isWide = colCount > 10;
+    const pageSize = isWide ? 'A4 landscape' : 'A4 portrait';
+    const fontSize = colCount > 18 ? '6.6px' : (colCount > 14 ? '7.4px' : (isWide ? '8.5px' : '10.5px'));
+    const pad = colCount > 18 ? '2px' : (isWide ? '3px' : '6px');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(titleText)}</title><style>
+      @page{size:${pageSize};margin:7mm}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;color:#17231f;background:white;font-size:${fontSize};-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:8px;border:1px solid #aabdb5;min-height:100vh;overflow:visible}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0a5a49;padding-bottom:7px;margin-bottom:7px;break-inside:avoid}.brand{display:flex;align-items:center;gap:8px}.brand img{width:46px;height:46px;object-fit:contain}.brand h2{margin:0;font-size:16px;color:#0a5a49}.brand p{margin:3px 0 0;color:#65756f}.report-title{text-align:left}.report-title h1{margin:0;color:#0a5a49;font-size:18px}.report-title p{margin:4px 0 0;color:#66736e}.meta{display:grid;grid-template-columns:1fr 2.5fr 1fr;gap:6px;margin-bottom:7px;break-inside:avoid}.meta div{border:1px solid #d7e4df;background:#f8fbfa;border-radius:8px;padding:6px}.meta b{color:#0a5a49}table{width:100%;border-collapse:collapse;direction:rtl;margin-top:6px;table-layout:fixed;page-break-inside:auto}thead{display:table-header-group}tfoot{display:table-footer-group}tr{page-break-inside:avoid;page-break-after:auto}th{background:#0a5a49;color:#fff;font-weight:800}td,th{border:1px solid #8da69d;padding:${pad};text-align:center;vertical-align:middle;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.28}tbody tr:nth-child(even) td{background:#f6f9f8}.totals-bottom{margin-top:10px;break-inside:avoid;page-break-inside:avoid}.totals-bottom h3{display:inline-block;margin:0 0 6px;background:#0a5a49;color:white;padding:6px 16px;border-radius:999px;font-size:11px}.totals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.total-card{border:1px solid #cfddd8;border-radius:9px;padding:6px;background:#fff}.total-card span{display:block;color:#62736d;font-size:9px}.total-card b{display:block;color:#0a5a49;font-size:11px;margin-top:3px;direction:ltr;text-align:right}.signs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px;break-inside:avoid}.sign{height:42px;border:1px dashed #9fb4ac;border-radius:10px;padding:7px}.footer{text-align:center;margin-top:8px;color:#6a766f;border-top:1px solid #d9e6e1;padding-top:6px}.print-hint{font-size:9px;color:#6a766f;margin-top:4px}@media print{body{zoom:1}.page{break-after:auto}}
+    </style></head><body><div class="page"><div class="header"><div class="brand"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><div><h2>شركة تصنيف</h2><p>إدارة المرافق والتشغيل والصيانة</p></div></div><div class="report-title"><h1>${esc(titleText)}</h1><p>تقرير تفصيلي للمصروفات والمخزون</p></div></div><div class="meta"><div><b>تاريخ الطباعة:</b><br>${esc(new Date().toLocaleString('en-US'))}</div><div><b>الفلاتر المستخدمة:</b><br>${esc(filtersText())}</div><div><b>المستخدم:</b><br>${esc(window.currentUser?.full_name || window.currentUser?.username || 'النظام')}</div></div>${htmlTable}${totalsBlock(rows,mode)}<div class="signs"><div class="sign">إعداد:</div><div class="sign">مراجعة:</div><div class="sign">اعتماد:</div></div><div class="footer">الجداول العريضة تُطبع تلقائيًا على A4 بالعرض حتى تظهر كاملة، والتقارير العادية تطبع بالطول.</div></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
+    const w = window.open('','_blank'); if(w){ w.document.write(html); w.document.close(); }
+  }
+  window.financePrintReport = function(kind){
+    try{
+      if(typeof window.financeRenderReports === 'function') window.financeRenderReports();
+      kind = kind || activeKind();
+      let rows, htmlTable, mode;
+      if(kind === 'expensesByProject'){ rows = filteredExpenses(); htmlTable = expenseTable(rows); mode='expenses'; }
+      else if(kind === 'stockReport'){ rows = filteredItems(); htmlTable = stockTable(rows); mode='stock'; }
+      else { rows = filterUsage(usageRows()); if(kind === 'productDetail'){ const prod=$('inventoryReportProduct')?.value||''; if(prod) rows = rows.filter(r => String(r.item_id) === String(prod)); } htmlTable = usageTable(rows); mode='usage'; }
+      openPrint(title(kind), htmlTable, rows, mode);
+    }catch(e){ console.error(e); if(typeof window.msg==='function') msg('تعذر طباعة التقرير: '+(e.message||e),'err'); }
+  };
+  // Fix visible Cost Centers report as well, so FM/CN in screen and print match.
+  const oldRender = window.financeRenderReports;
+  window.financeRenderReports = function(){
+    if(oldRender) oldRender.apply(this, arguments);
+    try{
+      const body = $('costCenterReportBody'); if(!body) return;
+      const map = {};
+      filterUsage(usageRows()).forEach(r => {
+        const name = r.cost_center_name || r.project || 'غير محدد';
+        const code = costCode(r);
+        map[name] = map[name] || {code,count:0,out:0,ret:0,cons:0,before:0,vat:0,gross:0};
+        const x = map[name]; x.count++; x.out+=n(r.out); x.ret+=n(r.returned); x.cons+=n(r.consumed); x.before+=n(r.value_before); x.vat+=n(r.vat); x.gross+=n(r.gross);
+      });
+      const vals = Object.entries(map).sort((a,b)=>b[1].gross-a[1].gross);
+      body.innerHTML = vals.map(([name,v]) => `<tr><td>${esc(name)}</td><td><span class="badge ${v.code==='FM'?'green':'neutral'}">${v.code}</span></td><td>${qty(v.count)}</td><td>${qty(v.out)}</td><td>${qty(v.ret)}</td><td>${qty(v.cons)}</td><td>${money(v.before)}</td><td>${money(v.vat)}</td><td>${money(v.gross)}</td></tr>`).join('') || '<tr><td colspan="9">لا توجد بيانات</td></tr>';
+    }catch(e){ console.warn('V146 cost centers render warning', e); }
   };
 })();
