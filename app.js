@@ -5565,13 +5565,20 @@ function financePrintReport(kind){
     if($v133('supClientReportDate')) $v133('supClientReportDate').value=today();
     supClientRenderServices();
   };
+  let supClientActiveSlideIndex = null;
   window.supClientAddService = function(){
     supClientServicesState.push(v133ServiceTemplate($v133('supClientReportServiceType')?.value||'النظافة اليومية'));
     supClientRenderServices();
   };
-  window.supClientRemoveService = function(i){ supClientServicesState.splice(i,1); if(!supClientServicesState.length) supClientServicesState=[v133ServiceTemplate('النظافة اليومية')]; supClientRenderServices(); };
-  window.supClientSetService = function(i,f,v){ if(supClientServicesState[i]) supClientServicesState[i][f]=v; };
-  window.supClientRemoveImg = function(i,f,j){ supClientServicesState[i]?.[f]?.splice(j,1); supClientRenderServices(); };
+  window.supClientRemoveService = function(i){
+    if(!confirm('حذف هذه الشريحة؟')) return;
+    supClientServicesState.splice(i,1);
+    if(!supClientServicesState.length) supClientServicesState=[v133ServiceTemplate('النظافة اليومية')];
+    supClientCloseSlideModal();
+    supClientRenderServices();
+  };
+  window.supClientSetService = function(i,f,v){ if(supClientServicesState[i]) supClientServicesState[i][f]=v; supClientRenderServices(); if(supClientActiveSlideIndex===i) supClientRenderSlideModal(); };
+  window.supClientRemoveImg = function(i,f,j){ supClientServicesState[i]?.[f]?.splice(j,1); supClientRenderServices(); if(supClientActiveSlideIndex===i) supClientRenderSlideModal(); };
   window.supClientHandleImages = async function(i, field, input){
     const s=supClientServicesState[i]; if(!s) return;
     const arr=s[field]||[]; const allowed=MAX_STAGE_PHOTOS_V133-arr.length;
@@ -5581,22 +5588,33 @@ function financePrintReport(kind){
     for(const f of files){ try{ const data=await compressImageToDataUrl(f, 1200, .80); arr.push({name:f.name,type:'image/jpeg',data}); }catch(e){console.warn(e)} }
     s[field]=arr.slice(0,MAX_STAGE_PHOTOS_V133);
     if((input.files||[]).length>files.length) v133Msg('تمت إضافة الصور مع الاكتفاء بـ 9 صور لكل قسم'); else v133Msg('تمت إضافة الصور');
-    supClientRenderServices(); input.value='';
+    input.value='';
+    supClientRenderServices();
+    if(supClientActiveSlideIndex===i) supClientRenderSlideModal();
   };
-  function supClientStageBox(i, field, title){
+  function supClientStageCount(s, field){ return (s?.[field]||[]).length; }
+  function supClientSlideStatus(s){ const total=v133CountImages(s); return total>0 ? 'جاهزة للمراجعة' : 'بانتظار الصور'; }
+  function supClientStageLabel(field){ return field==='before_images'?'قبل التنفيذ':(field==='during_images'?'أثناء التنفيذ':'بعد التنفيذ'); }
+  function supClientStageModalBox(i, field){
     const imgs=supClientServicesState[i]?.[field]||[];
-    return `<div class="stage-box"><h4>${title}</h4><label class="stage-upload">+ صور ${title}<input type="file" accept="image/*" multiple onchange="supClientHandleImages(${i},'${field}',this)"></label><div class="img-previews">${imgs.map((im,j)=>`<div class="preview-img"><img src="${im.data||''}"><button onclick="supClientRemoveImg(${i},'${field}',${j})">×</button></div>`).join('')}</div><small>${imgs.length}/9 صور</small></div>`;
+    const title=supClientStageLabel(field);
+    return `<div class="smart-stage-panel"><div class="smart-stage-head"><div><b>${title}</b><small>${imgs.length}/9 صور</small></div><label class="smart-upload-btn">+ إضافة صور<input type="file" accept="image/*" multiple onchange="supClientHandleImages(${i},'${field}',this)"></label></div><div class="smart-img-grid">${imgs.map((im,j)=>`<div class="smart-img-tile"><img src="${im.data||''}" alt="${title}"><button type="button" onclick="supClientRemoveImg(${i},'${field}',${j})">حذف</button></div>`).join('') || '<div class="empty-stage-note">لا توجد صور في هذا القسم</div>'}</div></div>`;
   }
+  window.supClientOpenSlideModal = function(i){ supClientActiveSlideIndex=i; supClientRenderSlideModal(); const m=$v133('supClientSlideModal'); if(m) m.classList.remove('hidden'); };
+  window.supClientCloseSlideModal = function(){ supClientActiveSlideIndex=null; const m=$v133('supClientSlideModal'); if(m) m.classList.add('hidden'); };
+  window.supClientRenderSlideModal = function(){
+    const i=supClientActiveSlideIndex; const s=supClientServicesState[i]; const body=$v133('supClientSlideModalBody'); if(!s || !body) return;
+    const ttl=$v133('supClientSlideModalTitle'); if(ttl) ttl.textContent=s.title||s.service_type||'شريحة الخدمة';
+    const sub=$v133('supClientSlideModalSub'); if(sub) sub.textContent='ارفع الصور فقط. الأقسام الفارغة لن تظهر في تقرير العميل.';
+    body.innerHTML=`<div class="smart-slide-edit-head"><div><label>نوع الشريحة</label><select onchange="supClientSetService(${i},'service_type',this.value); supClientSetService(${i},'title',this.value)">${DAILY_TYPES_V133.map(t=>`<option ${t===s.service_type?'selected':''}>${v133Esc(t)}</option>`).join('')}</select></div><div><label>اسم الشريحة</label><input value="${v133Esc(s.title||'')}" oninput="supClientSetService(${i},'title',this.value)" placeholder="مثال: تنظيف الممرات"></div></div><div class="smart-stage-grid-modal">${supClientStageModalBox(i,'before_images')}${supClientStageModalBox(i,'during_images')}${supClientStageModalBox(i,'after_images')}</div>`;
+  };
   function supClientRenderServices(){
     const box=$v133('supClientServicesEditor'); if(!box) return;
-    box.innerHTML=supClientServicesState.map((s,i)=>`<div class="service-editor-card daily-photo-slide">
-      <div class="service-editor-head">
-        <div class="service-title-line"><span class="service-number">${i+1}</span><div><b>${v133Esc(s.title||s.service_type)}</b><div class="service-counts"><span class="service-chip">${v133CountImages(s)} صورة</span><span class="service-chip">المشرف يرفع الصور فقط</span></div></div></div>
-        <div class="row-actions"><button class="danger" type="button" onclick="supClientRemoveService(${i})">حذف الشريحة</button></div>
-      </div>
-      <div class="split"><div><label>الشريحة / الخدمة</label><select onchange="supClientSetService(${i},'service_type',this.value); supClientSetService(${i},'title',this.value); supClientRenderServices()">${DAILY_TYPES_V133.map(t=>`<option ${t===s.service_type?'selected':''}>${v133Esc(t)}</option>`).join('')}</select></div><div><label>اسم الشريحة</label><input value="${v133Esc(s.title||'')}" oninput="supClientSetService(${i},'title',this.value)" placeholder="مثال: تنظيف الممرات"></div></div>
-      <div class="footer-note">ارفع الصور فقط. النص النهائي وترتيب العرض والاعتماد يتم من لوحة الإدارة.</div>
-      <div class="stage-grid">${supClientStageBox(i,'before_images','قبل التنفيذ')}${supClientStageBox(i,'during_images','أثناء التنفيذ')}${supClientStageBox(i,'after_images','بعد التنفيذ')}</div>
+    box.innerHTML=supClientServicesState.map((s,i)=>`<div class="smart-service-slide-card ${v133CountImages(s)>0?'has-images':''}">
+      <div class="smart-service-slide-top"><span class="service-number">${i+1}</span><span class="status-pill">${supClientSlideStatus(s)}</span></div>
+      <h3>${v133Esc(s.title||s.service_type)}</h3>
+      <div class="smart-stage-counts"><span>قبل: ${supClientStageCount(s,'before_images')}</span><span>أثناء: ${supClientStageCount(s,'during_images')}</span><span>بعد: ${supClientStageCount(s,'after_images')}</span></div>
+      <div class="smart-slide-actions"><button type="button" onclick="supClientOpenSlideModal(${i})">عرض / رفع الصور</button><button class="danger" type="button" onclick="supClientRemoveService(${i})">حذف</button></div>
     </div>`).join('');
   }
 

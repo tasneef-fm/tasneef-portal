@@ -69,3 +69,56 @@
 .row-actions button{writing-mode:horizontal-tb!important;min-width:54px;width:auto!important;padding:7px 12px!important;line-height:1.2!important;white-space:nowrap!important}
 td.row-actions{width:180px!important;max-width:none!important}
 #inventoryItemsBody td:last-child{min-width:180px!important;white-space:nowrap!important}
+
+/* V135 Smart supervisor daily report slides */
+.smart-daily-report-card .split { align-items: end; }
+.smart-slides-toolbar{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px; margin:16px 0; border:1px solid #d6e6df; border-radius:18px; background:#f7fbf9;
+}
+.smart-slides-toolbar h3{ margin:0 0 4px; color:#064c3b; }
+.smart-slides-toolbar small{ color:#60756f; }
+.inline-add-slide{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.inline-add-slide select{ min-width:190px; }
+.smart-service-slides-grid{
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin:14px 0;
+}
+.smart-service-slide-card{
+  border:1px solid #d6e6df; border-radius:20px; padding:16px; background:linear-gradient(180deg,#fff,#f8fcfa);
+  box-shadow:0 10px 24px rgba(0,58,44,.06); min-height:170px;
+}
+.smart-service-slide-card.has-images{ border-color:#0b6b50; box-shadow:0 12px 26px rgba(0,107,80,.12); }
+.smart-service-slide-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.smart-service-slide-card h3{ margin:10px 0; color:#073f33; font-size:20px; }
+.status-pill{ background:#eaf7f1; color:#066547; border:1px solid #cbe8dc; padding:5px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+.smart-stage-counts{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:14px 0; }
+.smart-stage-counts span{ background:#eef7f4; border:1px solid #d8e8e1; border-radius:12px; padding:8px 6px; text-align:center; font-weight:700; color:#064c3b; font-size:12px; }
+.smart-slide-actions{ display:flex; gap:8px; align-items:center; }
+.smart-slide-actions button{ flex:1; min-height:38px; white-space:nowrap; }
+.smart-modal-backdrop{ position:fixed; inset:0; background:rgba(0,35,27,.55); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
+.smart-modal-backdrop.hidden{ display:none !important; }
+.smart-modal-card{ background:#fff; border-radius:24px; width:min(980px,96vw); max-height:90vh; overflow:auto; box-shadow:0 30px 80px rgba(0,0,0,.28); border:1px solid #cfe3da; }
+.smart-modal-head{ position:sticky; top:0; z-index:2; background:linear-gradient(135deg,#064c3b,#087756); color:white; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; }
+.smart-modal-head h2{ margin:0; color:white; }
+.smart-modal-head p{ margin:4px 0 0; color:#e3f5ef; }
+.smart-modal-head .light{ background:#fff; color:#064c3b; border:0; }
+#supClientSlideModalBody{ padding:18px; }
+.smart-slide-edit-head{ display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:14px; border:1px solid #d6e6df; border-radius:16px; background:#f8fbfa; margin-bottom:14px; }
+.smart-stage-grid-modal{ display:grid; grid-template-columns:1fr; gap:14px; }
+.smart-stage-panel{ border:1px solid #d6e6df; border-radius:18px; padding:14px; background:#fff; }
+.smart-stage-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.smart-stage-head b{ color:#064c3b; font-size:18px; display:block; }
+.smart-stage-head small{ color:#60756f; }
+.smart-upload-btn{ display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:8px 14px; border-radius:12px; background:#0b6b50; color:#fff; cursor:pointer; font-weight:700; }
+.smart-upload-btn input{ display:none; }
+.smart-img-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px; }
+.smart-img-tile{ border:1px solid #d6e6df; border-radius:14px; overflow:hidden; background:#f8fbfa; position:relative; }
+.smart-img-tile img{ width:100%; height:130px; object-fit:cover; display:block; }
+.smart-img-tile button{ width:100%; border-radius:0; background:#c43434; color:#fff; min-height:32px; }
+.empty-stage-note{ border:1px dashed #bdd7ce; border-radius:14px; padding:22px; text-align:center; color:#6c7d77; background:#f8fbfa; }
+@media(max-width:700px){
+  .smart-slides-toolbar{ flex-direction:column; align-items:stretch; }
+  .inline-add-slide{ flex-direction:column; align-items:stretch; }
+  .smart-slide-edit-head{ grid-template-columns:1fr; }
+  .smart-service-slides-grid{ grid-template-columns:1fr; }
+}
