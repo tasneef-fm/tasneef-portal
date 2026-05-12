@@ -6568,3 +6568,143 @@ function financePrintReport(kind){
     }catch(e){ console.error(e); if(typeof window.msg==='function') msg('تعذر طباعة التقرير الحالي: '+e.message,'err'); }
   };
 })();
+
+
+/* ===== V144: Detailed classic print for expenses and inventory reports ===== */
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = v => { const n = Number(String(v ?? 0).replace(/[^0-9.\-]/g,'')); return Number.isFinite(n) ? n : 0; };
+  const fmtQty = v => Number(num(v)).toLocaleString('en-US',{maximumFractionDigits:2});
+  const fmtMoney = v => Number(num(v)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' SAR';
+  const today = () => new Date().toISOString().slice(0,10);
+  const dateOnly = v => String(v || '').slice(0,10);
+  const monthEnd = m => { const [y,mo]=String(m||today().slice(0,7)).split('-').map(Number); return `${y}-${String(mo).padStart(2,'0')}-${String(new Date(y,mo,0).getDate()).padStart(2,'0')}`; };
+  const inRange = (d,a,b) => d>=a && d<=b;
+  function itemById(id){ return (window.data?.inventoryItems||[]).find(i=>String(i.id)===String(id)) || {}; }
+  function itemCode(it){ return (typeof window.v118ProductCode==='function'?window.v118ProductCode(it):'') || it.product_code || it.code || it.serial_number || it.id || ''; }
+  function itemBarcode(it){ return (typeof window.v118Barcode==='function'?window.v118Barcode(it):'') || it.barcode || it.supplier_barcode || ''; }
+  function projectName(id){ return (typeof window.financeProjectName==='function'?window.financeProjectName(id):'') || (typeof window.projectName==='function'?window.projectName(id):'') || (window.data?.projects||[]).find(p=>String(p.id)===String(id))?.name || ''; }
+  function userName(id){ return (typeof window.supervisorName==='function'?window.supervisorName(id):'') || (window.data?.users||[]).find(u=>String(u.id)===String(id))?.full_name || ''; }
+  function lineItems(r){
+    let arr = r.request_items || r.request_lines || r.items || [];
+    if(typeof arr === 'string'){ try{ arr=JSON.parse(arr); }catch(e){ arr=[]; } }
+    if(!Array.isArray(arr)) arr=[];
+    if(!arr.length && r.item_id) arr=[{item_id:r.item_id,item_name:r.item_name,product_code:r.product_code,barcode:r.barcode,quantity:r.quantity,unit_cost:r.unit_cost}];
+    return arr;
+  }
+  function returnQty(reqId,itemId){
+    return (window.data?.inventoryMovements||[]).filter(m=>String(m.request_id)===String(reqId) && String(m.item_id)===String(itemId) && String(m.movement_type)==='return').reduce((a,m)=>a+num(m.quantity),0);
+  }
+  function vatMode(it){ return String(it.vat_mode || it.tax_mode || it.vat_status || 'exclusive'); }
+  function unitBefore(it, raw){
+    raw = num(raw ?? it.unit_cost ?? it.unit_price);
+    return vatMode(it)==='inclusive' ? raw/1.15 : raw;
+  }
+  function unitVat(it, raw){ return vatMode(it)==='exempt' ? 0 : unitBefore(it, raw)*0.15; }
+  function unitGross(it, raw){ return unitBefore(it, raw) + unitVat(it, raw); }
+  function amountVat(amount, it){ return vatMode(it)==='exempt' ? 0 : num(amount)*0.15; }
+  function amountGross(amount, it){ return num(amount)+amountVat(amount,it); }
+  function datePass(d){
+    d=dateOnly(d||today()); const mode=$('inventoryReportDateMode')?.value || 'all';
+    if(mode==='day') return d === ($('inventoryReportDay')?.value || today());
+    if(mode==='month'){ const m=$('inventoryReportMonth')?.value || today().slice(0,7); return inRange(d, m+'-01', monthEnd(m)); }
+    return true;
+  }
+  function projectIsKnown(name,id){ return !!id || (window.data?.projects||[]).some(p=>String(p.name||'')===String(name||'')); }
+  function costCode(row){
+    const t=String(row.cost_center_type||row.cost_type||'');
+    if(t.includes('إداري')||t.includes('اداري')||t.includes('كلين')||t.includes('عام')||t.toLowerCase().includes('admin')) return 'CN';
+    return projectIsKnown(row.cost_center_name||row.project,row.project_id) ? 'FM' : 'CN';
+  }
+  function quickPass(row){
+    const q=($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase();
+    if(!q) return true;
+    return Object.values(row).join(' ').toLowerCase().includes(q);
+  }
+  function usageRows(){
+    const rows=[];
+    (window.data?.inventoryRequests||[]).filter(r=>String(r.status)==='approved').forEach(r=>{
+      const date=dateOnly(r.request_date||r.created_at||today());
+      const project=r.project_name || projectName(r.project_id) || 'بدون مشروع';
+      const person=r.supervisor_name || userName(r.supervisor_id) || 'بدون مستلم';
+      lineItems(r).forEach(l=>{
+        const it=itemById(l.item_id); const out=num(l.quantity); const ret=returnQty(r.id,l.item_id); const consumed=Math.max(0,out-ret);
+        const unit=unitBefore(it,l.unit_cost); const val=consumed*unit;
+        rows.push({date,project,project_id:r.project_id,person,person_id:r.supervisor_id,item:l.item_name||it.name||'',item_id:l.item_id,product_code:l.product_code||itemCode(it),barcode:l.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||l.unit||'',out,returned:ret,consumed,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,l.unit_cost),unit_gross:unitGross(it,l.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:r.reason||r.notes||'-',movement_type:'أمر صرف معتمد',ref:'REQ-'+r.id,cost_center_name:r.cost_center_name||project,cost_center_type:r.cost_center_type||'',cost_code:costCode({project,project_id:r.project_id,cost_center_name:r.cost_center_name,cost_center_type:r.cost_center_type})});
+      });
+    });
+    (window.data?.inventoryMovements||[]).filter(m=>['out','consume'].includes(String(m.movement_type)) && !m.request_id).forEach(m=>{
+      const it=itemById(m.item_id); const q=num(m.quantity); const unit=unitBefore(it,m.unit_cost); const val=q*unit; const project=m.project_name||projectName(m.project_id)||'بدون مشروع';
+      rows.push({date:dateOnly(m.movement_date||m.created_at||today()),project,project_id:m.project_id,person:m.receiver||'بدون مستلم',item:m.item_name||it.name||'',item_id:m.item_id,product_code:m.product_code||itemCode(it),barcode:m.barcode||itemBarcode(it),supplier:it.supplier||'',category:it.category||'',item_type:it.item_type||it.type||'',unit_name:it.unit||'',out:q,returned:0,consumed:q,current:num(it.quantity),unit_before:unit,unit_vat:unitVat(it,m.unit_cost),unit_gross:unitGross(it,m.unit_cost),value_before:val,vat:amountVat(val,it),gross:amountGross(val,it),reason:m.reason||m.notes||'-',movement_type:m.movement_type==='consume'?'استهلاك مباشر':'صرف مباشر',ref:'MOV-'+m.id,cost_center_name:m.cost_center_name||project,cost_center_type:m.cost_center_type||'',cost_code:costCode({project,project_id:m.project_id,cost_center_name:m.cost_center_name,cost_center_type:m.cost_center_type})});
+    });
+    return rows;
+  }
+  function filteredUsage(){
+    const prod=$('inventoryReportProduct')?.value||''; const supplier=$('inventoryReportSupplier')?.value||''; const person=$('inventoryReportPerson')?.value||''; const code=$('financeReportCostCodeFilter')?.value||'';
+    return usageRows().filter(r=>datePass(r.date) && (!prod||String(r.item_id)===String(prod)) && (!supplier||String(r.supplier)===String(supplier)) && (!person||String(r.person_id)===String(person)||String(r.person)===String(person)) && (!code||r.cost_code===code) && quickPass(r));
+  }
+  function filteredItems(){
+    const supplier=$('inventoryReportSupplier')?.value||''; const prod=$('inventoryReportProduct')?.value||''; const q=($('financeReportQuickSearch')?.value || '').trim().toLowerCase();
+    return [...(window.data?.inventoryItems||[])].filter(i=>(!supplier||String(i.supplier||'')===String(supplier)) && (!prod||String(i.id)===String(prod)) && (!q||[i.name,itemCode(i),itemBarcode(i),i.supplier,i.category,i.type,i.item_type].join(' ').toLowerCase().includes(q)) );
+  }
+  function filteredExpenses(){
+    const q=($('financeReportQuickSearch')?.value || $('financeSearch')?.value || '').trim().toLowerCase(); const code=$('financeReportCostCodeFilter')?.value||''; const pid=$('financeProjectFilter')?.value||'';
+    return [...(window.data?.financeExpenses||[])].filter(e=>datePass(e.expense_date||e.created_at) && (!pid||String(e.project_id)===String(pid)) && (!code||costCode({project:e.project_name||projectName(e.project_id),project_id:e.project_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type})===code) && (!q||[e.project_name,projectName(e.project_id),e.supplier,e.category,e.expense_type,e.notes,e.payment_method].join(' ').toLowerCase().includes(q)) );
+  }
+  function table(headers, rows){
+    return `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.join(''):`<tr><td colspan="${headers.length}">لا توجد بيانات</td></tr>`}</tbody></table>`;
+  }
+  function detailedUsageTable(rows){
+    const heads=['التاريخ','رمز التكلفة','مركز التكلفة','المشروع','المشرف / المستلم','كود المنتج','باركود المورد','نوع المنتج','الصنف','المورد','الوحدة','سعر الحبة قبل الضريبة','ضريبة الحبة 15%','سعر الحبة شامل','الصادر','المرتجع','المستهلك','المتبقي','قيمة قبل الضريبة','VAT 15%','الإجمالي شامل VAT','نوع الحركة','المرجع','سبب الاستخدام'];
+    const trs=rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.cost_code)}</td><td>${esc(r.cost_center_name||'-')}</td><td>${esc(r.project)}</td><td>${esc(r.person)}</td><td>${esc(r.product_code)}</td><td>${esc(r.barcode||'-')}</td><td>${esc(r.item_type||'-')}</td><td>${esc(r.item)}</td><td>${esc(r.supplier||'-')}</td><td>${esc(r.unit_name||'-')}</td><td>${fmtMoney(r.unit_before)}</td><td>${fmtMoney(r.unit_vat)}</td><td>${fmtMoney(r.unit_gross)}</td><td>${fmtQty(r.out)}</td><td>${fmtQty(r.returned)}</td><td>${fmtQty(r.consumed)}</td><td>${fmtQty(r.current)}</td><td>${fmtMoney(r.value_before)}</td><td>${fmtMoney(r.vat)}</td><td>${fmtMoney(r.gross)}</td><td>${esc(r.movement_type)}</td><td>${esc(r.ref)}</td><td>${esc(r.reason)}</td></tr>`);
+    return table(heads,trs);
+  }
+  function stockTable(items){
+    const heads=['كود المنتج','باركود المورد','اسم المنتج','التصنيف','نوع المنتج','الوحدة','المورد','سعر الحبة قبل الضريبة','ضريبة الحبة 15%','سعر الحبة شامل','الكمية المتبقية','حد إعادة الطلب','قيمة المخزون قبل الضريبة','VAT 15%','Total Value with 15% VAT'];
+    const trs=items.map(i=>{ const unit=unitBefore(i,i.unit_cost); const vat=unitVat(i,i.unit_cost); const gross=unitGross(i,i.unit_cost); const qty=num(i.quantity); const val=qty*unit; return `<tr><td>${esc(itemCode(i))}</td><td>${esc(itemBarcode(i)||'-')}</td><td>${esc(i.name||'-')}</td><td>${esc(i.category||'-')}</td><td>${esc(i.item_type||i.type||'-')}</td><td>${esc(i.unit||'-')}</td><td>${esc(i.supplier||'-')}</td><td>${fmtMoney(unit)}</td><td>${fmtMoney(vat)}</td><td>${fmtMoney(gross)}</td><td>${fmtQty(qty)}</td><td>${fmtQty(i.min_quantity)}</td><td>${fmtMoney(val)}</td><td>${fmtMoney(amountVat(val,i))}</td><td>${fmtMoney(amountGross(val,i))}</td></tr>`; });
+    return table(heads,trs);
+  }
+  function expensesTable(rows){
+    const heads=['التاريخ','رمز التكلفة','المشروع / مركز التكلفة','نوع المصروف','المورد','طريقة الدفع','المبلغ قبل الضريبة','VAT 15%','الإجمالي شامل VAT','ملاحظات'];
+    const trs=rows.map(e=>{ const before=num(e.amount || e.subtotal || e.before_vat || (num(e.total)/(1.15))); const vat=('vat' in e)?num(e.vat):before*0.15; const total=num(e.total || before+vat); const pname=e.project_name||projectName(e.project_id)||e.cost_center_name||'بدون مشروع'; const code=costCode({project:pname,project_id:e.project_id,cost_center_name:e.cost_center_name,cost_center_type:e.cost_center_type}); return `<tr><td>${esc(dateOnly(e.expense_date||e.created_at))}</td><td>${esc(code)}</td><td>${esc(pname)}</td><td>${esc(e.category||e.expense_type||'-')}</td><td>${esc(e.supplier||'-')}</td><td>${esc(e.payment_method||'-')}</td><td>${fmtMoney(before)}</td><td>${fmtMoney(vat)}</td><td>${fmtMoney(total)}</td><td>${esc(e.notes||'-')}</td></tr>`; });
+    return table(heads,trs);
+  }
+  function totalsBlock(rows, mode){
+    let count=rows.length, qty=0, out=0, ret=0, cons=0, before=0, vat=0, gross=0;
+    if(mode==='expenses') rows.forEach(e=>{ const b=num(e.amount || e.subtotal || e.before_vat || (num(e.total)/(1.15))); const v=('vat' in e)?num(e.vat):b*0.15; before+=b; vat+=v; gross+=num(e.total||b+v); });
+    else if(mode==='stock') rows.forEach(i=>{ const unit=unitBefore(i,i.unit_cost); const val=num(i.quantity)*unit; qty+=num(i.quantity); before+=val; vat+=amountVat(val,i); gross+=amountGross(val,i); });
+    else rows.forEach(r=>{ out+=num(r.out); ret+=num(r.returned); cons+=num(r.consumed); qty+=num(r.current); before+=num(r.value_before); vat+=num(r.vat); gross+=num(r.gross); });
+    const cards=[['عدد السطور',fmtQty(count)]];
+    if(mode==='stock') cards.push(['إجمالي الكمية المتبقية',fmtQty(qty)]);
+    if(mode==='usage') cards.push(['إجمالي الصادر',fmtQty(out)],['إجمالي المرتجع',fmtQty(ret)],['إجمالي المستهلك',fmtQty(cons)],['إجمالي المتبقي الحالي',fmtQty(qty)]);
+    cards.push(['Total amount before 15% VAT',fmtMoney(before)],['Total VAT 15%',fmtMoney(vat)],['Total Value with 15% VAT',fmtMoney(gross)]);
+    return `<section class="totals-bottom"><h3>إجماليات نهاية التقرير</h3><div class="totals-grid">${cards.map(([a,b])=>`<div class="total-card"><span>${esc(a)}</span><b>${esc(b)}</b></div>`).join('')}</div></section>`;
+  }
+  function title(kind){ return ({expensesByProject:'تقرير المصروفات التفصيلي',stockOutByProject:'تقرير صرف المخزون حسب المشروع - تفصيلي',stockOutBySupervisor:'تقرير استهلاك المشرفين - تفصيلي',productDetail:'تقرير تفاصيل منتج',stockReport:'تقرير المخزون العام التفصيلي',costCenters:'تقرير مراكز التكلفة التفصيلي',inventoryUsageDetail:'تقرير توضيحي تفصيلي للاستهلاك'})[kind]||'تقرير'; }
+  function filtersText(){
+    const parts=[]; const mode=$('inventoryReportDateMode')?.value||'all';
+    if(mode==='day') parts.push('اليوم: '+($('inventoryReportDay')?.value||today())); if(mode==='month') parts.push('الشهر: '+($('inventoryReportMonth')?.value||today().slice(0,7)));
+    const code=$('financeReportCostCodeFilter')?.value; if(code) parts.push('رمز التكلفة: '+code);
+    const sup=$('inventoryReportSupplier')?.value; if(sup) parts.push('المورد: '+sup);
+    const p=$('inventoryReportProduct')?.selectedOptions?.[0]?.textContent; if($('inventoryReportProduct')?.value && p) parts.push('المنتج: '+p.trim());
+    const per=$('inventoryReportPerson')?.selectedOptions?.[0]?.textContent; if($('inventoryReportPerson')?.value && per) parts.push('المستلم: '+per.trim());
+    const q=$('financeReportQuickSearch')?.value || $('financeSearch')?.value; if(q) parts.push('بحث: '+q);
+    return parts.join(' | ') || 'كل البيانات';
+  }
+  window.financePrintReport = function(kind){
+    try{
+      if(typeof window.financeRenderReports==='function') window.financeRenderReports();
+      kind = kind || document.querySelector('.smart-report-panel.active')?.getAttribute('data-report-panel') || 'expensesByProject';
+      let rows, htmlTable, mode;
+      if(kind==='expensesByProject'){ rows=filteredExpenses(); htmlTable=expensesTable(rows); mode='expenses'; }
+      else if(kind==='stockReport'){ rows=filteredItems(); htmlTable=stockTable(rows); mode='stock'; }
+      else { rows=filteredUsage(); if(kind==='productDetail'){ const prod=$('inventoryReportProduct')?.value||''; if(prod) rows=rows.filter(r=>String(r.item_id)===String(prod)); } htmlTable=detailedUsageTable(rows); mode='usage'; }
+      const reportTitle=title(kind); const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc(reportTitle)}</title><style>
+        @page{size:A4 landscape;margin:9mm}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;color:#17231f;background:white;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:12px;border:1px solid #aabdb5;min-height:100vh}.header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #0a5a49;padding-bottom:9px;margin-bottom:9px}.brand{display:flex;align-items:center;gap:10px}.brand img{width:56px;height:56px;object-fit:contain}.brand h2{margin:0;font-size:19px;color:#0a5a49}.brand p{margin:3px 0 0;color:#65756f}.report-title{text-align:left}.report-title h1{margin:0;color:#0a5a49;font-size:22px}.report-title p{margin:5px 0 0;color:#66736e}.meta{display:grid;grid-template-columns:1fr 2.4fr 1fr;gap:8px;margin-bottom:9px}.meta div{border:1px solid #d7e4df;background:#f8fbfa;border-radius:8px;padding:7px}.meta b{color:#0a5a49}table{width:100%;border-collapse:collapse;direction:rtl;margin-top:7px}th{background:#0a5a49;color:#fff;font-weight:800}td,th{border:1px solid #8da69d;padding:5px;text-align:center;vertical-align:middle}td:nth-child(3),td:nth-child(9),td:nth-child(10),td:nth-child(24){text-align:right}tbody tr:nth-child(even) td{background:#f6f9f8}.totals-bottom{margin-top:14px;break-inside:avoid}.totals-bottom h3{display:inline-block;margin:0 0 8px;background:#0a5a49;color:white;padding:7px 18px;border-radius:999px;font-size:13px}.totals-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.total-card{border:1px solid #cfddd8;border-radius:10px;padding:8px;background:#fff}.total-card span{display:block;color:#62736d;font-size:10px}.total-card b{display:block;color:#0a5a49;font-size:14px;margin-top:4px;direction:ltr;text-align:right}.signs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.sign{height:55px;border:1px dashed #9fb4ac;border-radius:10px;padding:8px}.footer{text-align:center;margin-top:10px;color:#6a766f;border-top:1px solid #d9e6e1;padding-top:7px}
+      </style></head><body><div class="page"><div class="header"><div class="brand"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><div><h2>شركة تصنيف</h2><p>إدارة المرافق والتشغيل والصيانة</p></div></div><div class="report-title"><h1>${esc(reportTitle)}</h1><p>تقرير تفصيلي للمصروفات والمخزون</p></div></div><div class="meta"><div><b>تاريخ الطباعة:</b><br>${esc(new Date().toLocaleString('en-US'))}</div><div><b>الفلاتر المستخدمة:</b><br>${esc(filtersText())}</div><div><b>المستخدم:</b><br>${esc(window.currentUser?.full_name || window.currentUser?.username || 'النظام')}</div></div>${htmlTable}${totalsBlock(rows,mode)}<div class="signs"><div class="sign">إعداد:</div><div class="sign">مراجعة:</div><div class="sign">اعتماد:</div></div><div class="footer">يظهر هذا التقرير جميع التفاصيل والأسعار قبل الضريبة وبعدها وشامل الضريبة حسب الفلاتر الحالية</div></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}</script></body></html>`;
+      const w=window.open('','_blank'); if(w){ w.document.write(html); w.document.close(); }
+    }catch(e){ console.error(e); if(typeof window.msg==='function') msg('تعذر طباعة التقرير التفصيلي: '+(e.message||e),'err'); }
+  };
+})();
