@@ -6209,3 +6209,102 @@ function financePrintReport(kind){
   };
   window.addEventListener('load',()=>setTimeout(()=>{ try{ window.renderMonthly(); window.financeRenderReports?.(); }catch(e){ console.warn('V139 init',e); } },1800));
 })();
+
+/* ===== V140: Step fix - print visible finance report only + simplified monthly columns ===== */
+(function(){
+  'use strict';
+  const $v140 = id => document.getElementById(id);
+  const esc140 = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num140 = v => { const n = Number(String(v ?? 0).replace(/,/g,'')); return Number.isFinite(n) ? n : 0; };
+  const dateOnly140 = v => String(v || '').slice(0,10);
+  const today140 = () => new Date().toISOString().slice(0,10);
+  function monthDays140(month){
+    month = month || today140().slice(0,7);
+    const [y,m] = month.split('-').map(Number);
+    return new Date(y, m, 0).getDate();
+  }
+  function monthStart140(month){ return (month || today140().slice(0,7)) + '-01'; }
+  function monthEnd140(month){ return (month || today140().slice(0,7)) + '-' + String(monthDays140(month)).padStart(2,'0'); }
+  function inMonth140(d,month){ d=dateOnly140(d); return d >= monthStart140(month) && d <= monthEnd140(month); }
+  function minsTxt140(m){ return typeof window.minsToText === 'function' ? window.minsToText(num140(m)) : String(num140(m)); }
+  function pct140(v){ return typeof window.percentText === 'function' ? window.percentText(num140(v)) : (num140(v).toFixed(1)+'%'); }
+  function supName140(id){ return (typeof window.supervisorName==='function' ? window.supervisorName(id) : '') || ((window.data?.users||[]).find(u=>String(u.id)===String(id))?.full_name) || ''; }
+  function projName140(id){ return (typeof window.projectName==='function' ? window.projectName(id) : '') || ((window.data?.projects||[]).find(p=>String(p.id)===String(id))?.name) || ''; }
+  function workers140(pid){ return (typeof window.uniqueWorkersForProjectTextV60==='function' ? window.uniqueWorkersForProjectTextV60(pid) : '-') || '-'; }
+  function actualMins140(l){ return typeof window.logActualMinutes==='function' ? num140(window.logActualMinutes(l)) : (num140(l.duration_minutes) || (typeof window.minutesBetween==='function' ? num140(window.minutesBetween(l.check_in,l.check_out)) : 0)); }
+  function statusFromPercent140(p){
+    p = num140(p);
+    if(p >= 90 && p <= 110) return {text:'ممتاز', cls:'ok'};
+    if((p >= 70 && p < 90) || (p > 110 && p <= 140)) return {text:'جيد', cls:'warn'};
+    return {text:'ضعيف', cls:'bad'};
+  }
+  window.monthlyRowsV140 = function(){
+    const month = $v140('monthlyMonth')?.value || today140().slice(0,7);
+    const sid = $v140('monthlySupervisor')?.value || '';
+    let logs = (window.data?.logs || []).filter(l => inMonth140(l.log_date || l.check_in || l.created_at, month));
+    if(sid) logs = logs.filter(l => String(l.supervisor_id) === String(sid));
+    const map = new Map();
+    logs.forEach(l => {
+      const k = String(l.supervisor_id || '') + '_' + String(l.project_id || '');
+      if(!map.has(k)) map.set(k, {s:l.supervisor_id, p:l.project_id, a:0});
+      map.get(k).a += actualMins140(l);
+    });
+    const rows = [...map.values()];
+    const supTotals = {};
+    rows.forEach(r => { const s=String(r.s||''); supTotals[s] = (supTotals[s] || 0) + num140(r.a); });
+    const days = monthDays140(month);
+    return rows.map(r => {
+      const supTotal = supTotals[String(r.s||'')] || 0;
+      const workPercent = supTotal ? (r.a / supTotal * 100) : 0;
+      const st = statusFromPercent140(workPercent);
+      return {...r, days, workers:workers140(r.p), workPercent, st:st.text, cls:st.cls};
+    }).sort((a,b)=>String(supName140(a.s)).localeCompare(String(supName140(b.s)),'ar') || String(projName140(a.p)).localeCompare(String(projName140(b.p)),'ar'));
+  };
+  window.renderMonthly = function(){
+    const body = $v140('monthlyBody'); if(!body) return;
+    const table = body.closest('table');
+    if(table?.tHead) table.tHead.innerHTML = '<tr><th>المشرف</th><th>المشروع</th><th>أسماء العمال</th><th>أيام الشهر</th><th>الساعات الفعلية</th><th>نسبة العمل</th><th>حالة الأداء</th></tr>';
+    const rows = window.monthlyRowsV140();
+    body.innerHTML = rows.map(r => `<tr><td>${esc140(supName140(r.s))}</td><td>${esc140(projName140(r.p))}</td><td>${esc140(r.workers||'-')}</td><td>${r.days}</td><td>${esc140(minsTxt140(r.a))}</td><td><span class="badge green">${esc140(pct140(r.workPercent))}</span></td><td><span class="badge ${r.cls}">${esc140(r.st)}</span></td></tr>`).join('') || '<tr><td colspan="7">لا توجد بيانات لهذا الشهر</td></tr>';
+    const total = rows.reduce((a,r)=>a+num140(r.a),0);
+    if($v140('monthlySummary')) $v140('monthlySummary').innerHTML = `<div class="kpi"><small>أيام الشهر</small><b>${monthDays140($v140('monthlyMonth')?.value || today140().slice(0,7))}</b></div><div class="kpi"><small>الساعات الفعلية</small><b>${esc140(minsTxt140(total))}</b></div><div class="kpi"><small>عدد المشاريع</small><b>${rows.length}</b></div>`;
+  };
+  window.exportMonthlyCSV = function(){
+    const rows=[...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent.trim()));
+    const csv=['المشرف,المشروع,أسماء العمال,أيام الشهر,الساعات الفعلية,نسبة العمل,حالة الأداء',...rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(','))].join('\n');
+    if(typeof window.download==='function') window.download('monthly.csv',csv);
+  };
+  window.printMonthlyReportV57 = function(){
+    const rows = window.monthlyRowsV140();
+    if(!rows.length){ if(typeof window.msg==='function') msg('لا توجد بيانات في الأوقات الشهرية للطباعة','err'); return; }
+    const month = $v140('monthlyMonth')?.value || today140().slice(0,7);
+    const sup = $v140('monthlySupervisor')?.value ? supName140($v140('monthlySupervisor').value) : 'الكل';
+    const trs = rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc140(supName140(r.s))}</td><td>${esc140(projName140(r.p))}</td><td>${esc140(r.workers||'-')}</td><td>${r.days}</td><td>${esc140(minsTxt140(r.a))}</td><td>${esc140(pct140(r.workPercent))}</td><td>${esc140(r.st)}</td></tr>`).join('');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Tahoma,Arial,sans-serif;color:#123d32}h1{color:#063d31}table{width:100%;border-collapse:collapse}th{background:#063d31;color:white}td,th{border:1px solid #cfded8;padding:8px;text-align:center}.meta{display:flex;gap:12px;margin:12px 0}.box{border:1px solid #cfded8;border-radius:10px;padding:10px}</style></head><body><h1>تقرير الأوقات الشهرية</h1><div class="meta"><div class="box"><b>الشهر:</b> ${esc140(month)}</div><div class="box"><b>المشرف:</b> ${esc140(sup)}</div></div><table><thead><tr><th>#</th><th>المشرف</th><th>المشروع</th><th>أسماء العمال</th><th>أيام الشهر</th><th>الساعات الفعلية</th><th>نسبة العمل</th><th>حالة الأداء</th></tr></thead><tbody>${trs}</tbody></table><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+    const w=window.open('','_blank'); if(w){w.document.write(html);w.document.close();}
+  };
+  function titleForKind140(kind){
+    return ({expensesByProject:'مصروفات حسب المشروع',stockOutByProject:'صرف المخزون حسب المشروع',stockOutBySupervisor:'استهلاك المشرفين حسب المشروع',productDetail:'تقرير تفاصيل منتج',stockReport:'تقرير المخزون العام',costCenters:'تقرير مراكز التكلفة',inventoryUsageDetail:'تقرير توضيحي للاستهلاك'})[kind] || 'تقرير';
+  }
+  function panelForKind140(kind){ return document.querySelector(`.smart-report-panel[data-report-panel="${kind}"]`) || document.querySelector('.smart-report-panel.active'); }
+  function cleanCloneForPrint140(panel){
+    const clone = panel.cloneNode(true);
+    clone.querySelectorAll('button,.report-filters-panel,input,select,textarea,.no-print').forEach(x=>x.remove());
+    clone.querySelectorAll('[onclick]').forEach(x=>x.removeAttribute('onclick'));
+    clone.classList.remove('hidden'); clone.style.display='block';
+    return clone.innerHTML;
+  }
+  window.financePrintReport = function(kind){
+    try{
+      if(typeof window.financeRenderReports==='function') window.financeRenderReports();
+      kind = kind || document.querySelector('.smart-report-panel.active')?.getAttribute('data-report-panel') || document.querySelector('.smart-report-card.active')?.getAttribute('data-report') || 'expensesByProject';
+      // Product report uses current visible product detail; if no product selected, print the message visible in the panel only.
+      const panel = panelForKind140(kind);
+      const title = titleForKind140(kind);
+      const content = panel ? cleanCloneForPrint140(panel) : '<p>لا توجد بيانات</p>';
+      const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${esc140(title)}</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Tahoma,Arial,sans-serif;color:#111}h1{color:#063d31;text-align:right}table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#d0d0d0;color:#111}td,th{border:1px solid #333;padding:7px;text-align:center}.card,.wide-card{border:0!important;box-shadow:none!important}.table-head{display:block!important}.table-head h2{color:#063d31}.product-detail-img{max-width:130px;max-height:130px;object-fit:contain}.kpis{display:flex;gap:8px;flex-wrap:wrap}.kpi{border:1px solid #ddd;border-radius:10px;padding:8px}</style></head><body><h1>${esc140(title)}</h1>${content}<script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+      const w=window.open('','_blank'); if(w){ w.document.write(html); w.document.close(); }
+    }catch(e){ console.error(e); if(typeof window.msg==='function') msg('تعذر طباعة التقرير الحالي: '+e.message,'err'); }
+  };
+  window.addEventListener('load',()=>setTimeout(()=>{ try{ if($v140('monthlyBody')) window.renderMonthly(); }catch(e){} },2200));
+})();
