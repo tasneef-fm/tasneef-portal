@@ -7462,3 +7462,89 @@ function financePrintReport(kind){
   if(oldEnsure){ window.financeRenderAll=function(){ oldEnsure.apply(this, arguments); setTimeout(()=>{ ensureSmartInventoryUiV149(); renderStockBatchCardsV149(); },50); }; }
   window.addEventListener('load',()=>setTimeout(()=>{ ensureSmartInventoryUiV149(); renderStockBatchCardsV149(); },900));
 })();
+
+/* ===== V150: Move catalog into its own finance tab and keep inventory tab for stock invoices only ===== */
+(function(){
+  function $(id){ return document.getElementById(id); }
+  function ensureCatalogTabV150(){
+    const tabsBox = document.querySelector('#financeDashboard .finance-tabs') || document.querySelector('.finance-tabs');
+    const invTab = $('financeTabInventory');
+    if(!tabsBox || !invTab) return;
+
+    // Add a dedicated tab button next to المخزون
+    if(!document.querySelector('.finance-tab[data-v150-catalog="1"]')){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'light finance-tab';
+      btn.dataset.v150Catalog = '1';
+      btn.textContent = 'الأصناف';
+      btn.onclick = function(){ financeShowTab('catalog', this); };
+      const inventoryBtn = [...tabsBox.querySelectorAll('.finance-tab')].find(b => (b.textContent||'').trim()==='المخزون');
+      if(inventoryBtn && inventoryBtn.nextSibling) tabsBox.insertBefore(btn, inventoryBtn.nextSibling);
+      else tabsBox.appendChild(btn);
+    }
+
+    // Create catalog page if not exists
+    let catPage = $('financeTabCatalog');
+    if(!catPage){
+      catPage = document.createElement('div');
+      catPage.id = 'financeTabCatalog';
+      catPage.className = 'finance-tab-page hidden';
+      invTab.parentNode.insertBefore(catPage, invTab.nextSibling);
+    }
+
+    // Move the catalog card from the inventory page into the dedicated catalog page
+    const itemCard = document.querySelector('#financeTabInventory .card:has(#inventoryItemsBody)') || document.querySelector('.card:has(#inventoryItemsBody)');
+    if(itemCard && itemCard.parentElement !== catPage){
+      catPage.appendChild(itemCard);
+      itemCard.classList.add('v150-catalog-full');
+      const h = itemCard.querySelector('h2');
+      if(h) h.textContent = 'قائمة الأصناف';
+    }
+
+    // Make the inventory tab focused on stock entry invoices only
+    const hub = $('smartStockInvoicesV149');
+    if(hub){
+      hub.classList.add('v150-invoices-only');
+      const title = hub.querySelector('h2');
+      if(title) title.textContent = 'فواتير إدخال المخزون';
+    }
+  }
+
+  function injectCssV150(){
+    if($('v150CatalogTabCss')) return;
+    const st = document.createElement('style');
+    st.id = 'v150CatalogTabCss';
+    st.textContent = `
+      #financeTabInventory .report-premium-wrap{display:block!important;}
+      #financeTabInventory #smartStockInvoicesV149{width:100%;margin:0;}
+      #financeTabCatalog .v150-catalog-full{width:100%;margin:0;}
+      #financeTabCatalog .inventory-filter-bar{margin-bottom:18px;}
+      #financeTabCatalog .inventory-cards-grid,
+      #financeTabCatalog .smart-card-grid{width:100%;}
+      @media(max-width:900px){#financeTabCatalog .inventory-filter-bar{grid-template-columns:1fr!important;}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  const oldFinanceRenderAll = window.financeRenderAll;
+  if(oldFinanceRenderAll){
+    window.financeRenderAll = function(){
+      const out = oldFinanceRenderAll.apply(this, arguments);
+      setTimeout(()=>{ injectCssV150(); ensureCatalogTabV150(); }, 80);
+      return out;
+    };
+  }
+
+  const oldFinanceShowTab = window.financeShowTab;
+  if(oldFinanceShowTab){
+    window.financeShowTab = function(tab, btn){
+      injectCssV150(); ensureCatalogTabV150();
+      const out = oldFinanceShowTab.apply(this, arguments);
+      setTimeout(()=>{ ensureCatalogTabV150(); if(tab==='catalog' && typeof inventoryRenderItems==='function') inventoryRenderItems(); }, 60);
+      return out;
+    };
+  }
+
+  window.addEventListener('load',()=>setTimeout(()=>{ injectCssV150(); ensureCatalogTabV150(); },1100));
+})();
