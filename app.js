@@ -1,3 +1,118 @@
+/* V154 Smart Loading Branding */
+(function(){
+  if(window.__tasneefLoadingV154) return;
+  window.__tasneefLoadingV154 = true;
+  const LOGO = 'tasneef_logo_print.png';
+  let pending = 0;
+  let showTimer = null;
+  let visibleSince = 0;
+  const MIN_VISIBLE = 520;
+  const DELAY = 280;
+
+  function injectStyle(){
+    if(document.getElementById('tasneefLoadingStyleV154')) return;
+    const st = document.createElement('style');
+    st.id = 'tasneefLoadingStyleV154';
+    st.textContent = `
+      :root{--tl-brand:#064c3f;--tl-brand2:#0b705d;--tl-gold:#c5a45b;--tl-bg:#f4f8f6}
+      .tasneef-splash-v154,.tasneef-loading-v154{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;direction:rtl;font-family:Tahoma,Arial,sans-serif;transition:opacity .38s ease,visibility .38s ease;}
+      .tasneef-splash-v154.hidden,.tasneef-loading-v154.hidden{opacity:0;visibility:hidden;pointer-events:none}
+      .tasneef-splash-v154{background:radial-gradient(circle at 25% 15%,rgba(9,92,75,.13),transparent 34%),linear-gradient(135deg,#ffffff 0%,#f5faf8 58%,rgba(197,164,91,.10) 100%)}
+      .tasneef-loading-v154{background:rgba(244,248,246,.74);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+      .tasneef-load-card-v154{min-width:260px;max-width:min(390px,88vw);background:rgba(255,255,255,.94);border:1px solid rgba(6,76,63,.16);border-radius:26px;box-shadow:0 26px 70px rgba(6,76,63,.18);padding:28px 30px;text-align:center;color:#0d332b;position:relative;overflow:hidden}
+      .tasneef-load-card-v154:before{content:"";position:absolute;inset:-60px auto auto -60px;width:155px;height:155px;background:rgba(197,164,91,.13);border-radius:50%}
+      .tasneef-logo-box-v154{width:112px;height:112px;margin:0 auto 14px;border-radius:32px;background:linear-gradient(145deg,#fff,#eff8f5);border:1px solid rgba(6,76,63,.13);display:grid;place-items:center;box-shadow:inset 0 0 0 6px rgba(8,89,73,.04),0 14px 30px rgba(6,76,63,.12);animation:tasneefPulseV154 1.7s ease-in-out infinite}
+      .tasneef-loading-v154 .tasneef-logo-box-v154{width:82px;height:82px;border-radius:24px;margin-bottom:12px}
+      .tasneef-logo-box-v154 img{max-width:82%;max-height:82%;object-fit:contain;display:block}
+      .tasneef-load-card-v154 h2{margin:4px 0 4px;color:var(--tl-brand);font-size:22px;font-weight:900;letter-spacing:-.3px}
+      .tasneef-loading-v154 h2{font-size:18px}.tasneef-load-card-v154 p{margin:0;color:#667a73;font-size:13px;line-height:1.8}
+      .tasneef-ring-v154{width:42px;height:42px;border-radius:50%;border:4px solid #e3eee9;border-top-color:var(--tl-brand);margin:18px auto 2px;animation:tasneefSpinV154 .85s linear infinite}
+      .tasneef-dots-v154{display:flex;gap:6px;justify-content:center;margin-top:14px}.tasneef-dots-v154 i{width:7px;height:7px;border-radius:50%;background:var(--tl-brand);opacity:.4;animation:tasneefDotsV154 1.05s ease-in-out infinite}.tasneef-dots-v154 i:nth-child(2){animation-delay:.15s}.tasneef-dots-v154 i:nth-child(3){animation-delay:.3s}
+      @keyframes tasneefSpinV154{to{transform:rotate(360deg)}}
+      @keyframes tasneefPulseV154{0%,100%{transform:scale(1);box-shadow:inset 0 0 0 6px rgba(8,89,73,.04),0 14px 30px rgba(6,76,63,.12)}50%{transform:scale(1.035);box-shadow:inset 0 0 0 6px rgba(8,89,73,.07),0 22px 44px rgba(6,76,63,.18)}}
+      @keyframes tasneefDotsV154{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-5px);opacity:1}}
+      @media(max-width:600px){.tasneef-load-card-v154{padding:24px 22px;border-radius:22px}.tasneef-logo-box-v154{width:96px;height:96px}.tasneef-load-card-v154 h2{font-size:19px}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function ensureNodes(){
+    if(!document.body) return null;
+    injectStyle();
+    let loading = document.getElementById('tasneefLoadingV154');
+    if(!loading){
+      loading = document.createElement('div');
+      loading.id = 'tasneefLoadingV154';
+      loading.className = 'tasneef-loading-v154 hidden';
+      loading.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>تصنيف لإدارة المرافق</h2><p id="tasneefLoadingMsgV154">جاري تحميل البيانات...</p><div class="tasneef-ring-v154"></div></div>`;
+      document.body.appendChild(loading);
+    }
+    return loading;
+  }
+
+  function show(message){
+    pending++;
+    if(showTimer) clearTimeout(showTimer);
+    showTimer = setTimeout(function(){
+      const node = ensureNodes();
+      if(!node) return;
+      const msg = document.getElementById('tasneefLoadingMsgV154');
+      if(msg) msg.textContent = message || 'جاري تحميل البيانات...';
+      visibleSince = Date.now();
+      node.classList.remove('hidden');
+    }, DELAY);
+  }
+
+  function hide(){
+    pending = Math.max(0, pending-1);
+    if(pending>0) return;
+    if(showTimer){clearTimeout(showTimer);showTimer=null;}
+    const node = document.getElementById('tasneefLoadingV154');
+    if(!node) return;
+    const wait = Math.max(0, MIN_VISIBLE - (Date.now()-visibleSince));
+    setTimeout(()=>{ if(pending===0) node.classList.add('hidden'); }, wait);
+  }
+
+  window.showTasneefLoading = show;
+  window.hideTasneefLoading = hide;
+  window.withTasneefLoading = async function(promiseOrFn, message){
+    show(message);
+    try{return await (typeof promiseOrFn==='function' ? promiseOrFn() : promiseOrFn);} finally{hide();}
+  };
+
+  function splash(){
+    if(!document.body || document.getElementById('tasneefSplashV154')) return;
+    injectStyle();
+    const s = document.createElement('div');
+    s.id = 'tasneefSplashV154';
+    s.className = 'tasneef-splash-v154';
+    s.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>تصنيف لإدارة المرافق</h2><p>جاري تحميل النظام...</p><div class="tasneef-dots-v154"><i></i><i></i><i></i></div></div>`;
+    document.body.appendChild(s);
+    const close = ()=>setTimeout(()=>s.classList.add('hidden'), 650);
+    if(document.readyState==='complete') close(); else window.addEventListener('load', close, {once:true});
+    setTimeout(()=>s.classList.add('hidden'), 2400);
+    setTimeout(()=>{try{s.remove()}catch(e){}}, 3400);
+  }
+
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', splash); else splash();
+
+  // عرض شاشة تحميل خفيفة مع طلبات Supabase الطويلة فقط
+  const oldFetch = window.fetch;
+  if(oldFetch && !oldFetch.__tasneefPatchedV154){
+    const patched = function(input, init){
+      const url = (typeof input==='string') ? input : (input && input.url ? input.url : '');
+      const isSupabase = /supabase\.co|\/rest\/v1\//i.test(String(url));
+      if(isSupabase){
+        show('جاري تحميل البيانات...');
+        return oldFetch.apply(this, arguments).finally(hide);
+      }
+      return oldFetch.apply(this, arguments);
+    };
+    patched.__tasneefPatchedV154 = true;
+    window.fetch = patched;
+  }
+})();
+
 // Tasneef HTML App V86 - Contract Services Cloud View Fix
 const SUPABASE_URL = "https://zmjdqiswytxlbfgnfjfv.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb";
