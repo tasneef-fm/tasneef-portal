@@ -47,6 +47,14 @@
 .smart-report-card{border:1px solid #cfe2dc;background:linear-gradient(135deg,#ffffff,#f2fbf7);border-radius:20px;padding:18px;text-align:right;min-height:125px;box-shadow:0 10px 28px rgba(0,60,40,.06);cursor:pointer;transition:.22s ease;color:#003d2f;display:flex;flex-direction:column;gap:8px;align-items:flex-start;justify-content:center}
 .smart-report-card span{font-size:13px;color:#59766f;font-weight:800}.smart-report-card b{font-size:20px;color:#004535}.smart-report-card small{line-height:1.7;color:#6b7774}.smart-report-card:hover{transform:translateY(-3px);box-shadow:0 16px 32px rgba(0,60,40,.13)}.smart-report-card.active{background:linear-gradient(135deg,#006b4d,#003d2f);border-color:#006b4d;color:#fff;box-shadow:0 18px 36px rgba(0,80,55,.22)}.smart-report-card.active span,.smart-report-card.active b,.smart-report-card.active small{color:#fff}.smart-report-stage{position:relative;min-height:220px}.smart-report-panel{display:none!important;animation:smartPanelIn .28s ease both;margin-bottom:16px}.smart-report-panel.active{display:block!important}@keyframes smartPanelIn{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
 .row-actions{display:flex!important;flex-direction:row!important;align-items:center;justify-content:center;gap:6px;min-width:160px;white-space:nowrap;flex-wrap:nowrap}.row-actions button{writing-mode:horizontal-tb!important;min-width:54px;width:auto!important;padding:7px 12px!important;line-height:1.2!important;white-space:nowrap!important}td.row-actions{width:180px!important;max-width:none!important}#inventoryItemsBody td:last-child{min-width:180px!important;white-space:nowrap!important}
+
+/* V155 branded admin header */
+.hero-brand-v155{display:flex;align-items:center;gap:14px}
+.hero-logo-card-v155{width:142px;height:66px;border-radius:20px;background:rgba(255,255,255,.96);display:grid;place-items:center;padding:9px;box-shadow:0 14px 34px rgba(0,0,0,.14);border:1px solid rgba(255,255,255,.42)}
+.hero-logo-card-v155 img{max-width:100%;max-height:100%;object-fit:contain}
+.hero-title-v155 h1{margin:0 0 8px!important}.hero-title-v155 p{margin:0;color:#e9f5f1;line-height:1.7}.hero-app-name-v155{display:block;font-weight:900;color:#fff;font-size:15px;margin-top:6px;letter-spacing:.2px}
+.hero-action-v155{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.hero-action-v155 .status-pill-v155{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;color:#fff;font-size:12px;font-weight:800}
+@media(max-width:760px){.hero{align-items:flex-start;flex-direction:column}.hero-brand-v155{flex-direction:column;align-items:flex-start}.hero-logo-card-v155{width:132px;height:62px}.hero-action-v155{width:100%;justify-content:space-between}}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -88,7 +96,7 @@
 <body onload="initAdmin()">
 <div class="app-shell">
   <aside class="side">
-    <div class="brand"><span>ت</span><div><b>تصنيف</b><small>إدارة التشغيل</small></div></div>
+    <div class="brand"><span>ت</span><div><b>شركة تصنيف</b><small>إدارة المرافق</small></div></div>
     <button class="nav active" onclick="showPage('dashboard',this)">لوحة التحكم</button>
     <button class="nav" onclick="showPage('daily',this)">التسجيلات اليومية</button>
     <button class="nav" onclick="showPage('users',this)">إدارة المستخدمين</button>
@@ -107,7 +115,13 @@
     <button class="nav danger" onclick="logout()">تسجيل خروج</button>
   </aside>
   <main class="content">
-    <header class="hero"><div><h1>لوحة تشغيل يومية احترافية</h1><p>إدارة المستخدمين، المشاريع، العمال، الحضور، التسجيلات اليومية والتقارير.</p></div><button onclick="refreshAll()">تحديث البيانات</button></header>
+    <header class="hero">
+      <div class="hero-brand-v155">
+        <div class="hero-logo-card-v155"><img src="tasneef_logo_print.png" alt="شركة تصنيف لإدارة المرافق"></div>
+        <div class="hero-title-v155"><h1>لوحة تشغيل يومية احترافية</h1><p>إدارة المستخدمين، المشاريع، العمال، الحضور، التسجيلات اليومية والتقارير.</p><span class="hero-app-name-v155">شركة تصنيف لإدارة المرافق</span></div>
+      </div>
+      <div class="hero-action-v155"><span class="status-pill-v155">النظام محدث</span><button onclick="refreshAll()">تحديث البيانات</button></div>
+    </header>
     <div id="globalMsg" class="msg hidden"></div>
 
     <section id="dashboard" class="page">
@@ -700,6 +714,6 @@
     <section id="export" class="page hidden"><div class="card"><h2>التصدير</h2><p>صدّر بيانات النظام الحالية بصيغة CSV.</p><div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div></div></section>
   </main>
 </div>
-<script src="app.js?v=154"></script>
+<script src="app.js?v=155"></script>
 </body>
 </html>

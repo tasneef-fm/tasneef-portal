@@ -44,7 +44,7 @@
       loading = document.createElement('div');
       loading.id = 'tasneefLoadingV154';
       loading.className = 'tasneef-loading-v154 hidden';
-      loading.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>تصنيف لإدارة المرافق</h2><p id="tasneefLoadingMsgV154">جاري تحميل البيانات...</p><div class="tasneef-ring-v154"></div></div>`;
+      loading.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>شركة تصنيف لإدارة المرافق</h2><p id="tasneefLoadingMsgV154">جاري تحميل البيانات...</p><div class="tasneef-ring-v154"></div></div>`;
       document.body.appendChild(loading);
     }
     return loading;
@@ -86,7 +86,7 @@
     const s = document.createElement('div');
     s.id = 'tasneefSplashV154';
     s.className = 'tasneef-splash-v154';
-    s.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>تصنيف لإدارة المرافق</h2><p>جاري تحميل النظام...</p><div class="tasneef-dots-v154"><i></i><i></i><i></i></div></div>`;
+    s.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>شركة تصنيف لإدارة المرافق</h2><p>جاري تحميل النظام...</p><div class="tasneef-dots-v154"><i></i><i></i><i></i></div></div>`;
     document.body.appendChild(s);
     const close = ()=>setTimeout(()=>s.classList.add('hidden'), 650);
     if(document.readyState==='complete') close(); else window.addEventListener('load', close, {once:true});
