@@ -7331,3 +7331,134 @@ function financePrintReport(kind){
 
   window.addEventListener('load', ()=>{ setTimeout(()=>{ ensureBatchUiV148(); relabelInventoryFormV148(); stockBatchRenderLinesV148(); stockBatchLoadV148(true); }, 700); });
 })();
+
+/* ===== V149: Smart stock invoice cards + independent catalog view ===== */
+(function(){
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const str = v => String(v ?? '');
+  const num2 = v => { const x = parseFloat(str(v).replace(/,/g,'')); return Number.isFinite(x) ? x : 0; };
+  const esc2 = v => (typeof esc === 'function') ? esc(v) : str(v).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const money2 = v => num2(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const qty2 = v => num2(v).toLocaleString('en-US',{maximumFractionDigits:2});
+
+  function injectSmartInventoryCssV149(){
+    if($('v149SmartInventoryCss')) return;
+    const st=document.createElement('style'); st.id='v149SmartInventoryCss';
+    st.textContent=`
+      #stockBatchCardV148,#stockBatchesListCardV148{display:none!important;}
+      #stockBatchCardV148.v149-open{display:block!important;position:fixed;inset:30px;z-index:9999;overflow:auto;max-width:980px;margin:auto;background:#fff;border:1px solid #cfe3dd;border-radius:24px;box-shadow:0 24px 80px rgba(0,45,31,.28);padding:22px;}
+      .v149-modal-backdrop{position:fixed;inset:0;background:rgba(0,40,28,.45);z-index:9998;display:none;backdrop-filter:blur(3px)}
+      .v149-modal-backdrop.show{display:block;}
+      .v149-smart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+      .v149-smart-head h2{margin:0;color:#003f2e;font-size:25px;font-weight:900;}
+      .v149-smart-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+      .v149-filter-bar{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin:12px 0 18px;}
+      .v149-filter-bar input,.v149-filter-bar select{height:42px;border:1px solid #cfe3dd;border-radius:14px;padding:0 12px;background:#fff;}
+      .v149-invoice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px;}
+      .v149-invoice-card{border:1px solid #cfe3dd;border-radius:22px;background:linear-gradient(180deg,#fff,#f8fcfa);padding:16px;box-shadow:0 10px 24px rgba(0,55,38,.06);transition:.18s ease;}
+      .v149-invoice-card:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(0,55,38,.10);}
+      .v149-invoice-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px dashed #cfe3dd;padding-bottom:10px;margin-bottom:10px;}
+      .v149-invoice-no{font-size:19px;font-weight:900;color:#004532;}
+      .v149-invoice-date{font-size:12px;color:#5c736b;background:#edf8f4;border-radius:999px;padding:5px 9px;white-space:nowrap;}
+      .v149-invoice-meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0;}
+      .v149-mini{background:#eef8f4;border:1px solid #d6eae4;border-radius:14px;padding:9px;text-align:center;}
+      .v149-mini small{display:block;color:#60766f;font-size:11px;margin-bottom:3px;}.v149-mini b{color:#003f2e;font-size:15px;}
+      .v149-invoice-card .row-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-start;margin-top:12px;}
+      .v149-pill{display:inline-flex;align-items:center;gap:5px;background:#e9f7f2;color:#004532;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:700;}
+      .v149-empty{border:1px dashed #cfe3dd;background:#fbfffd;border-radius:18px;padding:28px;text-align:center;color:#647a73;}
+      .v149-modal-card{position:fixed;inset:36px;max-width:1050px;margin:auto;z-index:10000;background:#fff;border:1px solid #cfe3dd;border-radius:24px;box-shadow:0 24px 80px rgba(0,45,31,.30);padding:22px;overflow:auto;display:none;}
+      .v149-modal-card.show{display:block;}.v149-close{float:left;background:#eef8f4;color:#003f2e;border:1px solid #cfe3dd;border-radius:12px;padding:8px 14px;cursor:pointer;font-weight:800;}
+      .v149-catalog-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+      #financeTabInventory .report-form-card:not(#stockBatchCardV148){display:none!important;}
+      @media(max-width:800px){.v149-filter-bar{grid-template-columns:1fr}.v149-modal-card,#stockBatchCardV148.v149-open{inset:10px;border-radius:18px}.v149-invoice-grid{grid-template-columns:1fr}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function ensureSmartInventoryUiV149(){
+    injectSmartInventoryCssV149();
+    const tab=$('financeTabInventory'); if(!tab || $('smartStockInvoicesV149')) return;
+    let wrap=tab.querySelector('.report-premium-wrap') || tab;
+    const backdrop=document.createElement('div'); backdrop.id='v149Backdrop'; backdrop.className='v149-modal-backdrop'; backdrop.onclick=()=>closeAllV149(); document.body.appendChild(backdrop);
+    const hub=document.createElement('div'); hub.id='smartStockInvoicesV149'; hub.className='card';
+    hub.innerHTML=`
+      <div class="v149-smart-head">
+        <div><h2>فواتير إدخال المخزون</h2><p class="muted">كل فاتورة تظهر كشريحة واحدة، وداخلها عدة أصناف. قائمة الأصناف مستقلة ولا تتكرر حسب كود المنتج.</p></div>
+        <div class="v149-smart-actions"><button type="button" onclick="openStockBatchModalV149()">+ إضافة فاتورة مخزون</button><button type="button" class="light" onclick="stockBatchLoadV148(true)">تحديث</button></div>
+      </div>
+      <div class="v149-filter-bar">
+        <input id="batchSearchV149" oninput="renderStockBatchCardsV149()" placeholder="بحث برقم الفاتورة / المورد">
+        <input type="date" id="batchDateFilterV149" onchange="renderStockBatchCardsV149()" title="فلتر باليوم">
+        <input type="month" id="batchMonthFilterV149" onchange="renderStockBatchCardsV149()" title="فلتر بالشهر">
+        <button type="button" class="light" onclick="clearBatchFiltersV149()">مسح الفلاتر</button>
+      </div>
+      <div id="stockBatchCardsGridV149" class="v149-invoice-grid"><div class="v149-empty">لا توجد فواتير إدخال</div></div>
+    `;
+    wrap.insertBefore(hub, wrap.firstElementChild);
+    const itemCard=[...wrap.querySelectorAll('.card')].find(c=>c.querySelector('#inventoryItemsBody'));
+    if(itemCard){
+      const h=itemCard.querySelector('h2'); if(h) h.textContent='قائمة الأصناف';
+      itemCard.classList.add('v149-catalog-card');
+      const th=itemCard.querySelector('.table-head');
+      if(th && !th.querySelector('.v149-catalog-note')) th.insertAdjacentHTML('beforeend','<small class="v149-catalog-note muted">الكتالوج يعرض كل صنف مرة واحدة حسب كود المنتج.</small>');
+    }
+    const bcard=$('stockBatchCardV148'); if(bcard && !bcard.querySelector('.v149-close')) bcard.insertAdjacentHTML('afterbegin','<button type="button" class="v149-close" onclick="closeStockBatchModalV149()">إغلاق</button>');
+  }
+
+  function closeAllV149(){ closeStockBatchModalV149(); closeInvoiceViewV149(); }
+  window.openStockBatchModalV149=function(){ ensureSmartInventoryUiV149(); const c=$('stockBatchCardV148'); if(c){ c.classList.add('v149-open'); const bd=$('v149Backdrop'); if(bd) bd.classList.add('show'); } };
+  window.closeStockBatchModalV149=function(){ const c=$('stockBatchCardV148'); if(c) c.classList.remove('v149-open'); const bd=$('v149Backdrop'); if(bd && !$('invoiceViewModalV149')?.classList.contains('show')) bd.classList.remove('show'); };
+
+  function filteredBatchesV149(){
+    const rows=window.stockBatchesV148 || [];
+    const q=str($('batchSearchV149')?.value).trim().toLowerCase();
+    const d=str($('batchDateFilterV149')?.value);
+    const m=str($('batchMonthFilterV149')?.value);
+    return rows.filter(r=>{
+      const date=str(r.batch_date||'');
+      if(d && date!==d) return false;
+      if(m && !date.startsWith(m)) return false;
+      if(q){ const hay=[r.invoice_no,r.id,r.supplier,r.batch_date].join(' ').toLowerCase(); if(!hay.includes(q)) return false; }
+      return true;
+    });
+  }
+  window.clearBatchFiltersV149=function(){ ['batchSearchV149','batchDateFilterV149','batchMonthFilterV149'].forEach(id=>{ if($(id)) $(id).value=''; }); renderStockBatchCardsV149(); };
+  window.renderStockBatchCardsV149=function(){
+    ensureSmartInventoryUiV149();
+    const grid=$('stockBatchCardsGridV149'); if(!grid) return;
+    const rows=filteredBatchesV149();
+    grid.innerHTML=rows.map((r)=>{
+      const idx=(window.stockBatchesV148||[]).indexOf(r);
+      const count=(r.lines||[]).length;
+      return `<div class="v149-invoice-card">
+        <div class="v149-invoice-top"><div><div class="v149-invoice-no">${esc2(r.invoice_no||r.id||'-')}</div><span class="v149-pill">${count} صنف</span></div><div class="v149-invoice-date">${esc2(r.batch_date||'-')}</div></div>
+        <div class="muted">المورد: <b>${esc2(r.supplier||'-')}</b></div>
+        <div class="v149-invoice-meta"><div class="v149-mini"><small>قبل الضريبة</small><b>${money2(r.total_before_vat)} ر.س</b></div><div class="v149-mini"><small>VAT 15%</small><b>${money2(r.total_vat)} ر.س</b></div><div class="v149-mini"><small>الإجمالي شامل</small><b>${money2(r.total_with_vat)} ر.س</b></div><div class="v149-mini"><small>المرجع</small><b>${esc2(r.invoice_no||r.id||'-')}</b></div></div>
+        <div class="row-actions"><button type="button" onclick="viewStockBatchV149(${idx})">عرض الفاتورة</button><button type="button" class="light" onclick="stockBatchPrintSavedV148('${idx}')">طباعة</button></div>
+      </div>`;
+    }).join('') || '<div class="v149-empty">لا توجد فواتير حسب الفلتر الحالي</div>';
+  };
+
+  window.viewStockBatchV149=function(idx){
+    const r=(window.stockBatchesV148||[])[Number(idx)]; if(!r) return;
+    let modal=$('invoiceViewModalV149');
+    if(!modal){ modal=document.createElement('div'); modal.id='invoiceViewModalV149'; modal.className='v149-modal-card'; document.body.appendChild(modal); }
+    const rows=(r.lines||[]).map(l=>`<tr><td>${esc2(l.product_code)}</td><td>${esc2(l.item_name)}</td><td>${esc2(l.category||'')}</td><td>${esc2(l.item_type||'')}</td><td>${esc2(l.unit||'')}</td><td>${qty2(l.quantity)}</td><td>${money2(l.unit_cost)} ر.س</td><td>${money2(l.unit_vat)} ر.س</td><td>${money2(l.unit_gross)} ر.س</td><td>${money2(l.line_gross)} ر.س</td></tr>`).join('');
+    const idxReal=(window.stockBatchesV148||[]).indexOf(r);
+    modal.innerHTML=`<button type="button" class="v149-close" onclick="closeInvoiceViewV149()">إغلاق</button><h2>فاتورة إدخال مخزون</h2><div class="v149-invoice-meta"><div class="v149-mini"><small>رقم الفاتورة</small><b>${esc2(r.invoice_no||r.id||'-')}</b></div><div class="v149-mini"><small>التاريخ</small><b>${esc2(r.batch_date||'-')}</b></div><div class="v149-mini"><small>المورد</small><b>${esc2(r.supplier||'-')}</b></div><div class="v149-mini"><small>عدد الأصناف</small><b>${(r.lines||[]).length}</b></div></div><div class="table-wrap"><table><thead><tr><th>كود المنتج</th><th>الصنف</th><th>التصنيف</th><th>النوع</th><th>الوحدة</th><th>الكمية</th><th>سعر قبل الضريبة</th><th>VAT 15%</th><th>سعر شامل</th><th>الإجمالي شامل</th></tr></thead><tbody>${rows||'<tr><td colspan="10">لا توجد أصناف</td></tr>'}</tbody></table></div><div class="footer-note"><b>Total amount before 15% VAT:</b> ${money2(r.total_before_vat)} SAR<br><b>Total VAT 15%:</b> ${money2(r.total_vat)} SAR<br><b>Total Value with 15% VAT:</b> ${money2(r.total_with_vat)} SAR</div><div class="actions"><button type="button" onclick="stockBatchPrintSavedV148('${idxReal}')">طباعة</button></div>`;
+    modal.classList.add('show'); const bd=$('v149Backdrop'); if(bd) bd.classList.add('show');
+  };
+  window.closeInvoiceViewV149=function(){ const m=$('invoiceViewModalV149'); if(m) m.classList.remove('show'); const bd=$('v149Backdrop'); if(bd && !$('stockBatchCardV148')?.classList.contains('v149-open')) bd.classList.remove('show'); };
+
+  // Wrap existing renderer so old table can update the smart cards too.
+  const oldRender = window.stockBatchRenderBatchesV148;
+  window.stockBatchRenderBatchesV148=function(rows){ if(oldRender) oldRender(rows); renderStockBatchCardsV149(); };
+
+  const oldLoad = window.stockBatchLoadV148;
+  if(oldLoad){ window.stockBatchLoadV148 = async function(force){ const out=await oldLoad.apply(this, arguments); renderStockBatchCardsV149(); return out; }; }
+
+  const oldEnsure=window.financeRenderAll;
+  if(oldEnsure){ window.financeRenderAll=function(){ oldEnsure.apply(this, arguments); setTimeout(()=>{ ensureSmartInventoryUiV149(); renderStockBatchCardsV149(); },50); }; }
+  window.addEventListener('load',()=>setTimeout(()=>{ ensureSmartInventoryUiV149(); renderStockBatchCardsV149(); },900));
+})();
