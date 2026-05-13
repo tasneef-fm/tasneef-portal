@@ -7765,3 +7765,236 @@ function financePrintReport(kind){
   }
   window.addEventListener('load',()=>setTimeout(()=>{injectCssV151(); patchLabelsAndFieldsV151(); applyWarehouseViewV151(); if(window.inventoryRenderItems) inventoryRenderItems();},1200));
 })();
+
+/* ===== V152: Cost Reduction Center + Smart inventory invoice edit/delete ===== */
+(function(){
+  'use strict';
+  const $ = (id)=>document.getElementById(id);
+  const esc = (v)=>String(v ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const num = (v)=>{ const x=parseFloat(String(v ?? '').replace(/,/g,'')); return Number.isFinite(x)?x:0; };
+  const money = (v)=>num(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const qty = (v)=>num(v).toLocaleString('en-US',{maximumFractionDigits:2});
+  const todayMonth = ()=>new Date().toISOString().slice(0,7);
+  const itemCode = (it)=>String(it?.product_code || it?.serial_number || it?.barcode || it?.supplier_barcode || it?.id || '');
+  const itemById = (id)=>(window.data?.inventoryItems||[]).find(i=>String(i.id)===String(id));
+  const itemByCode = (code)=>(window.data?.inventoryItems||[]).find(i=>[i.product_code,i.serial_number,i.barcode,i.supplier_barcode].map(x=>String(x||'').trim()).includes(String(code||'').trim()));
+  const currentMonthRows = (rows, field)=>{ const mon=$('costReductionMonthV152')?.value || ''; return mon ? rows.filter(r=>String(r[field]||'').slice(0,7)===mon) : rows; };
+  const supplierFilter = ()=>String($('costReductionSupplierV152')?.value||'');
+  const projectFilter = ()=>String($('costReductionProjectV152')?.value||'');
+  const supervisorFilter = ()=>String($('costReductionSupervisorV152')?.value||'');
+  const searchFilter = ()=>String($('costReductionSearchV152')?.value||'').trim().toLowerCase();
+
+  function calcLineValue(item, qtyValue){ return num(item?.unit_cost) * num(qtyValue); }
+  function requestLines(r){
+    let arr = r?.request_items || r?.items || r?.request_lines || [];
+    if(typeof arr === 'string'){ try{ arr = JSON.parse(arr); }catch(_){ arr=[]; } }
+    if(!Array.isArray(arr)) arr=[];
+    if(!arr.length && r?.item_id) arr=[{item_id:r.item_id,item_name:r.item_name,quantity:r.quantity,product_code:r.product_code,unit_cost:r.unit_cost}];
+    return arr;
+  }
+  function lineReturnQty(r, line){
+    const ret = r?.return_items || r?.returned_items || r?.returns || [];
+    let arr = ret;
+    if(typeof arr === 'string'){ try{ arr=JSON.parse(arr); }catch(_){ arr=[]; } }
+    if(!Array.isArray(arr)) arr=[];
+    const code = String(line.product_code||line.barcode||'');
+    const id = String(line.item_id||'');
+    const hit = arr.find(x=>String(x.item_id||'')===id || String(x.product_code||x.code||'')===code);
+    return num(hit?.quantity || hit?.return_qty || hit?.qty || line.return_qty || line.returned_qty || 0);
+  }
+  function consumptionRows(){
+    const rows=[];
+    const reqs=currentMonthRows((window.data?.inventoryRequests||[]).filter(r=>String(r.status)==='approved'),'request_date');
+    reqs.forEach(r=>{
+      const pName=r.project_name || (typeof projectName==='function'?projectName(r.project_id):'') || '';
+      const supName=r.supervisor_name || (typeof supervisorName==='function'?supervisorName(r.supervisor_id):'') || '';
+      requestLines(r).forEach(l=>{
+        const it=itemById(l.item_id)||itemByCode(l.product_code)||{};
+        const out=num(l.quantity);
+        const ret=lineReturnQty(r,l);
+        const cons=Math.max(0,out-ret);
+        rows.push({date:r.request_date,project_id:r.project_id,project_name:pName,supervisor_id:r.supervisor_id,supervisor_name:supName,item_id:l.item_id||it.id,product_code:l.product_code||itemCode(it),item_name:l.item_name||it.name||'',supplier:it.supplier||l.supplier||'',category:it.category||l.category||'',out,ret,cons,value:calcLineValue(it, cons),unit_cost:num(it.unit_cost||l.unit_cost)});
+      });
+    });
+    // Add direct inventory consumption/out movements not tied to approved request.
+    currentMonthRows((window.data?.inventoryMovements||[]),'movement_date').forEach(m=>{
+      if(m.request_id) return;
+      if(!['out','consume'].includes(String(m.movement_type))) return;
+      const it=itemById(m.item_id)||{};
+      const cons=num(m.quantity);
+      rows.push({date:m.movement_date,project_id:m.project_id,project_name:m.project_name||(typeof projectName==='function'?projectName(m.project_id):''),supervisor_id:'',supervisor_name:m.receiver||'',item_id:m.item_id,product_code:m.product_code||itemCode(it),item_name:m.item_name||it.name||'',supplier:it.supplier||'',category:it.category||'',out:cons,ret:0,cons,value:calcLineValue(it,cons),unit_cost:num(m.unit_cost||it.unit_cost)});
+    });
+    return applyCostFilters(rows);
+  }
+  function applyCostFilters(rows){
+    const sf=supplierFilter(), pf=projectFilter(), sup=supervisorFilter(), q=searchFilter();
+    let out=[...rows];
+    if(sf) out=out.filter(r=>String(r.supplier)===sf);
+    if(pf) out=out.filter(r=>String(r.project_id)===pf || String(r.project_name)===pf);
+    if(sup) out=out.filter(r=>String(r.supervisor_id)===sup || String(r.supervisor_name)===sup);
+    if(q) out=out.filter(r=>[r.product_code,r.item_name,r.supplier,r.project_name,r.supervisor_name,r.category].join(' ').toLowerCase().includes(q));
+    return out;
+  }
+  function groupSum(rows, keyFn){
+    const map={};
+    rows.forEach(r=>{ const k=keyFn(r)||'-'; if(!map[k]) map[k]={key:k,qty:0,value:0,count:0,items:{},projects:{},supervisors:{}}; map[k].qty+=num(r.cons); map[k].value+=num(r.value); map[k].count++; map[k].items[r.item_name]=(map[k].items[r.item_name]||0)+num(r.cons); map[k].projects[r.project_name]=(map[k].projects[r.project_name]||0)+num(r.cons); map[k].supervisors[r.supervisor_name]=(map[k].supervisors[r.supervisor_name]||0)+num(r.cons); });
+    return Object.values(map).sort((a,b)=>b.value-a.value);
+  }
+  function topName(obj){ const a=Object.entries(obj||{}).sort((x,y)=>y[1]-x[1])[0]; return a ? `${a[0]} (${qty(a[1])})` : '-'; }
+
+  function injectCostReductionUi(){
+    if(!$('financeDashboard')) return;
+    const tabs = document.querySelector('#financeDashboard .finance-tabs');
+    if(tabs && !$('financeTabBtnCostReductionV152')){
+      const btn=document.createElement('button'); btn.id='financeTabBtnCostReductionV152'; btn.className='light finance-tab'; btn.textContent='تقليل التكلفة'; btn.onclick=function(){ financeShowTab('costReduction',this); setTimeout(renderCostReductionV152,80); };
+      tabs.appendChild(btn);
+    }
+    if(!$('financeTabCostReduction')){
+      const sec=document.createElement('div'); sec.id='financeTabCostReduction'; sec.className='finance-tab-page hidden';
+      sec.innerHTML=`
+        <div class="v152-cr-head">
+          <div><h2>Cost Reduction Center</h2><p>تحليل ذكي لاستهلاك المخزون والمصروفات لتحديد الهدر وفرص التوفير.</p></div>
+          <button class="light" onclick="renderCostReductionV152()">تحديث التحليل</button>
+        </div>
+        <div class="v152-filter-panel">
+          <input id="costReductionSearchV152" placeholder="بحث: صنف / مشروع / مشرف / مورد" oninput="renderCostReductionV152()">
+          <select id="costReductionMonthV152" onchange="renderCostReductionV152()"></select>
+          <select id="costReductionProjectV152" onchange="renderCostReductionV152()"><option value="">كل المشاريع</option></select>
+          <select id="costReductionSupervisorV152" onchange="renderCostReductionV152()"><option value="">كل المشرفين</option></select>
+          <select id="costReductionSupplierV152" onchange="renderCostReductionV152()"><option value="">كل الموردين</option></select>
+        </div>
+        <div class="v152-kpis" id="costReductionKpisV152"></div>
+        <div class="v152-cr-grid">
+          <section class="v152-panel"><h3>أعلى الأصناف استهلاكًا</h3><div id="costTopItemsV152"></div></section>
+          <section class="v152-panel"><h3>أعلى المشاريع تكلفة</h3><div id="costTopProjectsV152"></div></section>
+          <section class="v152-panel"><h3>أعلى المشرفين صرفًا</h3><div id="costTopSupervisorsV152"></div></section>
+          <section class="v152-panel"><h3>مقارنة الموردين والأسعار</h3><div id="costSupplierCompareV152"></div></section>
+          <section class="v152-panel v152-wide"><h3>توصيات تقليل التكلفة</h3><div id="costRecommendationsV152"></div></section>
+        </div>`;
+      const after=$('financeTabCostCenters') || $('financeTabReports') || $('financeTabInventory');
+      (after?.parentNode||$('financeDashboard')).appendChild(sec);
+    }
+    fillCostFiltersV152(); injectCssV152();
+  }
+  function fillCostFiltersV152(){
+    const mon=$('costReductionMonthV152'); if(mon && !mon.dataset.ready){ const now=todayMonth(); mon.innerHTML='<option value="">كل الفترات</option>'+Array.from({length:14},(_,i)=>{ const d=new Date(); d.setMonth(d.getMonth()-i); const v=d.toISOString().slice(0,7); return `<option value="${v}" ${v===now?'selected':''}>${v}</option>`; }).join(''); mon.dataset.ready='1'; }
+    const proj=$('costReductionProjectV152'); if(proj){ const cur=proj.value; proj.innerHTML='<option value="">كل المشاريع</option>'+(window.data?.projects||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); proj.value=cur; }
+    const sup=$('costReductionSupervisorV152'); if(sup){ const cur=sup.value; const rows=(window.data?.supervisors||[]).length?window.data.supervisors:(window.data?.users||[]); sup.innerHTML='<option value="">كل المشرفين</option>'+rows.map(s=>`<option value="${esc(s.id)}">${esc(s.full_name||s.username||s.name)}</option>`).join(''); sup.value=cur; }
+    const suppliers=[...new Set((window.data?.inventoryItems||[]).map(i=>i.supplier).filter(Boolean))].sort(); const sel=$('costReductionSupplierV152'); if(sel){ const cur=sel.value; sel.innerHTML='<option value="">كل الموردين</option>'+suppliers.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''); sel.value=cur; }
+  }
+  function tableHtml(headers, rows){ return `<div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows || `<tr><td colspan="${headers.length}">لا توجد بيانات</td></tr>`}</tbody></table></div>`; }
+  window.renderCostReductionV152=function(){
+    injectCostReductionUi(); fillCostFiltersV152();
+    const rows=consumptionRows();
+    const totalValue=rows.reduce((a,r)=>a+num(r.value),0), totalQty=rows.reduce((a,r)=>a+num(r.cons),0);
+    const itemGroups=groupSum(rows,r=>r.item_name).slice(0,8);
+    const projectGroups=groupSum(rows,r=>r.project_name).slice(0,8);
+    const supervisorGroups=groupSum(rows,r=>r.supervisor_name).slice(0,8);
+    const kpis=$('costReductionKpisV152'); if(kpis) kpis.innerHTML=`
+      <div><small>قيمة الاستهلاك</small><b>${money(totalValue)} ر.س</b></div>
+      <div><small>إجمالي الكمية</small><b>${qty(totalQty)}</b></div>
+      <div><small>عدد العمليات</small><b>${rows.length}</b></div>
+      <div><small>الأصناف المتأثرة</small><b>${new Set(rows.map(r=>r.item_name)).size}</b></div>`;
+    const ti=$('costTopItemsV152'); if(ti) ti.innerHTML=tableHtml(['الصنف','الكمية','القيمة','أكثر مشروع','أكثر مشرف'], itemGroups.map(g=>`<tr><td><b>${esc(g.key)}</b></td><td>${qty(g.qty)}</td><td>${money(g.value)} ر.س</td><td>${esc(topName(g.projects))}</td><td>${esc(topName(g.supervisors))}</td></tr>`).join(''));
+    const tp=$('costTopProjectsV152'); if(tp) tp.innerHTML=tableHtml(['المشروع','الكمية','القيمة','أكثر صنف'], projectGroups.map(g=>`<tr><td><b>${esc(g.key)}</b></td><td>${qty(g.qty)}</td><td>${money(g.value)} ر.س</td><td>${esc(topName(g.items))}</td></tr>`).join(''));
+    const ts=$('costTopSupervisorsV152'); if(ts) ts.innerHTML=tableHtml(['المشرف','الطلبات/الحركات','الكمية','القيمة','أكثر صنف'], supervisorGroups.map(g=>`<tr><td><b>${esc(g.key)}</b></td><td>${g.count}</td><td>${qty(g.qty)}</td><td>${money(g.value)} ر.س</td><td>${esc(topName(g.items))}</td></tr>`).join(''));
+    renderSupplierCompareV152(rows); renderRecommendationsV152(rows,itemGroups,projectGroups,supervisorGroups);
+  };
+  function renderSupplierCompareV152(rows){
+    const items=window.data?.inventoryItems||[]; const byCode={};
+    items.forEach(it=>{ const code=itemCode(it)||it.name; if(!byCode[code]) byCode[code]=[]; byCode[code].push(it); });
+    const lines=[];
+    Object.values(byCode).forEach(list=>{
+      const uniq=[...new Map(list.filter(x=>x.supplier).map(x=>[x.supplier+'|'+num(x.unit_cost),x])).values()];
+      if(uniq.length<2) return;
+      uniq.sort((a,b)=>num(a.unit_cost)-num(b.unit_cost)); const low=uniq[0], high=uniq[uniq.length-1]; const diff=num(high.unit_cost)-num(low.unit_cost);
+      if(diff>0) lines.push(`<tr><td>${esc(low.name||high.name)}</td><td>${esc(low.supplier)}</td><td>${money(low.unit_cost)} ر.س</td><td>${esc(high.supplier)}</td><td>${money(high.unit_cost)} ر.س</td><td><b>${money(diff)} ر.س</b></td></tr>`);
+    });
+    const el=$('costSupplierCompareV152'); if(el) el.innerHTML=tableHtml(['الصنف','أقل مورد','أقل سعر','أعلى مورد','أعلى سعر','فرق الحبة'], lines.slice(0,10).join(''));
+  }
+  function renderRecommendationsV152(rows,itemGroups,projectGroups,supervisorGroups){
+    const rec=[];
+    if(itemGroups[0]) rec.push(`راجع استهلاك <b>${esc(itemGroups[0].key)}</b> لأنه أعلى صنف من حيث القيمة خلال الفترة المحددة.`);
+    if(projectGroups[0]) rec.push(`مشروع <b>${esc(projectGroups[0].key)}</b> هو الأعلى تكلفة؛ يفضل مراجعة سبب الصرف وحدود الاستهلاك الشهرية.`);
+    if(supervisorGroups[0]) rec.push(`المشرف/المستلم <b>${esc(supervisorGroups[0].key)}</b> لديه أعلى قيمة صرف؛ المؤشر للمراجعة وليس اتهامًا.`);
+    const cnRows=rows.filter(r=>String(r.project_name||'').match(/كلين|ادار|إدار|عام|شركة|سكن|سيارات/i));
+    if(cnRows.length) rec.push(`يوجد استهلاك على مراكز عامة/إدارية؛ الأفضل تحميلها على مشروع محدد عند الإمكان لتقليل مصروفات CN.`);
+    if(!rec.length) rec.push('لا توجد مؤشرات هدر واضحة حسب الفلاتر الحالية.');
+    const el=$('costRecommendationsV152'); if(el) el.innerHTML=`<div class="v152-recs">${rec.map((r,i)=>`<div><b>توصية ${i+1}</b><p>${r}</p></div>`).join('')}</div>`;
+  }
+
+  async function reverseBatchLines(batch){
+    for(const l of (batch.lines||[])){
+      const it=itemById(l.item_id)||itemByCode(l.product_code);
+      if(it && window.sb){ await sb.from('inventory_items').update({quantity:Math.max(0,num(it.quantity)-num(l.quantity))}).eq('id', it.id); }
+      if(l.movement_id && window.sb){ try{ await sb.from('inventory_movements').delete().eq('id', l.movement_id); }catch(_){} }
+    }
+  }
+  window.stockBatchDeleteV152 = async function(idx){
+    const batch=(window.stockBatchesV148||[])[Number(idx)]; if(!batch) return msg('لم يتم العثور على الفاتورة','err');
+    if(!confirm('تأكيد حذف فاتورة المخزون؟ سيتم عكس كمياتها من الأصناف.')) return;
+    try{
+      await reverseBatchLines(batch);
+      if(batch.id && window.sb){ await sb.from('inventory_batch_items').delete().eq('batch_id', batch.id); await sb.from('inventory_batches').delete().eq('id', batch.id); }
+      msg('تم حذف فاتورة المخزون وعكس كمياتها'); await financeLoadAll(); await stockBatchLoadV148(true); renderCostReductionV152();
+    }catch(e){ msg(e.message||String(e),'err'); }
+  };
+
+  window.stockBatchEditV152 = function(idx){
+    const batch=(window.stockBatchesV148||[])[Number(idx)]; if(!batch) return msg('لم يتم العثور على الفاتورة','err');
+    const rows=(batch.lines||[]).map((l,i)=>`<tr><td>${esc(l.product_code||'')}</td><td>${esc(l.item_name||'')}</td><td><input type="number" step="0.01" id="editQty_${i}" value="${num(l.quantity)}"></td><td><input type="number" step="0.01" id="editCost_${i}" value="${num(l.unit_price_before_vat||l.unit_cost)}"></td></tr>`).join('');
+    const html=`<div class="v152-edit-modal" id="batchEditModalV152"><div class="v152-edit-card"><button class="v152-close" onclick="document.getElementById('batchEditModalV152').remove()">إغلاق</button><h2>تعديل فاتورة مخزون</h2><div class="split"><div><label>رقم الفاتورة</label><input id="editInvoiceV152" value="${esc(batch.invoice_no||'')}"></div><div><label>التاريخ</label><input type="date" id="editDateV152" value="${esc(batch.batch_date||'')}"></div></div><label>المورد</label><input id="editSupplierV152" value="${esc(batch.supplier||'')}"><div class="table-wrap"><table><thead><tr><th>كود المنتج</th><th>الصنف</th><th>الكمية</th><th>سعر قبل الضريبة</th></tr></thead><tbody>${rows}</tbody></table></div><div class="actions"><button onclick="stockBatchSaveEditV152(${Number(idx)})">حفظ التعديل</button><button class="light" onclick="document.getElementById('batchEditModalV152').remove()">إلغاء</button></div></div></div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  };
+  window.stockBatchSaveEditV152 = async function(idx){
+    const batch=(window.stockBatchesV148||[])[Number(idx)]; if(!batch) return;
+    try{
+      let net=0, vat=0, gross=0; const vatRate=0.15; const updated=[];
+      for(let i=0;i<(batch.lines||[]).length;i++){
+        const l=batch.lines[i]; const newQty=num($('editQty_'+i)?.value); const newCost=num($('editCost_'+i)?.value); const oldQty=num(l.quantity); const diff=newQty-oldQty; const unitVat=newCost*vatRate; const unitGross=newCost+unitVat; const lineNet=newQty*newCost; const lineVat=newQty*unitVat; const lineGross=newQty*unitGross;
+        net+=lineNet; vat+=lineVat; gross+=lineGross;
+        const it=itemById(l.item_id)||itemByCode(l.product_code); if(it && diff && window.sb){ await sb.from('inventory_items').update({quantity:Math.max(0,num(it.quantity)+diff), unit_cost:newCost}).eq('id', it.id); }
+        if(l.id && window.sb){ await sb.from('inventory_batch_items').update({quantity:newQty,unit_price_before_vat:newCost,unit_vat:unitVat,unit_price_with_vat:unitGross,total_before_vat:lineNet,total_vat:lineVat,total_with_vat:lineGross}).eq('id', l.id); }
+        if(l.movement_id && window.sb){ await sb.from('inventory_movements').update({quantity:newQty,unit_cost:newCost}).eq('id', l.movement_id); }
+        updated.push({...l,quantity:newQty,unit_price_before_vat:newCost,unit_cost:newCost,unit_vat:unitVat,unit_gross:unitGross,total_before_vat:lineNet,total_vat:lineVat,total_with_vat:lineGross});
+      }
+      const patch={invoice_no:$('editInvoiceV152')?.value||batch.invoice_no,batch_date:$('editDateV152')?.value||batch.batch_date,supplier:$('editSupplierV152')?.value||batch.supplier,total_before_vat:net,total_vat:vat,total_with_vat:gross};
+      if(batch.id && window.sb) await sb.from('inventory_batches').update(patch).eq('id', batch.id);
+      document.getElementById('batchEditModalV152')?.remove(); msg('تم تعديل فاتورة المخزون'); await financeLoadAll(); await stockBatchLoadV148(true); renderCostReductionV152();
+    }catch(e){ msg(e.message||String(e),'err'); }
+  };
+
+  function enhanceBatchCards(){
+    const old=window.renderStockBatchCardsV149;
+    if(old && !old.v152Wrapped){
+      window.renderStockBatchCardsV149=function(){
+        old.apply(this, arguments);
+        const grid=$('stockBatchCardsGridV149'); if(!grid) return;
+        [...grid.querySelectorAll('.v149-invoice-card')].forEach((card,idx)=>{
+          const actions=card.querySelector('.row-actions'); if(actions && !actions.querySelector('.v152-edit')){
+            actions.insertAdjacentHTML('beforeend', `<button type="button" class="light v152-edit" onclick="stockBatchEditV152('${idx}')">تعديل</button><button type="button" class="danger v152-delete" onclick="stockBatchDeleteV152('${idx}')">حذف</button>`);
+          }
+        });
+      };
+      window.renderStockBatchCardsV149.v152Wrapped=true;
+    }
+  }
+
+  function injectCssV152(){
+    if($('v152Css')) return; const st=document.createElement('style'); st.id='v152Css'; st.textContent=`
+      .v152-cr-head{display:flex;justify-content:space-between;gap:16px;align-items:center;background:linear-gradient(135deg,#004b3a,#0f6b4f);color:#fff;border-radius:22px;padding:18px;margin-bottom:14px}.v152-cr-head h2{margin:0;color:#fff}.v152-cr-head p{margin:4px 0 0;color:#dff5ec}.v152-filter-panel{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:10px;background:#fff;border:1px solid #d6e6df;border-radius:18px;padding:12px;margin-bottom:14px}.v152-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}.v152-kpis div{background:#fff;border:1px solid #d6e6df;border-radius:18px;padding:14px;text-align:center;box-shadow:0 10px 24px rgba(0,45,31,.05)}.v152-kpis small{display:block;color:#60756d}.v152-kpis b{display:block;color:#004b3a;font-size:22px;margin-top:4px}.v152-cr-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.v152-panel{background:#fff;border:1px solid #d6e6df;border-radius:22px;padding:16px;box-shadow:0 10px 24px rgba(0,45,31,.04)}.v152-panel h3{margin:0 0 12px;color:#004b3a}.v152-wide{grid-column:1/-1}.v152-recs{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.v152-recs div{border:1px solid #d6e6df;border-radius:16px;padding:12px;background:#f8fcfa}.v152-recs p{margin:6px 0 0;line-height:1.7}.v152-edit-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:grid;place-items:center;padding:20px}.v152-edit-card{background:#fff;border-radius:24px;padding:22px;max-width:900px;width:min(900px,96vw);max-height:90vh;overflow:auto;position:relative}.v152-close{position:absolute;top:10px;left:10px;background:#eef4f1!important;color:#173c2b!important}.v152-delete{background:#c73535!important;color:#fff!important}@media(max-width:900px){.v152-filter-panel,.v152-kpis,.v152-cr-grid{grid-template-columns:1fr}.v152-cr-head{display:block}}`;
+    document.head.appendChild(st);
+  }
+
+  const oldShow=window.financeShowTab;
+  if(oldShow && !oldShow.v152Wrapped){
+    const wrapped=function(tab,btn){ const out=oldShow.apply(this, arguments); setTimeout(()=>{ injectCostReductionUi(); enhanceBatchCards(); if(tab==='costReduction') renderCostReductionV152(); },120); return out; };
+    wrapped.v152Wrapped=true; window.financeShowTab=wrapped;
+  }
+  const oldRender=window.financeRenderAll;
+  if(oldRender && !oldRender.v152Wrapped){
+    const wrapped=function(){ const out=oldRender.apply(this, arguments); setTimeout(()=>{ injectCostReductionUi(); enhanceBatchCards(); if(!$('financeTabCostReduction')?.classList.contains('hidden')) renderCostReductionV152(); },160); return out; };
+    wrapped.v152Wrapped=true; window.financeRenderAll=wrapped;
+  }
+  window.addEventListener('load',()=>setTimeout(()=>{ injectCostReductionUi(); enhanceBatchCards(); if(window.renderStockBatchCardsV149) renderStockBatchCardsV149(); },1200));
+})();
