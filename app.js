@@ -8206,3 +8206,159 @@ function financePrintReport(kind){
     }catch(e){}
   };
 })();
+
+
+/* ===================== V157 Client Reports Service/Edit + Smart Sidebar Logo Fix ===================== */
+(function(){
+  'use strict';
+  const $v157 = id => document.getElementById(id);
+  const esc157 = v => (typeof esc==='function'?esc(v):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+  function arr157(v){
+    if(Array.isArray(v)) return v;
+    if(!v) return [];
+    if(typeof v==='string'){
+      try{ const x=JSON.parse(v); return Array.isArray(x)?x:[]; }catch(_){ return []; }
+    }
+    return [];
+  }
+  function reportServices157(reportId){
+    return (window.data?.clientReportServices||[])
+      .filter(s=>String(s.report_id)===String(reportId))
+      .sort((a,b)=>(Number(a.sort_order)||0)-(Number(b.sort_order)||0));
+  }
+  function serviceName157(s){
+    return String(s?.service_type || s?.title || s?.service_name || 'خدمة').trim();
+  }
+  function serviceNames157(reportId, fallback){
+    const names = reportServices157(reportId).map(serviceName157).filter(Boolean);
+    if(names.length) return [...new Set(names)];
+    return fallback ? [fallback] : [];
+  }
+  function reportRating157(reportId){
+    if(typeof avgRatingLabel==='function') return avgRatingLabel(reportId);
+    const rs=(window.data?.clientServiceRatings||[]).filter(r=>String(r.report_id)===String(reportId));
+    return rs.length ? (rs[0].rating||'تم التقييم') : 'لم يتم التقييم';
+  }
+  function badgeClass157(v){
+    if(typeof ratingClass==='function') return ratingClass(v);
+    return v==='يحتاج تحسين'?'red':(v&&v!=='لم يتم التقييم'?'green':'amber');
+  }
+  function statusText157(s){ return typeof reportStatusText==='function'?reportStatusText(s):(s==='published'?'معتمد ومنشور':s==='draft'?'مسودة':'غير منشور'); }
+  function statusClass157(s){ return typeof reportStatusClass==='function'?reportStatusClass(s):(s==='published'?'green':s==='draft'?'amber':'red'); }
+  function reportUrl157(token){ return typeof clientReportUrl==='function'?clientReportUrl(token):('client-report.html?token='+encodeURIComponent(token||'')); }
+
+  // Fix service display in client reports table and keep filters working.
+  window.serviceNamesForReport = function(reportId){ return serviceNames157(reportId, ''); };
+  window.reportMatchesService = function(reportId, service){
+    if(!service) return true;
+    return serviceNames157(reportId,'').some(n=>String(n).includes(service));
+  };
+
+  window.renderPremiumReports = function(){
+    const body=$v157('premiumReportsBody'); if(!body) return;
+    const reports=window.data?.clientReports||[];
+    const month=$v157('premiumReportFilterMonth')?.value || (typeof today==='function'?today().slice(0,7):'');
+    const mReports=reports.filter(r=>String(r.report_date||'').startsWith(month));
+    if($v157('reportsTotalKpi')) $v157('reportsTotalKpi').textContent=reports.length;
+    if($v157('reportsMonthKpi')) $v157('reportsMonthKpi').textContent=mReports.length;
+    if($v157('reportsDraftKpi')) $v157('reportsDraftKpi').textContent=reports.filter(r=>r.status==='draft').length;
+    if($v157('reportsPublishedKpi')) $v157('reportsPublishedKpi').textContent=reports.filter(r=>r.status==='published').length;
+    if($v157('reportsFollowKpi')) $v157('reportsFollowKpi').textContent=(window.data?.clientServiceRatings||[]).filter(r=>r.rating==='يحتاج تحسين'||r.followup_requested).length;
+    try{ if(typeof renderProjectsWithoutReports==='function') renderProjectsWithoutReports(); }catch(_){ }
+    const q=($v157('premiumReportSearch')?.value||'').trim();
+    const smart=($v157('premiumServiceSmartSearch')?.value||'').trim();
+    const pid=$v157('premiumReportFilterProject')?.value||'';
+    const st=$v157('premiumReportFilterStatus')?.value||'';
+    const sv=$v157('premiumReportFilterService')?.value||'';
+    const rt=$v157('premiumReportFilterRating')?.value||'';
+    let rows=[...reports];
+    if(q) rows=rows.filter(r=>[r.report_no,r.project_name,r.title,r.report_type,serviceNames157(r.id,r.report_type).join(' ')].join(' ').includes(q));
+    if(smart) rows=rows.filter(r=>[r.report_no,r.project_name,r.title,r.report_type,serviceNames157(r.id,r.report_type).join(' ')].join(' ').includes(smart));
+    if(pid) rows=rows.filter(r=>String(r.project_id)===String(pid));
+    if(st) rows=rows.filter(r=>(r.status||'unpublished')===st);
+    if(month) rows=rows.filter(r=>String(r.report_date||'').startsWith(month));
+    if(sv) rows=rows.filter(r=>serviceNames157(r.id,r.report_type).some(n=>String(n).includes(sv)));
+    if(rt) rows=rows.filter(r=> rt==='none' ? !(window.data?.clientServiceRatings||[]).some(x=>String(x.report_id)===String(r.id)) : (window.data?.clientServiceRatings||[]).some(x=>String(x.report_id)===String(r.id)&&x.rating===rt));
+    body.innerHTML=rows.map(r=>{
+      const names=serviceNames157(r.id,r.report_type);
+      const rating=reportRating157(r.id);
+      const url=r.public_token?reportUrl157(r.public_token):'';
+      const servicesHtml=names.length?names.map(n=>`<span class="service-chip">${esc157(n)}</span>`).join(''):'<span class="service-chip">غير محدد</span>';
+      return `<tr><td><b>${esc157(r.report_no||r.id)}</b><br><small>${esc157(r.title||'')}</small></td><td>${esc157(r.report_date||'')}</td><td>${esc157(r.project_name||(typeof projectName==='function'?projectName(r.project_id):''))}</td><td>${servicesHtml}</td><td><span class="badge ${statusClass157(r.status)}">${statusText157(r.status)}</span></td><td><span class="badge ${badgeClass157(rating)}">${esc157(rating)}</span></td><td>${url?`<div class="client-copy">${esc157(url)}</div><button class="light" onclick="copyText('${encodeURIComponent(url)}')">نسخ</button>`:'غير منشور'}</td><td class="row-actions"><button onclick="editPremiumReport('${r.id}')">تعديل</button>${r.status==='published'?`<button class="light" onclick="openClientReport('${r.public_token}')">عرض</button><button class="light" onclick="sendPremiumWhatsapp('${r.id}')">واتساب</button>`:''}<button class="danger" onclick="deletePremiumReport('${r.id}')">حذف</button></td></tr>`;
+    }).join('') || `<tr><td colspan="8">${window.data?.clientReportsError?'شغّل ملف SQL الخاص بالتقارير في Supabase':'لا توجد تقارير'}</td></tr>`;
+    try{ renderClientReportProjectSlides157(); }catch(_){ }
+  };
+
+  function makeServiceState157(s){
+    return {
+      service_type: serviceName157(s),
+      title: s?.title || serviceName157(s),
+      service_description: s?.service_description || '',
+      scope_work: s?.scope_work || '',
+      notes: s?.notes || '',
+      before_images: arr157(s?.before_images),
+      during_images: arr157(s?.during_images),
+      after_images: arr157(s?.after_images),
+      source: s?.source || 'admin'
+    };
+  }
+
+  // Fix Edit button: always show the edit form and rebuild services editor.
+  window.editPremiumReport = async function(id){
+    const r=(window.data?.clientReports||[]).find(x=>String(x.id)===String(id));
+    if(!r){ try{ msg('لم يتم العثور على التقرير','err'); }catch(_){ alert('لم يتم العثور على التقرير'); } return; }
+    const set=(id,v)=>{ const el=$v157(id); if(el) el.value=v??''; };
+    set('premiumReportId', r.id);
+    set('premiumReportProject', r.project_id||'');
+    set('premiumReportDate', r.report_date || (typeof today==='function'?today():''));
+    set('premiumReportTitle', r.title||'');
+    set('premiumReportType', r.report_type||'تقرير خدمات');
+    set('premiumChairmanName', r.chairman_name||'');
+    set('premiumChairmanPhone', r.chairman_phone||'');
+    set('premiumSummary', r.executive_summary || (typeof defaultReportSummary==='function'?defaultReportSummary():''));
+    const services=reportServices157(id).map(makeServiceState157);
+    window.premiumServicesState = services.length ? services : [(typeof makeService==='function'?makeService(r.report_type||'خدمة'):{service_type:r.report_type||'خدمة',title:r.report_type||'خدمة',before_images:[],during_images:[],after_images:[]})];
+    // premiumServicesState is a global let in the original script; assign via eval-safe fallback.
+    try{ premiumServicesState = window.premiumServicesState; }catch(_){ }
+    if(typeof renderPremiumServicesEditor==='function') renderPremiumServicesEditor();
+    const title=$v157('premiumReportFormTitle'); if(title) title.textContent='تعديل تقرير';
+    const card=$v157('premiumReportFormCard');
+    if(card){ card.classList.remove('hidden'); card.style.display='block'; card.scrollIntoView({behavior:'smooth',block:'start'}); }
+    try{ msg('تم فتح التقرير للتعديل','ok'); }catch(_){ }
+  };
+
+  function renderClientReportProjectSlides157(){
+    const box=$v157('clientReportProjectSlides'); if(!box) return;
+    const reports=window.data?.clientReports||[];
+    const by=new Map();
+    reports.forEach(r=>{
+      const k=String(r.project_id||r.project_name||'');
+      if(!by.has(k)) by.set(k,{project_id:r.project_id,project:r.project_name||'',total:0,published:0,draft:0,services:{}});
+      const g=by.get(k); g.total++; if(r.status==='published') g.published++; if(r.status==='draft') g.draft++;
+      serviceNames157(r.id,r.report_type).forEach(n=>{g.services[n]=(g.services[n]||0)+1;});
+    });
+    box.innerHTML=[...by.values()].sort((a,b)=>b.total-a.total).map(g=>`<button type="button" class="smart-report-card" onclick="document.getElementById('premiumReportFilterProject').value='${g.project_id||''}'; renderPremiumReports();"><span>${esc157(g.project)}</span><b>${g.published} منشور / ${g.total} تقرير</b><small>${Object.entries(g.services).slice(0,4).map(([n,c])=>`${esc157(n)}: ${c}`).join(' | ')||'لا توجد خدمات'}</small></button>`).join('')||'<div class="footer-note">لا توجد تقارير بعد</div>';
+    const dl=$v157('premiumServiceSmartList'); if(dl){ const names=new Set(); reports.forEach(r=>{names.add(r.project_name);names.add(r.title);names.add(r.report_type);}); (window.data?.clientReportServices||[]).forEach(s=>{names.add(serviceName157(s)); names.add(s.title);}); dl.innerHTML=[...names].filter(Boolean).map(x=>`<option value="${esc157(x)}"></option>`).join(''); }
+  }
+
+  // Smart sidebar logo/brand: clearer logo card without disturbing menu behavior.
+  function applySmartSidebarLogo157(){
+    const brand=document.querySelector('.side .brand'); if(!brand || brand.dataset.v157==='1') return;
+    brand.dataset.v157='1';
+    brand.innerHTML=`<div class="sidebar-logo-card-v157"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><span>ت</span></div><div class="sidebar-brand-text-v157"><b>شركة تصنيف</b><small>إدارة المرافق</small></div>`;
+  }
+  const st=document.createElement('style');
+  st.textContent=`
+    .side .brand{gap:10px!important;margin-bottom:20px!important;align-items:center!important;justify-content:flex-start!important;direction:rtl}
+    .sidebar-logo-card-v157{width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,#ffffff,#dff2eb);border:1px solid rgba(255,255,255,.28);box-shadow:0 10px 26px rgba(0,0,0,.16);display:grid;place-items:center;overflow:hidden;position:relative;flex:0 0 52px}
+    .sidebar-logo-card-v157 img{width:42px;height:42px;object-fit:contain;position:absolute;inset:5px;margin:auto}
+    .sidebar-logo-card-v157 span{display:none;width:38px;height:38px;border-radius:14px;background:#0a5a49;color:white;font-size:22px;font-weight:900;place-items:center}
+    .sidebar-logo-card-v157 img[style*="display: none"] + span{display:grid!important}
+    .sidebar-brand-text-v157{line-height:1.4;text-align:right;color:#fff;min-width:0}.sidebar-brand-text-v157 b{display:block;font-size:15px;font-weight:900;white-space:nowrap}.sidebar-brand-text-v157 small{display:block;color:#b8c8df;font-size:11px;white-space:nowrap}
+    .service-chip{display:inline-block;margin:2px;padding:4px 8px;border-radius:999px;background:#e9f6f1;color:#0a5a49;font-weight:700;font-size:12px}
+  `;
+  document.head.appendChild(st);
+
+  window.addEventListener('load',()=>setTimeout(()=>{ applySmartSidebarLogo157(); try{ window.renderPremiumReports(); }catch(_){ } },500));
+  document.addEventListener('DOMContentLoaded',applySmartSidebarLogo157);
+})();
