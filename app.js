@@ -9127,7 +9127,7 @@ function financePrintReport(kind){
   const esc = v => String(v ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const money = v => n(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const currentRole = () => { try{ return (typeof session==='function' ? (session()?.role||'') : '') || JSON.parse(localStorage.getItem('tasneef_session')||'{}')?.role || ''; }catch(_){ return ''; } };
-  const isWarehouse = () => currentRole()==='warehouse_manager' || /مدير مخازن/.test(txt(document.body?.innerText||''));
+  const isWarehouse = () => currentRole()==='warehouse_manager';
 
   function batchRows(){ return window.stockBatchesV148 || []; }
   function filteredBatches(){
@@ -9248,7 +9248,7 @@ function financePrintReport(kind){
     const invTab=$('financeTabInventory'); if(invTab) invTab.classList.add('hidden');
     const catTab=$('financeTabCatalog'); if(catTab) catTab.classList.remove('hidden');
     const btns=[...document.querySelectorAll('#financeDashboard .finance-tab')];
-    btns.forEach(btn=>{ const t=txt(btn.textContent); btn.style.display=(t==='طلبات الصرف'||t==='الأصناف')?'':'none'; });
+    if(role()==='warehouse_manager'){ btns.forEach(btn=>{ const t=txt(btn.textContent); btn.style.display=(t==='طلبات الصرف'||t==='الأصناف')?'':'none'; }); } else { btns.forEach(btn=>btn.style.display=''); }
     document.querySelectorAll('#stockBatchCardsGridV149,.v149-invoice-meta,#smartStockInvoicesV149,#stockBatchCardV148').forEach(el=>{ el.style.display='none'; });
     // Hide any price text in catalog/product modal for warehouse manager.
     document.querySelectorAll('.warehouse-manager-view-v162 .v151-item-card, .warehouse-manager-view-v162 #financeTabCatalog').forEach(root=>{
@@ -9601,7 +9601,7 @@ function financePrintReport(kind){
     if(!isWarehouse()) return;
     ensureCatalogTab();
     document.body.classList.add('warehouse-manager-view-v164');
-    document.querySelectorAll('#financeDashboard .finance-tab').forEach(btn=>{ const t=S(btn.textContent); btn.style.display=(t==='طلبات الصرف'||t==='الأصناف')?'':'none'; });
+    if(role()==='warehouse_manager'){ document.querySelectorAll('#financeDashboard .finance-tab').forEach(btn=>{ const t=S(btn.textContent); btn.style.display=(t==='طلبات الصرف'||t==='الأصناف')?'':'none'; }); } else { document.querySelectorAll('#financeDashboard .finance-tab').forEach(btn=>btn.style.display=''); }
     ['financeTabOverview','financeTabExpenses','financeTabInventory','financeTabMovements','financeTabReports','financeTabCostCenters'].forEach(id=>$(id)?.classList.add('hidden'));
     $('financeTabCatalog')?.classList.remove('hidden');
     renderWarehouseCatalog();
@@ -10090,7 +10090,7 @@ function financePrintReport(kind){
       document.body.classList.remove('warehouse-manager-view-v151','warehouse-manager-view-v162','warehouse-manager-view-v163','warehouse-manager-view-v164');
       financeTabs().forEach(b => { b.style.removeProperty('display'); b.hidden=false; });
     }else{
-      financeTabs().forEach(b => { const t=S(b.textContent); b.style.display = (t==='طلبات الصرف' || t==='الأصناف') ? '' : 'none'; });
+      if(role()==='warehouse_manager'){ financeTabs().forEach(b => { const t=S(b.textContent); b.style.display = (t==='طلبات الصرف' || t==='الأصناف') ? '' : 'none'; }); } else { financeTabs().forEach(b=>b.style.display=''); }
       if(!['requests','catalog'].includes(tab)) tab='requests';
     }
     const wanted = $('financeTab'+cap(tab));
