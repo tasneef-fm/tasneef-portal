@@ -9923,499 +9923,137 @@ function financePrintReport(kind){
   console.log('V167 client reports edit database connection fix loaded');
 })();
 
-/* ===== V169: Finance tabs visibility + reports filters/current-data fix ===== */
+/* ===== V175 System Stability Rebuild: Monthly engine + camera + loading ===== */
 (function(){
-  'use strict';
-  const $ = id => document.getElementById(id);
-  const S = v => String(v ?? '').trim();
-  const N = v => { const x = parseFloat(String(v ?? 0).replace(/,/g,'')); return Number.isFinite(x) ? x : 0; };
-  const E = v => S(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const M = v => N(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ر.س';
-  const Q = v => N(v).toLocaleString('en-US',{maximumFractionDigits:2});
-  const role = () => { try { return (typeof session==='function' ? (session()||{}).role : '') || JSON.parse(localStorage.getItem('tasneef_session')||'{}').role || ''; } catch(_) { return ''; } };
-  const isWarehouse = () => role()==='warehouse_manager';
-  const cap = t => S(t).charAt(0).toUpperCase() + S(t).slice(1);
-  const financeTabs = () => Array.from(document.querySelectorAll('#financeDashboard .finance-tab'));
-  const allFinancePageIds = ['Overview','Expenses','Inventory','Catalog','Movements','Requests','CostCenters','Reports','CostReduction'];
-
-  function actualProjectName(id){ try { return (typeof financeProjectName==='function' ? financeProjectName(id) : '') || (typeof projectName==='function' ? projectName(id) : '') || ''; } catch(_) { return ''; } }
-  function actualSupervisorName(id){ try { return (typeof supervisorName==='function' ? supervisorName(id) : '') || ''; } catch(_) { return ''; } }
-  function getItemById(id){ return (window.data?.inventoryItems||[]).find(i => S(i.id)===S(id)); }
-  function itemCode(it){ return S(it?.product_code || it?.barcode || it?.supplier_barcode || it?.serial_number || it?.company_code || it?.internal_code || ''); }
-  function itemNameById(id){ return getItemById(id)?.name || ''; }
-  function getCostCenter(id){ return (window.data?.costCenters||[]).find(c => S(c.id)===S(id)); }
-  function costCodeOf(row){
-    if(S(row.cost_code)) return S(row.cost_code).toUpperCase();
-    const cc = getCostCenter(row.cost_center_id);
-    if(cc){
-      const type = S(cc.type || cc.category || '').toLowerCase();
-      const name = S(cc.name || '').toLowerCase();
-      if(type.includes('مشروع') || type.includes('project')) return 'FM';
-      if(/ادار|إدار|كلين|عام|شركة|سكن|سيار|cn|admin|clean/.test(type + ' ' + name)) return 'CN';
-    }
-    if(row.project_id || S(row.project_name)) return 'FM';
-    return 'CN';
+  if(window.__v175SystemStability) return;
+  window.__v175SystemStability = true;
+  const $id = (id)=>document.getElementById(id);
+  const esc175 = (s)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const n175 = (v)=>{ const x=Number(v||0); return Number.isFinite(x)?x:0; };
+  const pct175 = (v)=> (Number(v||0)).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1}) + '%';
+  const mins175 = (m)=> (typeof minsToText==='function'?minsToText(Math.round(n175(m))):String(Math.round(n175(m))));
+  const supName175 = (id)=> (typeof supervisorName==='function'?supervisorName(id):'-');
+  const projName175 = (id)=> (typeof projectName==='function'?projectName(id):'-');
+  const actualMins175 = (l)=> n175(typeof logActualMinutes==='function'?logActualMinutes(l):(l.duration_minutes||minutesBetween(l.check_in,l.check_out)));
+  const reqMins175 = (l)=> n175(typeof logRequiredMinutes==='function'?logRequiredMinutes(l):l.required_minutes);
+  const workers175 = (pid)=> (typeof uniqueWorkersForProjectTextV60==='function'?uniqueWorkersForProjectTextV60(pid):'-') || '-';
+  const project175 = (pid)=> (window.data?.projects||[]).find(p=>String(p.id)===String(pid));
+  function monthRange175(month){
+    const y=Number(String(month).slice(0,4)), m=Number(String(month).slice(5,7));
+    const last=new Date(y,m,0).getDate();
+    return {start:`${month}-01`, end:`${month}-${String(last).padStart(2,'0')}`, days:last};
   }
-  function datePass(row, fields){
-    const mode = $('inventoryReportDateMode')?.value || 'all';
-    if(mode === 'all') return true;
-    const val = fields.map(f => S(row[f])).find(Boolean) || S(row.date) || S(row.created_at);
-    const d = val.slice(0,10);
-    if(!d) return false;
-    if(mode === 'day') return d === ($('inventoryReportDay')?.value || '');
-    if(mode === 'month') return d.slice(0,7) === ($('inventoryReportMonth')?.value || '');
-    return true;
+  function isPermanentProject175(pid, maxReq){
+    const p=project175(pid);
+    const base=n175(p?.required_daily_minutes || p?.required_minutes || p?.daily_minutes || maxReq);
+    const op=String(p?.operation_type||p?.visit_type_default||'').toLowerCase();
+    const name=String(p?.name||'');
+    return base>=540 || op.includes('full') || op.includes('permanent') || name.includes('دائم') || name.includes('دوام كامل');
   }
-  function quickPass(row){
-    const q = S($('financeReportQuickSearch')?.value || '').toLowerCase();
-    if(!q) return true;
-    return Object.values(row).join(' ').toLowerCase().includes(q);
-  }
-  function costPass(row){
-    const code = S($('financeReportCostCodeFilter')?.value || '').toUpperCase();
-    return !code || costCodeOf(row) === code;
-  }
-  function productPass(row){
-    const product = S($('inventoryReportProduct')?.value || '');
-    if(!product) return true;
-    return S(row.item_id) === product || S(row.product_id) === product || S(row.product_code) === product || S(row.item_name) === itemNameById(product);
-  }
-  function supplierPass(row){
-    const supplier = S($('inventoryReportSupplier')?.value || '');
-    return !supplier || S(row.supplier) === supplier;
-  }
-  function personPass(row){
-    const person = S($('inventoryReportPerson')?.value || '');
-    if(!person) return true;
-    return S(row.supervisor_id) === person || S(row.receiver_id) === person || S(row.person) === person || S(row.supervisor_name) === person || S(row.receiver) === person;
-  }
-
-  function requestLines(req){
-    let arr = req?.request_items || req?.items || req?.request_lines || [];
-    if(typeof arr === 'string') { try { arr = JSON.parse(arr); } catch(_) { arr = []; } }
-    if(!Array.isArray(arr)) arr = [];
-    if(!arr.length && req?.item_id) arr = [{ item_id:req.item_id, item_name:req.item_name, quantity:req.quantity, product_code:req.product_code, unit_cost:req.unit_cost }];
-    return arr;
-  }
-  function returnQty(req, line){
-    let arr = req?.return_items || req?.returned_items || req?.returns || [];
-    if(typeof arr === 'string') { try { arr = JSON.parse(arr); } catch(_) { arr = []; } }
-    if(!Array.isArray(arr)) arr = [];
-    const id = S(line.item_id), code = S(line.product_code || line.code || line.barcode);
-    const hit = arr.find(x => S(x.item_id)===id || S(x.product_code || x.code || x.barcode)===code);
-    return N(hit?.quantity || hit?.return_qty || hit?.qty || line.return_qty || line.returned_qty || 0);
-  }
-  function usageRows(){
-    const rows = [];
-    (window.data?.inventoryRequests || []).filter(r => S(r.status)==='approved').forEach(r => {
-      if(!datePass(r, ['request_date','created_at'])) return;
-      const project = r.project_name || actualProjectName(r.project_id) || '-';
-      const person = r.supervisor_name || actualSupervisorName(r.supervisor_id) || r.receiver || '-';
-      requestLines(r).forEach(line => {
-        const it = getItemById(line.item_id) || (window.data?.inventoryItems||[]).find(i => itemCode(i) && itemCode(i)===S(line.product_code));
-        const out = N(line.quantity), ret = returnQty(r,line), cons = Math.max(0, out-ret);
-        const unit = N(line.unit_cost || it?.unit_cost || it?.price_before_vat || it?.unit_price || 0);
-        const row = { source:'request', date:S(r.request_date||r.created_at).slice(0,10), project_id:r.project_id, project_name:project, cost_center_id:r.cost_center_id, cost_center_name:r.cost_center_name, supervisor_id:r.supervisor_id, supervisor_name:person, item_id:line.item_id||it?.id, product_code:S(line.product_code || itemCode(it)), item_name:line.item_name || it?.name || '-', supplier:it?.supplier || line.supplier || '', out, returned:ret, consumed:cons, qty:cons, unit_cost:unit, val:unit*cons, vat:unit*cons*0.15, gross:unit*cons*1.15, reason:r.reason||r.notes||'', ref:'REQ-'+r.id };
-        if(productPass(row) && supplierPass(row) && personPass(row) && costPass(row) && quickPass(row)) rows.push(row);
+  function buildMonthlyRows175(){
+    const month=$id('monthlyMonth')?.value || (typeof today==='function'?today().slice(0,7):new Date().toISOString().slice(0,7));
+    const sid=$id('monthlySupervisor')?.value;
+    const mr=monthRange175(month);
+    let logs=(window.data?.logs||[]).filter(l=>{
+      const d=l.log_date || String(l.check_in||'').slice(0,10);
+      return d && d>=mr.start && d<=mr.end;
+    });
+    if(sid) logs=logs.filter(l=>String(l.supervisor_id)===String(sid));
+    const map=new Map();
+    logs.forEach(l=>{
+      const key=String(l.supervisor_id||'')+'|'+String(l.project_id||'');
+      if(!map.has(key)) map.set(key,{s:l.supervisor_id,p:l.project_id,a:0,r:0,t:0,c:0,days:new Set(),maxReq:0});
+      const x=map.get(key); const d=l.log_date || String(l.check_in||'').slice(0,10); const req=reqMins175(l);
+      x.a += actualMins175(l); x.r += req; x.t += n175(l.travel_minutes); x.c += 1; x.days.add(d); x.maxReq=Math.max(x.maxReq,req);
+    });
+    const all=[...map.values()].map(x=>({...x,uniqueDays:x.days.size,workers:workers175(x.p),permanent:isPermanentProject175(x.p,x.maxReq)}));
+    const daily=all.filter(x=>!x.permanent);
+    const permanent=all.filter(x=>x.permanent);
+    const supTotals={}; daily.forEach(r=>{ const s=String(r.s||''); supTotals[s]=(supTotals[s]||0)+r.a; });
+    const bySup={}; daily.forEach(r=>{ const s=String(r.s||''); (bySup[s]||(bySup[s]=[])).push(r); });
+    Object.keys(bySup).forEach(s=>{
+      const rows=bySup[s].sort((a,b)=>projName175(a.p).localeCompare(projName175(b.p),'ar'));
+      const total=supTotals[s]||0; let sum=0;
+      rows.forEach((r,i)=>{
+        const raw=total?(r.a/total*100):0;
+        let disp=Math.round(raw*10)/10;
+        if(i===rows.length-1 && total>0) disp=Math.max(0,Math.round((100-sum)*10)/10);
+        sum+=disp; r.workPercentRaw=raw; r.workPercentDisplay=disp;
       });
     });
-    (window.data?.inventoryMovements || []).forEach(m => {
-      if(!datePass(m, ['movement_date','created_at'])) return;
-      const type = S(m.movement_type);
-      if(!['out','consume','return'].includes(type)) return;
-      const it = getItemById(m.item_id);
-      const out = type==='out' ? N(m.quantity) : 0;
-      const ret = type==='return' ? N(m.quantity) : 0;
-      const cons = type==='consume' ? N(m.quantity) : Math.max(0, out-ret);
-      const unit = N(m.unit_cost || it?.unit_cost || it?.price_before_vat || it?.unit_price || 0);
-      const row = { source:'movement', date:S(m.movement_date||m.created_at).slice(0,10), project_id:m.project_id, project_name:m.project_name || actualProjectName(m.project_id) || '-', cost_center_id:m.cost_center_id, cost_center_name:m.cost_center_name, supervisor_id:m.supervisor_id, supervisor_name:m.receiver || m.supervisor_name || '-', item_id:m.item_id, product_code:S(m.product_code || itemCode(it)), item_name:m.item_name || it?.name || '-', supplier:it?.supplier || m.supplier || '', out, returned:ret, consumed:cons, qty:cons || out, unit_cost:unit, val:unit*(cons||out), vat:unit*(cons||out)*0.15, gross:unit*(cons||out)*1.15, reason:m.reason||m.notes||'', ref:'MOV-'+m.id };
-      if(productPass(row) && supplierPass(row) && personPass(row) && costPass(row) && quickPass(row)) rows.push(row);
+    const rows=daily.sort((a,b)=>{ const s=supName175(a.s).localeCompare(supName175(b.s),'ar'); return s||projName175(a.p).localeCompare(projName175(b.p),'ar'); });
+    permanent.sort((a,b)=>{ const s=supName175(a.s).localeCompare(supName175(b.s),'ar'); return s||projName175(a.p).localeCompare(projName175(b.p),'ar'); });
+    return {month,range:mr,logs,rows,permanent};
+  }
+  window.monthlyRowsV175 = ()=>buildMonthlyRows175().rows;
+  window.renderMonthly = function(){
+    const body=$id('monthlyBody'); if(!body) return;
+    const table=body.closest('table');
+    if(table && table.tHead){ table.tHead.innerHTML='<tr><th>المشرف</th><th>المشروع</th><th>أسماء العمال</th><th>الساعات الفعلية</th><th>نسبة العمل</th><th>حالة الأداء</th></tr>'; }
+    const res=buildMonthlyRows175();
+    body.innerHTML=res.rows.map(r=>{
+      const cls=r.workPercentDisplay>=90?'green':(r.workPercentDisplay>=70?'amber':'red');
+      const text=r.workPercentDisplay>=90?'ممتاز':(r.workPercentDisplay>=70?'جيد':'يحتاج متابعة');
+      return `<tr><td>${esc175(supName175(r.s))}</td><td>${esc175(projName175(r.p))}</td><td>${esc175(r.workers||'-')}</td><td>${mins175(r.a)}</td><td><span class="badge ${cls}">${pct175(r.workPercentDisplay)}</span></td><td><span class="badge ${cls}">${text}</span></td></tr>`;
+    }).join('') || '<tr><td colspan="6">لا توجد بيانات في مشاريع الصيانة اليومية لهذا الشهر</td></tr>';
+    const dailyTotal=res.rows.reduce((a,r)=>a+r.a,0), permTotal=res.permanent.reduce((a,r)=>a+r.a,0);
+    if($id('monthlySummary')) $id('monthlySummary').innerHTML=`<div class="kpi"><small>مشاريع يومية</small><b>${res.rows.length}</b></div><div class="kpi"><small>مشاريع دائمة</small><b>${res.permanent.length}</b></div><div class="kpi"><small>وقت اليومية</small><b>${mins175(dailyTotal)}</b></div><div class="kpi"><small>وقت الدائمة</small><b>${mins175(permTotal)}</b></div><div class="kpi"><small>نطاق التقرير</small><b>${esc175(res.range.start)} إلى ${esc175(res.range.end)}</b></div>`;
+  };
+  function permanentSectionHtml175(permanent){
+    const cards=permanent.map(r=>`<div class="perm-card"><div class="perm-title">${esc175(projName175(r.p))}</div><div class="perm-sup">المشرف: ${esc175(supName175(r.s))}</div><div class="perm-workers">${esc175(r.workers||'-')}</div><div class="perm-time">${mins175(r.a)}</div></div>`).join('');
+    return `<section class="block"><h2>مشاريع العمالة الدائمة</h2><div class="perm-grid">${cards || '<div class="empty">لا توجد مشاريع دائمة 9 ساعات أو أكثر خلال هذا الشهر</div>'}</div></section>`;
+  }
+  window.printMonthlyReportV57 = window.printMonthlyReportV175 = function(){
+    const res=buildMonthlyRows175();
+    const monthLabel=res.month;
+    const bySup={}; res.rows.forEach(r=>{ const s=String(r.s||''); (bySup[s]||(bySup[s]=[])).push(r); });
+    const cards=Object.keys(bySup).map(s=>{
+      const rows=bySup[s]; const sum=rows.reduce((a,r)=>a+r.workPercentDisplay,0);
+      const trs=rows.map(r=>`<tr><td>${esc175(projName175(r.p))}</td><td>${mins175(r.a)}</td><td>${pct175(r.workPercentDisplay)}</td></tr>`).join('');
+      const workers=[...new Set(rows.flatMap(r=>String(r.workers||'-').split('،').map(x=>x.trim()).filter(Boolean)))].join('، ');
+      return `<div class="sup-card"><div class="sup-head"><b>${esc175(supName175(s))}</b><span>${pct175(sum)}</span></div><table><thead><tr><th>المشروع</th><th>الوقت</th><th>النسبة</th></tr></thead><tbody>${trs}</tbody></table><div class="workers"><b>أسماء العمال</b><p>${esc175(workers||'-')}</p></div></div>`;
+    }).join('');
+    const totalRows=res.rows.reduce((a,r)=>a+r.a,0); const permMins=res.permanent.reduce((a,r)=>a+r.a,0);
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#153d33;margin:0;background:#fff;font-size:11px}.page{padding:14px;border:2px solid #0a5a49;min-height:100vh}.top{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0a5a49;padding-bottom:10px}.brand{display:flex;align-items:center;gap:10px}.logo{width:58px;height:58px;border-radius:18px;border:2px solid #c7a24d;display:grid;place-items:center;font-weight:900;color:#0a5a49;background:#f7fbfa}.brand h1{margin:0;font-size:20px}.title{text-align:left}.title h2{font-size:26px;margin:0;color:#0a5a49}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.box{border:1px solid #d9e6e1;border-radius:13px;padding:10px;text-align:center;background:#fff}.box small{display:block;color:#697b74}.box b{font-size:16px;color:#0a5a49}.block{margin-top:12px}.block h2{margin:0 0 8px;text-align:center}.block h2 span,.block h2{color:#fff;background:#0a5a49;border:2px solid #c7a24d;border-radius:999px;padding:7px 35px;display:block}.sup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.sup-card,.perm-card{border:2px solid #0a5a49;border-radius:12px;overflow:hidden;background:#fff;break-inside:avoid}.sup-head{display:flex;justify-content:space-between;padding:8px;background:#f7fbfa;color:#0a5a49;border-bottom:1px solid #d9e6e1}table{width:100%;border-collapse:collapse}th{background:#0a5a49;color:white;padding:6px}td{border:1px solid #e2ece8;padding:5px;text-align:center}.workers{padding:8px;text-align:center}.workers p{margin:4px 0 0;line-height:1.7}.perm-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.perm-card{text-align:center;padding-bottom:8px}.perm-title{background:#0a5a49;color:#fff;padding:10px;font-weight:900}.perm-sup{padding:7px;color:#0a5a49;font-weight:700}.perm-workers{min-height:55px;padding:7px;line-height:1.7}.perm-time{display:inline-block;border-radius:999px;background:#edf8f3;color:#0a5a49;padding:5px 15px;font-weight:900}.empty{grid-column:1/-1;text-align:center;border:1px dashed #aabdb6;border-radius:12px;padding:20px;color:#697b74}.foot{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px}.sign{border:1px solid #d9e6e1;border-radius:12px;padding:10px;min-height:70px}.note{margin-top:8px;text-align:center;color:#697b74}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{border-radius:0}}</style></head><body><div class="page"><div class="top"><div class="brand"><div class="logo">تصنيف</div><div><h1>شركة تصنيف لإدارة المرافق</h1><small>تقرير تشغيل شهري</small></div></div><div class="title"><h2>تقرير الأوقات الشهرية</h2><p>الشهر: ${esc175(monthLabel)}</p></div></div><div class="meta"><div class="box"><small>مشاريع يومية</small><b>${res.rows.length}</b></div><div class="box"><small>مشاريع دائمة</small><b>${res.permanent.length}</b></div><div class="box"><small>وقت اليومية</small><b>${mins175(totalRows)}</b></div><div class="box"><small>وقت الدائمة</small><b>${mins175(permMins)}</b></div></div><section class="block"><h2>مشاريع الصيانة اليومية</h2><div class="sup-grid">${cards || '<div class="empty">لا توجد بيانات</div>'}</div></section>${permanentSectionHtml175(res.permanent)}<div class="foot"><div class="sign"><b>إعداد</b><br><br>الاسم: ____________</div><div class="sign"><b>مراجعة</b><br><br>الاسم: ____________</div><div class="sign"><b>اعتماد</b><br><br>الاسم: ____________</div></div><div class="note">تم توليد التقرير من نظام شركة تصنيف لإدارة المرافق. مجموع نسب كل مشرف في المشاريع اليومية يساوي 100%.</div></div><script>window.onload=function(){setTimeout(function(){window.print()},450)}</script></body></html>`;
+    const w=window.open('','_blank'); if(!w){ if(typeof msg==='function') msg('اسمح بالنوافذ المنبثقة للطباعة','err'); return; } w.document.write(html); w.document.close();
+  };
+  window.exportMonthlyCSV = function(){
+    const res=buildMonthlyRows175();
+    const csv=['المشرف,المشروع,أسماء العمال,الساعات الفعلية,نسبة العمل,نوع المشروع',...res.rows.map(r=>[supName175(r.s),projName175(r.p),r.workers,mins175(r.a),pct175(r.workPercentDisplay),'يومي'].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')),...res.permanent.map(r=>[supName175(r.s),projName175(r.p),r.workers,mins175(r.a),'','دائم'].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(','))].join('\n');
+    if(typeof download==='function') download('monthly-v175.csv',csv);
+  };
+  // Camera stability: avoid rerender/loading overlays while the OS camera picker is active.
+  let cameraBusy=false; let busyTimer=null;
+  function setCameraBusy(v){ cameraBusy=!!v; clearTimeout(busyTimer); if(v){ busyTimer=setTimeout(()=>{cameraBusy=false;},20000); } }
+  window.__tasneefCameraBusy = ()=>cameraBusy;
+  document.addEventListener('pointerdown',e=>{ const el=e.target; if(el && el.matches && el.matches('input[type="file"],button[data-camera],.camera-btn')) setCameraBusy(true); },true);
+  document.addEventListener('click',e=>{ const el=e.target; if(el && el.matches && el.matches('input[type="file"]')) setCameraBusy(true); },true);
+  document.addEventListener('change',e=>{ const el=e.target; if(el && el.matches && el.matches('input[type="file"]')) setTimeout(()=>setCameraBusy(false),650); },true);
+  const oldShow=window.showTasneefLoading, oldHide=window.hideTasneefLoading;
+  window.showTasneefLoading=function(message){ if(cameraBusy) return; return oldShow?oldShow(message):undefined; };
+  window.hideTasneefLoading=function(){ cameraBusy=false; return oldHide?oldHide():undefined; };
+  // Make file inputs safer on Android: keep capture but do not force reload/rerender.
+  function stabilizeFileInputs(){
+    document.querySelectorAll('input[type="file"]').forEach(inp=>{
+      if(inp.__v175Stable) return; inp.__v175Stable=true;
+      if(!inp.getAttribute('accept')) inp.setAttribute('accept','image/*');
+      inp.addEventListener('click',()=>setCameraBusy(true),{capture:true});
+      inp.addEventListener('change',()=>setTimeout(()=>setCameraBusy(false),650));
     });
-    return rows;
   }
-  function expenseRows(){
-    return (window.data?.financeExpenses||[]).filter(e => datePass(e,['expense_date','created_at']) && costPass(e) && quickPass(e));
-  }
-  function setBody(id, html, emptyCols){ const b=$(id); if(b) b.innerHTML = html || `<tr><td colspan="${emptyCols}">لا توجد بيانات</td></tr>`; }
-  function group(rows, keyFn, seed){
-    const map={};
-    rows.forEach(r => { const k=keyFn(r)||'-'; if(!map[k]) map[k]=Object.assign({key:k,count:0,qty:0,out:0,ret:0,cons:0,val:0,vat:0,gross:0}, seed||{}); const g=map[k]; g.count++; g.qty+=N(r.qty); g.out+=N(r.out); g.ret+=N(r.returned); g.cons+=N(r.consumed); g.val+=N(r.val); g.vat+=N(r.vat); g.gross+=N(r.gross); });
-    return Object.values(map);
-  }
-
-  window.financeRenderReports = function(){
-    try{
-      const expenses = expenseRows();
-      const usage = usageRows();
-      const ep = group(expenses, e => e.project_name || actualProjectName(e.project_id) || 'بدون مشروع');
-      setBody('expenseByProjectBody', ep.sort((a,b)=>b.gross-a.gross).map(g=>`<tr><td>${E(g.key)}</td><td>${M(grossFromExpenseGroup(g, expenses))}</td><td>${g.count}</td></tr>`).join(''), 3);
-
-      const byProject = group(usage, r => r.project_name || 'بدون مشروع');
-      setBody('stockOutByProjectBody', byProject.sort((a,b)=>b.out-a.out).map(g=>`<tr><td>${E(g.key)}</td><td>${g.count}</td><td>${Q(g.out)}</td></tr>`).join(''), 3);
-
-      const bySup = group(usage, r => (r.supervisor_name||'بدون مستلم')+'||'+(r.project_name||'بدون مشروع'));
-      setBody('stockOutBySupervisorBody', bySup.sort((a,b)=>b.out-a.out).map(g=>{ const [p,pr]=g.key.split('||'); return `<tr><td>${E(p)}</td><td>${E(pr)}</td><td>${g.count}</td><td>${Q(g.out)}</td></tr>`; }).join(''), 4);
-
-      setBody('inventoryUsageDetailBody', usage.sort((a,b)=>S(b.date).localeCompare(S(a.date))).map(r=>`<tr><td>${E(r.date)}</td><td>${E(r.project_name)}</td><td>${E(r.supervisor_name)}</td><td>${E(r.item_name)}</td><td>${Q(r.qty)}</td><td>${E(r.reason||'-')}</td><td>${E(r.source==='request'?'طلب صرف معتمد':(r.returned?'مرتجع':'حركة مخزون'))}</td><td>${E(typeof daysAgoText==='function'?daysAgoText(r.date):'-')}</td><td>${E(r.ref)}</td></tr>`).join(''), 9);
-
-      const stockRows = (window.data?.inventoryItems||[]).filter(it => supplierPass({supplier:it.supplier}) && productPass({item_id:it.id, product_code:itemCode(it), item_name:it.name}) && quickPass({code:itemCode(it), name:it.name, supplier:it.supplier, category:it.category}));
-      const stockHtml = stockRows.map(it => { const unit=N(it.unit_cost||it.price_before_vat||it.unit_price); const val=N(it.quantity)*unit; return `<tr><td>${E(itemCode(it)||it.id)}</td><td>${E(it.name||'-')}</td><td>${Q(it.quantity)}</td><td>${Q(it.min_quantity||it.reorder_level||0)}</td><td>${M(val*1.15)}</td></tr>`; }).join('');
-      setBody('stockReportBody', stockHtml, 5);
-      const st=$('stockReportTotals'); if(st){ const total=stockRows.reduce((a,it)=>a+N(it.quantity)*N(it.unit_cost||it.price_before_vat||it.unit_price),0); st.innerHTML=`Total amount before 15% VAT: <b>${M(total)}</b> &nbsp; | &nbsp; Total VAT 15%: <b>${M(total*0.15)}</b> &nbsp; | &nbsp; Total Value with 15% VAT: <b>${M(total*1.15)}</b>`; }
-
-      const cc = group(usage, r => r.cost_center_name || r.project_name || 'غير محدد');
-      setBody('costCenterReportBody', cc.sort((a,b)=>b.gross-a.gross).map(g=>{ const first=usage.find(r => (r.cost_center_name||r.project_name||'غير محدد')===g.key) || {}; return `<tr><td>${E(g.key)}</td><td>${E(costCodeOf(first))}</td><td>${g.count}</td><td>${Q(g.out)}</td><td>${Q(g.ret)}</td><td>${Q(g.cons)}</td><td>${M(g.val)}</td><td>${M(g.vat)}</td><td>${M(g.gross)}</td></tr>`; }).join(''), 9);
-
-      renderProductDetailV169(usage);
-      if(typeof financeShowSmartReport === 'function') { /* keep current selected panel */ }
-    }catch(e){ console.error('V169 financeRenderReports failed', e); }
+  document.addEventListener('DOMContentLoaded',stabilizeFileInputs); setInterval(stabilizeFileInputs,2500);
+  // Faster page switching: render only the opened page instead of every heavy section.
+  const pageRenderers={dashboard:['renderDashboard','renderAlerts'],daily:['renderTimeLogs'],users:['renderUsers'],projects:['renderProjects'],workers:['renderWorkers'],attendance:['renderAttendance'],monthly:['renderMonthly'],tickets:['renderTickets'],contracts:['renderContractServices'],financeDashboard:['financeRenderAll'],premiumReports:['renderPremiumReports'],clientRatings:['renderClientRatings']};
+  window.showPage=function(id,btn){
+    document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
+    const page=$id(id); if(page) page.classList.remove('hidden');
+    document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active')); if(btn) btn.classList.add('active');
+    if(cameraBusy) return;
+    (pageRenderers[id]||[]).forEach(fn=>{ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){ console.warn('V175 page renderer',fn,e); } });
+    if(id==='contracts' && typeof window.showContractsSubTab==='function') window.showContractsSubTab('services');
   };
-  function grossFromExpenseGroup(groupObj, rows){
-    return rows.filter(e => (e.project_name || actualProjectName(e.project_id) || 'بدون مشروع')===groupObj.key).reduce((a,e)=>a+N(e.total||e.amount||e.subtotal),0);
-  }
-  function renderProductDetailV169(usage){
-    const box=$('inventoryProductDetailBox'); if(!box) return;
-    const product=$('inventoryReportProduct')?.value || '';
-    if(!product){ box.innerHTML='<div class="footer-note">اختر منتجًا لعرض تفاصيله.</div>'; return; }
-    const rows=usage.filter(r => productPass(r));
-    const item=getItemById(product) || (window.data?.inventoryItems||[]).find(i => itemCode(i)===product) || {};
-    const totalOut=rows.reduce((a,r)=>a+N(r.out),0), totalRet=rows.reduce((a,r)=>a+N(r.returned),0), totalCons=rows.reduce((a,r)=>a+N(r.consumed),0), totalVal=rows.reduce((a,r)=>a+N(r.val),0);
-    box.innerHTML=`<div class="product-detail-head"><h3>${E(item.name||rows[0]?.item_name||'تفاصيل المنتج')}</h3><p>كود المنتج: ${E(itemCode(item)||product)} | المورد: ${E(item.supplier||rows[0]?.supplier||'-')}</p></div><div class="mini-kpis"><div><small>الصادر</small><b>${Q(totalOut)}</b></div><div><small>المرتجع</small><b>${Q(totalRet)}</b></div><div><small>المستهلك</small><b>${Q(totalCons)}</b></div><div><small>قيمة الاستهلاك</small><b>${M(totalVal)}</b></div></div><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المشروع</th><th>المستلم</th><th>الصادر</th><th>المرتجع</th><th>المستهلك</th><th>سعر الحبة</th><th>القيمة</th><th>المرجع</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${E(r.date)}</td><td>${E(r.project_name)}</td><td>${E(r.supervisor_name)}</td><td>${Q(r.out)}</td><td>${Q(r.returned)}</td><td>${Q(r.consumed)}</td><td>${M(r.unit_cost)}</td><td>${M(r.val)}</td><td>${E(r.ref)}</td></tr>`).join('') || '<tr><td colspan="9">لا توجد حركات لهذا المنتج حسب الفلاتر الحالية</td></tr>'}</tbody></table></div>`;
-  }
-
-  function restoreTabsV169(tab, btn){
-    const wh = isWarehouse();
-    document.body.classList.toggle('warehouse-manager-view-v169', wh);
-    if(!wh){
-      document.body.classList.remove('warehouse-manager-view-v151','warehouse-manager-view-v162','warehouse-manager-view-v163','warehouse-manager-view-v164');
-      financeTabs().forEach(b => { b.style.removeProperty('display'); b.hidden=false; });
-    }else{
-      financeTabs().forEach(b => { const t=S(b.textContent); b.style.display = (t==='طلبات الصرف' || t==='الأصناف') ? '' : 'none'; });
-      if(!['requests','catalog'].includes(tab)) tab='requests';
-    }
-    const wanted = $('financeTab'+cap(tab));
-    document.querySelectorAll('#financeDashboard .finance-tab-page').forEach(p => p.classList.add('hidden'));
-    if(wanted) wanted.classList.remove('hidden');
-    financeTabs().forEach(b => b.classList.remove('active'));
-    if(btn) btn.classList.add('active');
-    else {
-      const match = financeTabs().find(b => (tab==='requests'&&S(b.textContent)==='طلبات الصرف') || (tab==='catalog'&&S(b.textContent)==='الأصناف') || (tab==='reports'&&S(b.textContent)==='التقارير') || (tab==='costReduction'&&S(b.textContent)==='تقليل التكلفة') || (tab==='inventory'&&S(b.textContent)==='المخزون'));
-      match?.classList.add('active');
-    }
-  }
-
-  const previousFinanceShowTab = window.financeShowTab;
-  window.financeShowTab = function(tab, btn){
-    try{
-      if(typeof injectCostReductionUi === 'function') { try{ injectCostReductionUi(); }catch(_){} }
-      if(typeof ensureCatalogTabV150 === 'function') { try{ ensureCatalogTabV150(); }catch(_){} }
-    }catch(_){ }
-    if(previousFinanceShowTab && !previousFinanceShowTab.v169Final){ try{ previousFinanceShowTab.apply(this, arguments); }catch(e){ console.warn('old financeShowTab warning', e); } }
-    setTimeout(()=>{
-      restoreTabsV169(tab, btn);
-      try{
-        if(tab==='requests' && typeof inventoryRenderRequests==='function') inventoryRenderRequests();
-        if(tab==='catalog' && typeof inventoryRenderItems==='function') inventoryRenderItems();
-        if(tab==='reports') window.financeRenderReports();
-        if(tab==='costReduction' && typeof renderCostReductionV152==='function') renderCostReductionV152();
-        if(tab==='inventory' && typeof renderStockBatchCardsV149==='function') renderStockBatchCardsV149();
-      }catch(e){ console.warn('V169 tab render warning', e); }
-      restoreTabsV169(tab, btn);
-    }, 80);
-  };
-  window.financeShowTab.v169Final = true;
-
-  function clearDeletedGhostsV169(){
-    // No reports should read local demo/cache batches after DB rows are removed.
-    if(!Array.isArray(window.data?.inventoryRequests) || !window.data.inventoryRequests.length){ /* keep empty */ }
-    if(!Array.isArray(window.data?.inventoryMovements) || !window.data.inventoryMovements.length){ /* keep empty */ }
-  }
-  const oldLoad = window.financeLoadAll;
-  if(oldLoad && !oldLoad.v169Wrapped){
-    window.financeLoadAll = async function(){ const out = await oldLoad.apply(this, arguments); clearDeletedGhostsV169(); setTimeout(()=>{ const active=document.querySelector('#financeDashboard .finance-tab.active'); const label=S(active?.textContent); const tab = label==='طلبات الصرف'?'requests':label==='الأصناف'?'catalog':label==='التقارير'?'reports':label==='تقليل التكلفة'?'costReduction':'overview'; restoreTabsV169(tab, active); if(tab==='reports') window.financeRenderReports(); if(tab==='costReduction'&&typeof renderCostReductionV152==='function') renderCostReductionV152(); },120); return out; };
-    window.financeLoadAll.v169Wrapped = true;
-  }
-  window.addEventListener('load',()=>setTimeout(()=>{ const active=document.querySelector('#financeDashboard .finance-tab.active'); restoreTabsV169(active?.textContent?.includes('طلبات')?'requests':'overview', active); if($('financeTabReports') && !$('financeTabReports').classList.contains('hidden')) window.financeRenderReports(); },1600));
-})();
-
-/* ===== V172 REAL FINANCE/INVENTORY STABILITY PATCH ===== */
-(function(){
-  'use strict';
-  const $ = id => document.getElementById(id);
-  const S = v => String(v ?? '').trim();
-  const N = v => { const x = parseFloat(String(v ?? '').replace(/,/g,'')); return Number.isFinite(x) ? x : 0; };
-  const E = v => S(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const Q = v => N(v).toLocaleString('en-US',{maximumFractionDigits:2});
-  const M = v => N(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' SAR';
-  const role = () => { try { return (typeof session==='function' ? (session()||{}).role : '') || JSON.parse(localStorage.getItem('tasneef_session')||'{}').role || ''; } catch(_) { return ''; } };
-  const isWarehouse = () => role()==='warehouse_manager';
-  const isFinancePage = () => !!$('financeDashboard');
-  const tabs = () => [...document.querySelectorAll('#financeDashboard .finance-tab')];
-  const pages = () => [...document.querySelectorAll('#financeDashboard .finance-tab-page')];
-  const cap = t => S(t).charAt(0).toUpperCase()+S(t).slice(1);
-  const itemCode = it => S(it?.product_code || it?.barcode || it?.supplier_barcode || it?.serial_number || it?.company_code || it?.internal_code || '');
-  const itemCompanyCode = it => S(it?.company_code || it?.internal_code || it?.serial_number || itemCode(it));
-  const getItem = id => (window.data?.inventoryItems||[]).find(i => S(i.id)===S(id));
-  const getItemByCode = code => (window.data?.inventoryItems||[]).find(i => itemCode(i) && itemCode(i)===S(code));
-  const projectNameSafe = id => { try { return (typeof financeProjectName==='function' ? financeProjectName(id) : '') || (typeof projectName==='function' ? projectName(id) : '') || ''; } catch(_) { return ''; } };
-  const supervisorNameSafe = id => { try { return (typeof supervisorName==='function' ? supervisorName(id) : '') || ''; } catch(_) { return ''; } };
-  const todaySafe = () => (typeof today==='function' ? today() : new Date().toISOString().slice(0,10));
-
-  function clearFinanceCaches(){
-    ['reports_cache','inventory_cache','cost_cache','finance_cache','stock_batches_cache','cost_reduction_cache'].forEach(k=>{ try{ localStorage.removeItem(k); }catch(_){} });
-  }
-  function cleanupPrintState(){
-    try{
-      document.body.style.pointerEvents='';
-      document.body.style.overflow='';
-      ['v149Backdrop','smartLoadingOverlay','loadingOverlay','appLoadingOverlay'].forEach(id=>{ const el=$(id); if(el){ el.classList.remove('show','active','open'); el.style.pointerEvents='none'; } });
-      document.querySelectorAll('.loading,.loading-overlay,.modal-backdrop.show,.v149-modal-backdrop.show').forEach(el=>{ el.classList.remove('show','active','open'); el.style.pointerEvents='none'; });
-      setTimeout(()=>document.body.focus?.(),50);
-    }catch(e){ console.warn('print cleanup warning', e); }
-  }
-
-  // Print without freezing the main app after closing print dialog.
-  window.financePrintWindow = function(title, bodyHtml){
-    cleanupPrintState();
-    const css = `@page{size:A4;margin:10mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#103d32;margin:0;background:#fff}.page{border:2px solid #0a4033;border-radius:16px;padding:16px;min-height:100vh}.head{display:flex;justify-content:space-between;gap:14px;border-bottom:4px solid #0a4033;padding-bottom:12px;margin-bottom:14px}.brand{font-weight:900;color:#0a4033;font-size:22px}.muted{color:#60706a;font-size:12px}h1{margin:0;color:#0a4033;font-size:23px}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:11px}th{background:#0a4033;color:#fff;padding:7px}td{border:1px solid #dce6e2;padding:6px;text-align:center}tr:nth-child(even) td{background:#f7fbfa}.box{border:1px solid #dce6e2;border-radius:12px;padding:10px;margin:8px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.footer-note{margin-top:16px;font-size:14px;line-height:2}.footer{text-align:center;margin-top:18px;color:#60706a;font-size:11px}@media print{.no-print{display:none!important}.page{border-radius:0}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}`;
-    const w = window.open('','_blank');
-    if(!w){ msg && msg('المتصفح منع نافذة الطباعة','err'); return; }
-    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(title)}</title><style>${css}</style></head><body><div class="page"><div class="head"><div><div class="brand">شركة تصنيف لإدارة المرافق</div><div class="muted">نظام المصروفات والمخزون</div></div><div><h1>${E(title)}</h1><div class="muted">تاريخ الطباعة: ${new Date().toLocaleString('ar-SA')}</div></div></div>${bodyHtml}<div class="footer">تم إنشاء هذا المستند من نظام تصنيف</div></div><script>window.onafterprint=function(){try{window.close()}catch(e){}};window.onload=function(){setTimeout(function(){window.focus();window.print()},350)}<\/script></body></html>`);
-    w.document.close();
-    setTimeout(cleanupPrintState, 500);
-    setTimeout(cleanupPrintState, 2500);
-  };
-
-  window.stockBatchPrintV148 = function(batch){
-    batch = batch || {};
-    const rows=(batch.lines||[]).map(l=>`<tr><td>${E(l.product_code)}</td><td>${E(l.item_name)}</td><td>${E(l.category||'')}</td><td>${E(l.item_type||'')}</td><td>${E(l.unit||'')}</td><td>${Q(l.quantity)}</td><td>${M(l.unit_cost)}</td><td>${M(l.unit_vat)}</td><td>${M(l.unit_gross)}</td><td>${M(l.line_gross || N(l.quantity)*N(l.unit_gross))}</td></tr>`).join('');
-    const body=`<div class="grid"><div class="box"><b>ID</b><br>${E(batch.invoice_no||batch.id||'-')}</div><div class="box"><b>Date</b><br>${E(batch.batch_date||'-')}</div><div class="box"><b>Warehouse / Supplier</b><br>${E(batch.supplier||'-')}</div></div><h2>Products</h2><table><thead><tr><th>Product Code</th><th>Product Name</th><th>Category</th><th>Type</th><th>Unit</th><th>Quantity Added</th><th>Unit Price before VAT</th><th>VAT 15%</th><th>Unit Price with VAT</th><th>Value with VAT</th></tr></thead><tbody>${rows||'<tr><td colspan="10">لا توجد أصناف</td></tr>'}</tbody></table><div class="footer-note"><b>Total amount before 15% VAT:</b> ${M(batch.total_before_vat)}<br><b>Total VAT 15%:</b> ${M(batch.total_vat)}<br><b>Total Value with 15% VAT:</b> ${M(batch.total_with_vat)}</div>`;
-    window.financePrintWindow('Added Product', body);
-  };
-  window.stockBatchPrintSavedV148 = function(idx){ const b=(window.stockBatchesV148||[])[Number(idx)]; if(b) window.stockBatchPrintV148(b); };
-
-  function requestLines(req){
-    let arr = req?.request_items || req?.items || req?.request_lines || [];
-    if(typeof arr === 'string'){ try{ arr=JSON.parse(arr); }catch(_){ arr=[]; } }
-    if(!Array.isArray(arr)) arr=[];
-    if(!arr.length && req?.item_id) arr=[{item_id:req.item_id,item_name:req.item_name,quantity:req.quantity,product_code:req.product_code,unit_cost:req.unit_cost}];
-    return arr;
-  }
-  function returnLines(req){
-    let arr = req?.return_items || req?.returned_items || req?.returns || [];
-    if(typeof arr === 'string'){ try{ arr=JSON.parse(arr); }catch(_){ arr=[]; } }
-    return Array.isArray(arr)?arr:[];
-  }
-  function lineReturnQty(req,line){
-    const id=S(line.item_id), code=S(line.product_code||line.code||line.barcode), name=S(line.item_name);
-    const hit=returnLines(req).find(x=>S(x.item_id)===id || (code && S(x.product_code||x.code||x.barcode)===code) || (name && S(x.item_name)===name));
-    return N(hit?.quantity || hit?.return_qty || hit?.qty || line.return_qty || line.returned_qty || 0);
-  }
-  function approvedMovementIds(){ return new Set((window.data?.inventoryRequests||[]).filter(r=>S(r.status)==='approved' && r.movement_id).map(r=>S(r.movement_id))); }
-  function liveMovements(){
-    const exclude=approvedMovementIds();
-    return (window.data?.inventoryMovements||[]).filter(m=>!exclude.has(S(m.id)));
-  }
-  function matchItem(it, obj){
-    const id=S(it?.id), code=itemCode(it), name=S(it?.name);
-    return S(obj?.item_id)===id || S(obj?.product_id)===id || (code && [obj?.product_code,obj?.barcode,obj?.supplier_barcode,obj?.serial_number].map(S).includes(code)) || (name && S(obj?.item_name)===name);
-  }
-  function statsForItem(it){
-    let inQty=0,outQty=0,retQty=0,consumeQty=0;
-    liveMovements().forEach(m=>{
-      if(!matchItem(it,m)) return;
-      const q=N(m.quantity), t=S(m.movement_type);
-      if(t==='in') inQty+=q;
-      else if(t==='out') outQty+=q;
-      else if(t==='return') retQty+=q;
-      else if(t==='consume') consumeQty+=q;
-    });
-    (window.data?.inventoryRequests||[]).filter(r=>['approved','issued','closed'].includes(S(r.status))).forEach(r=>{
-      requestLines(r).forEach(l=>{ if(matchItem(it,l)){ outQty+=N(l.quantity); retQty+=lineReturnQty(r,l); } });
-    });
-    const remaining=N(it?.quantity);
-    const entered=Math.max(inQty, remaining + outQty - retQty);
-    const consumed=Math.max(0,outQty-retQty)+consumeQty;
-    return {inQty:entered,outQty,retQty,consumeQty,consumed,remaining};
-  }
-
-  function renderWarehouseCatalogV172(){
-    const b=$('inventoryItemsBody'); if(!b) return false;
-    const q=S($('financeSearch')?.value || $('inventorySearch')?.value).toLowerCase();
-    let rows=[...(window.data?.inventoryItems||[])];
-    if(q) rows=rows.filter(it=>[it.name,itemCode(it),itemCompanyCode(it),it.supplier,it.category,it.unit].join(' ').toLowerCase().includes(q));
-    b.innerHTML=`<tr><td colspan="20"><div class="v172-warehouse-grid">${rows.map(it=>{
-      const st=statsForItem(it); const low=N(st.remaining)<=N(it.min_quantity||it.reorder_level||0);
-      const img=it.image_url?`<img src="${E(it.image_url)}" onerror="this.style.display='none'">`:'<span>لا صورة</span>';
-      return `<article class="v172-warehouse-card"><div class="v172-wh-head"><div class="v172-wh-img">${img}</div><div><h3>${E(it.name||'-')}</h3><small>كود المنتج: ${E(itemCode(it)||'-')}</small><br><small>كود الشركة: ${E(itemCompanyCode(it)||'-')}</small></div><span class="${low?'v172-low':'v172-ok'}">${low?'منخفض':'متوفر'}</span></div><div class="v172-wh-stats"><div><small>الكمية</small><b>${Q(st.remaining)} ${E(it.unit||'')}</b></div><div><small>دخل</small><b>${Q(st.inQty)}</b></div><div><small>خرج</small><b>${Q(st.outQty)}</b></div><div><small>مرتجع</small><b>${Q(st.retQty)}</b></div><div><small>مستهلك</small><b>${Q(st.consumed)}</b></div><div><small>حد الطلب</small><b>${Q(it.min_quantity||it.reorder_level||0)}</b></div></div></article>`;
-    }).join('') || '<div class="muted">لا توجد أصناف</div>'}</div></td></tr>`;
-    return true;
-  }
-  function injectV172Css(){
-    if($('v172css')) return;
-    const st=document.createElement('style'); st.id='v172css'; st.textContent=`
-      .v172-warehouse-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;padding:8px;direction:rtl}.v172-warehouse-card{border:1px solid #cfe3dd;border-radius:18px;padding:14px;background:#fff;box-shadow:0 10px 22px rgba(0,45,31,.06)}.v172-wh-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.v172-wh-head h3{margin:0;color:#003f31}.v172-wh-img{width:66px;height:66px;border:1px solid #dbeee8;border-radius:14px;background:#f7fbf9;display:grid;place-items:center;overflow:hidden;flex:0 0 66px}.v172-wh-img img{max-width:100%;max-height:100%;object-fit:contain}.v172-wh-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}.v172-wh-stats div{background:#f1faf6;border:1px solid #d9eee6;border-radius:12px;padding:8px;text-align:center}.v172-wh-stats small{display:block;color:#5b756d}.v172-wh-stats b{color:#004c3a}.v172-ok,.v172-low{border-radius:999px;padding:5px 8px;font-size:12px}.v172-ok{background:#e5f8ee;color:#067647}.v172-low{background:#ffe6e6;color:#b42318}.warehouse-manager-view-v172 [data-price],.warehouse-manager-view-v172 .price,.warehouse-manager-view-v172 .money,.warehouse-manager-view-v172 th:nth-child(8),.warehouse-manager-view-v172 td:nth-child(8){display:none!important}
-    `; document.head.appendChild(st);
-  }
-
-  function costCenters(){ return (window.data?.costCenters||[]).filter(c=>S(c.status||'active')!=='inactive'); }
-  function costCenterOf(row){
-    if(row?.cost_center_id){ const c=costCenters().find(x=>S(x.id)===S(row.cost_center_id)); if(c) return c; }
-    const n=S(row?.cost_center_name || row?.project_name || row?.name);
-    return costCenters().find(c=>S(c.name)===n) || null;
-  }
-  function costCodeOf(row){
-    if(S(row?.cost_code)) return S(row.cost_code).toUpperCase();
-    const c=costCenterOf(row);
-    if(c){ const type=S(c.type||'').toLowerCase(), name=S(c.name||'').toLowerCase(); if(type.includes('مشروع')||type.includes('project')) return 'FM'; if(/ادار|إدار|كلين|عام|شركة|سكن|سيار|cn|admin|clean/.test(type+' '+name)) return 'CN'; }
-    if(row?.project_id || S(row?.project_name)) return 'FM';
-    return 'CN';
-  }
-  window.costCodeOf = costCodeOf;
-
-  function datePass(row, fields){
-    const mode=$('inventoryReportDateMode')?.value||'all'; if(mode==='all') return true;
-    const val=fields.map(f=>S(row[f])).find(Boolean)||S(row.date)||S(row.created_at); const d=val.slice(0,10); if(!d) return false;
-    if(mode==='day') return d===($('inventoryReportDay')?.value||'');
-    if(mode==='month') return d.slice(0,7)===($('inventoryReportMonth')?.value||'');
-    return true;
-  }
-  function quickPass(row){ const q=S($('financeReportQuickSearch')?.value||$('financeSearch')?.value||'').toLowerCase(); return !q || Object.values(row).join(' ').toLowerCase().includes(q); }
-  function costPass(row){ const code=S($('financeReportCostCodeFilter')?.value||'').toUpperCase(); return !code || costCodeOf(row)===code; }
-  function productPass(row){ const p=S($('inventoryReportProduct')?.value||''); if(!p) return true; const it=getItem(p); const code=it?itemCode(it):p; const name=it?.name; return S(row.item_id)===p || S(row.product_id)===p || S(row.product_code)===code || (name && S(row.item_name)===name); }
-  function supplierPass(row){ const s=S($('inventoryReportSupplier')?.value||''); return !s || S(row.supplier)===s; }
-  function personPass(row){ const p=S($('inventoryReportPerson')?.value||''); return !p || [row.supervisor_id,row.receiver_id,row.person,row.supervisor_name,row.receiver].map(S).includes(p); }
-
-  function usageRows(){
-    const rows=[];
-    (window.data?.inventoryRequests||[]).filter(r=>['approved','issued','closed'].includes(S(r.status))).forEach(r=>{
-      if(!datePass(r,['request_date','created_at'])) return;
-      const project=r.project_name||projectNameSafe(r.project_id)||'-'; const person=r.supervisor_name||supervisorNameSafe(r.supervisor_id)||r.receiver||'-';
-      requestLines(r).forEach(line=>{
-        const it=getItem(line.item_id)||getItemByCode(line.product_code); const out=N(line.quantity), ret=lineReturnQty(r,line), cons=Math.max(0,out-ret); const unit=N(line.unit_cost||it?.unit_cost||it?.price_before_vat||it?.unit_price);
-        const row={date:S(r.request_date||r.created_at).slice(0,10),project_id:r.project_id,project_name:project,cost_center_id:r.cost_center_id,cost_center_name:r.cost_center_name,supervisor_id:r.supervisor_id,supervisor_name:person,item_id:line.item_id||it?.id,product_code:S(line.product_code||itemCode(it)),item_name:line.item_name||it?.name||'-',supplier:it?.supplier||line.supplier||'',out,returned:ret,consumed:cons,qty:cons,unit_cost:unit,val:unit*cons,vat:unit*cons*0.15,gross:unit*cons*1.15,reason:r.reason||r.notes||'',ref:'REQ-'+r.id};
-        if(productPass(row)&&supplierPass(row)&&personPass(row)&&costPass(row)&&quickPass(row)) rows.push(row);
-      });
-    });
-    liveMovements().forEach(m=>{
-      if(!datePass(m,['movement_date','created_at'])) return; const t=S(m.movement_type); if(!['out','return','consume'].includes(t)) return; const it=getItem(m.item_id); const out=t==='out'?N(m.quantity):0, ret=t==='return'?N(m.quantity):0, cons=t==='consume'?N(m.quantity):Math.max(0,out-ret); const unit=N(m.unit_cost||it?.unit_cost||it?.price_before_vat||it?.unit_price); const qty=cons||out;
-      const row={date:S(m.movement_date||m.created_at).slice(0,10),project_id:m.project_id,project_name:m.project_name||projectNameSafe(m.project_id)||'-',cost_center_id:m.cost_center_id,cost_center_name:m.cost_center_name,supervisor_id:m.supervisor_id,supervisor_name:m.receiver||m.supervisor_name||'-',item_id:m.item_id,product_code:S(m.product_code||itemCode(it)),item_name:m.item_name||it?.name||'-',supplier:it?.supplier||m.supplier||'',out,returned:ret,consumed:cons,qty,unit_cost:unit,val:unit*qty,vat:unit*qty*0.15,gross:unit*qty*1.15,reason:m.reason||m.notes||'',ref:'MOV-'+m.id};
-      if(productPass(row)&&supplierPass(row)&&personPass(row)&&costPass(row)&&quickPass(row)) rows.push(row);
-    });
-    return rows;
-  }
-  function expenseRows(){ return (window.data?.financeExpenses||[]).filter(e=>datePass(e,['expense_date','created_at'])&&costPass(e)&&quickPass(e)); }
-  function group(rows, keyFn){ const map={}; rows.forEach(r=>{ const k=keyFn(r)||'-'; if(!map[k]) map[k]={key:k,count:0,qty:0,out:0,ret:0,cons:0,val:0,vat:0,gross:0}; const g=map[k]; g.count++; g.qty+=N(r.qty); g.out+=N(r.out); g.ret+=N(r.returned); g.cons+=N(r.consumed); g.val+=N(r.val); g.vat+=N(r.vat); g.gross+=N(r.gross); }); return Object.values(map); }
-  function setBody(id, html, cols){ const b=$(id); if(b) b.innerHTML=html||`<tr><td colspan="${cols}">لا توجد بيانات</td></tr>`; }
-
-  window.financeRenderReports = function(){
-    try{
-      const usage=usageRows(); const expenses=expenseRows();
-      const exp=group(expenses, e=>e.project_name||projectNameSafe(e.project_id)||'بدون مشروع');
-      setBody('expenseByProjectBody', exp.sort((a,b)=>b.gross-a.gross).map(g=>`<tr><td>${E(g.key)}</td><td>${M(expenses.filter(e=>(e.project_name||projectNameSafe(e.project_id)||'بدون مشروع')===g.key).reduce((a,e)=>a+N(e.total||e.amount||e.subtotal),0))}</td><td>${g.count}</td></tr>`).join(''),3);
-      setBody('stockOutByProjectBody', group(usage,r=>r.project_name||'بدون مشروع').sort((a,b)=>b.out-a.out).map(g=>`<tr><td>${E(g.key)}</td><td>${g.count}</td><td>${Q(g.out)}</td></tr>`).join(''),3);
-      setBody('stockOutBySupervisorBody', group(usage,r=>(r.supervisor_name||'بدون مستلم')+'||'+(r.project_name||'بدون مشروع')).sort((a,b)=>b.out-a.out).map(g=>{ const parts=g.key.split('||'); return `<tr><td>${E(parts[0])}</td><td>${E(parts[1])}</td><td>${g.count}</td><td>${Q(g.out)}</td></tr>`; }).join(''),4);
-      setBody('inventoryUsageDetailBody', usage.sort((a,b)=>S(b.date).localeCompare(S(a.date))).map(r=>`<tr><td>${E(r.date)}</td><td>${E(r.project_name)}</td><td>${E(r.supervisor_name)}</td><td>${E(r.item_name)}</td><td>${Q(r.qty)}</td><td>${E(r.reason||'-')}</td><td>${E(r.ref.startsWith('REQ')?'طلب صرف معتمد':(r.returned?'مرتجع':'حركة مخزون'))}</td><td>${E(typeof daysAgoText==='function'?daysAgoText(r.date):'-')}</td><td>${E(r.ref)}</td></tr>`).join(''),9);
-      const stockRows=(window.data?.inventoryItems||[]).filter(it=>supplierPass({supplier:it.supplier})&&productPass({item_id:it.id,product_code:itemCode(it),item_name:it.name})&&quickPass({name:it.name,code:itemCode(it),supplier:it.supplier,category:it.category}));
-      setBody('stockReportBody', stockRows.map(it=>{ const st=statsForItem(it); const unit=N(it.unit_cost||it.price_before_vat||it.unit_price); return `<tr><td>${E(itemCode(it)||it.id)}</td><td>${E(it.name||'-')}</td><td>${Q(st.remaining)}</td><td>${Q(it.min_quantity||it.reorder_level||0)}</td><td>${M(st.remaining*unit*1.15)}</td></tr>`; }).join(''),5);
-      const stockTotal=stockRows.reduce((a,it)=>a+statsForItem(it).remaining*N(it.unit_cost||it.price_before_vat||it.unit_price),0); if($('stockReportTotals')) $('stockReportTotals').innerHTML=`Total amount before 15% VAT: <b>${M(stockTotal)}</b> &nbsp; | &nbsp; Total VAT 15%: <b>${M(stockTotal*.15)}</b> &nbsp; | &nbsp; Total Value with 15% VAT: <b>${M(stockTotal*1.15)}</b>`;
-      const ccRows=group(usage,r=>r.cost_center_name||r.project_name||'غير محدد');
-      setBody('costCenterReportBody', ccRows.sort((a,b)=>b.gross-a.gross).map(g=>{ const first=usage.find(r=>(r.cost_center_name||r.project_name||'غير محدد')===g.key)||{}; return `<tr><td>${E(g.key)}</td><td>${E(costCodeOf(first))}</td><td>${g.count}</td><td>${Q(g.out)}</td><td>${Q(g.ret)}</td><td>${Q(g.cons)}</td><td>${M(g.val)}</td><td>${M(g.vat)}</td><td>${M(g.gross)}</td></tr>`; }).join(''),9);
-    }catch(e){ console.error('V172 reports error', e); }
-  };
-
-  window.costCenterRender = function(){
-    const b=$('costCentersBody'); if(!b) return;
-    const table=b.closest('table'); const head=table?.querySelector('thead tr'); if(head) head.innerHTML='<th>الكود</th><th>مركز التكلفة FM/CN</th><th>اسم المشروع / القسم</th><th>إجراء</th>';
-    const rows=window.data?.costCenters||[];
-    b.innerHTML=rows.map(c=>{ const code=S(c.code||'-'); const typeCode=costCodeOf({cost_center_id:c.id,cost_center_name:c.name}); return `<tr><td>${E(code)}</td><td><b>${E(typeCode)}</b></td><td>${E(c.name||'')}</td><td class="row-actions"><button onclick="costCenterEdit('${E(c.id)}')">تعديل</button><button class="danger" onclick="costCenterDelete('${E(c.id)}')">حذف</button></td></tr>`; }).join('')||'<tr><td colspan="4">لا توجد مراكز تكلفة بعد.</td></tr>';
-  };
-
-  async function freshFinanceLoad(showMessage=false){
-    try{
-      clearFinanceCaches();
-      const safe = async p => { try{ const r=await p; return r.error?[]:(r.data||[]); }catch(_){ return []; } };
-      const [expenses,items,movements,requests,centers] = await Promise.all([
-        safe(sb.from('finance_expenses').select('*').order('expense_date',{ascending:false})),
-        safe(sb.from('inventory_items').select('*').order('name',{ascending:true})),
-        safe(sb.from('inventory_movements').select('*').order('movement_date',{ascending:false})),
-        safe(sb.from('inventory_requests').select('*').order('created_at',{ascending:false})),
-        safe(sb.from('cost_centers').select('*').order('name',{ascending:true}))
-      ]);
-      window.data.financeExpenses=expenses; window.data.inventoryItems=items; window.data.inventoryMovements=movements; window.data.inventoryRequests=requests; window.data.costCenters=centers;
-      window.financeLoaded=true;
-      if(typeof financeHydrateForms==='function') financeHydrateForms();
-      if(typeof costCenterFillSelects==='function') costCenterFillSelects();
-      renderCurrentFinanceTab();
-      if(showMessage && typeof msg==='function') msg('تم تحديث المصروفات والمخزون');
-    }catch(e){ console.error('V172 finance load error', e); if(showMessage && typeof msg==='function') msg(e.message||String(e),'err'); }
-  }
-  window.financeLoadAll = freshFinanceLoad;
-
-  function applyTabVisibility(tab, btn){
-    if(!isFinancePage()) return;
-    injectV172Css();
-    if(!document.querySelector('#financeTabCatalog') && typeof ensureCatalogTabV150==='function') { try{ ensureCatalogTabV150(); }catch(_){} }
-    const wh=isWarehouse(); document.body.classList.toggle('warehouse-manager-view-v172', wh);
-    tabs().forEach(b=>{ const t=S(b.textContent); b.style.display=(!wh || t==='طلبات الصرف' || t==='الأصناف')?'':'none'; b.classList.remove('active'); });
-    if(wh && !['requests','catalog'].includes(tab)) tab='requests';
-    pages().forEach(p=>p.classList.add('hidden'));
-    const page=$('financeTab'+cap(tab)); if(page) page.classList.remove('hidden');
-    if(btn) btn.classList.add('active'); else { const wanted = tab==='requests'?'طلبات الصرف':tab==='catalog'?'الأصناف':tab==='inventory'?'المخزون':tab==='reports'?'التقارير':tab==='costCenters'?'مراكز التكلفة':tab==='costReduction'?'تقليل التكلفة':''; tabs().find(b=>S(b.textContent)===wanted)?.classList.add('active'); }
-  }
-  function renderCurrentFinanceTab(){
-    const active = document.querySelector('#financeDashboard .finance-tab.active');
-    let label=S(active?.textContent); let tab = label==='طلبات الصرف'?'requests':label==='الأصناف'?'catalog':label==='المخزون'?'inventory':label==='التقارير'?'reports':label==='مراكز التكلفة'?'costCenters':label==='تقليل التكلفة'?'costReduction':'overview';
-    applyTabVisibility(tab,active);
-    try{
-      if(tab==='requests' && typeof inventoryRenderRequests==='function') inventoryRenderRequests();
-      else if(tab==='catalog') { if(isWarehouse()) renderWarehouseCatalogV172(); else if(typeof inventoryRenderItems==='function') inventoryRenderItems(); }
-      else if(tab==='inventory' && typeof renderStockBatchCardsV149==='function') { if(typeof stockBatchLoadV148==='function') stockBatchLoadV148(true); renderStockBatchCardsV149(); }
-      else if(tab==='reports') window.financeRenderReports();
-      else if(tab==='costCenters') window.costCenterRender();
-      else if(tab==='costReduction') { if(typeof renderCostReductionV152==='function') renderCostReductionV152(); }
-      else if(typeof financeRenderAll==='function') { try{ financeRenderKpis?.(); financeRenderRecent?.(); }catch(_){} }
-    }catch(e){ console.warn('V172 render tab warning', e); }
-  }
-  window.financeShowTab = function(tab,btn){
-    window.financeCurrentTab=tab;
-    if(!window.financeLoaded){ freshFinanceLoad(false).then(()=>applyTabVisibility(tab,btn)); return; }
-    applyTabVisibility(tab,btn);
-    setTimeout(renderCurrentFinanceTab,40);
-  };
-
-  const oldInventoryRenderItems = window.inventoryRenderItems;
-  window.inventoryRenderItems = function(){ if(isWarehouse()) return renderWarehouseCatalogV172(); return oldInventoryRenderItems ? oldInventoryRenderItems.apply(this,arguments) : undefined; };
-
-  window.stockBatchDeleteV172 = async function(idx){
-    const batch=(window.stockBatchesV148||[])[Number(idx)]; if(!batch) return msg && msg('لم يتم العثور على الفاتورة','err');
-    if(!confirm('تأكيد حذف فاتورة المخزون؟ سيتم عكس الكميات وحذف الحركات المرتبطة.')) return;
-    try{
-      const lines=batch.lines||[];
-      for(const l of lines){
-        const it=getItem(l.item_id)||getItemByCode(l.product_code);
-        if(it){ const next=Math.max(0,N(it.quantity)-N(l.quantity)); await sb.from('inventory_items').update({quantity:next}).eq('id',it.id); it.quantity=next; }
-        if(l.movement_id) await sb.from('inventory_movements').delete().eq('id',l.movement_id);
-      }
-      if(batch.id){ try{ await sb.from('inventory_batch_items').delete().eq('batch_id',batch.id); await sb.from('inventory_batches').delete().eq('id',batch.id); }catch(_){} }
-      const inv=S(batch.invoice_no||batch.id||''); if(inv){ await sb.from('inventory_movements').delete().ilike('notes','%batch:'+inv+'%'); await sb.from('inventory_movements').delete().ilike('reason','%'+inv+'%'); }
-      clearFinanceCaches(); window.stockBatchesV148=(window.stockBatchesV148||[]).filter((_,i)=>i!==Number(idx));
-      if(typeof renderStockBatchCardsV149==='function') renderStockBatchCardsV149();
-      await freshFinanceLoad(false); if(typeof stockBatchLoadV148==='function') await stockBatchLoadV148(true);
-      msg && msg('تم حذف الفاتورة وعكس الكميات');
-    }catch(e){ console.error(e); msg && msg(e.message||String(e),'err'); }
-  };
-  window.stockBatchDeleteV152=window.stockBatchDeleteV172; window.stockBatchDeleteV161=window.stockBatchDeleteV172; window.stockBatchDeleteV162=window.stockBatchDeleteV172; window.stockBatchDeleteV163=window.stockBatchDeleteV172;
-
-  const oldCardRender = window.renderStockBatchCardsV149;
-  window.renderStockBatchCardsV149 = function(){
-    if(oldCardRender) oldCardRender.apply(this,arguments);
-    document.querySelectorAll('#stockBatchCardsGridV149 .v149-invoice-card').forEach((card,idx)=>{
-      const actions=card.querySelector('.row-actions'); if(!actions) return;
-      actions.querySelectorAll('button').forEach(b=>{ if((b.textContent||'').includes('حذف')) b.remove(); });
-      if(!actions.querySelector('.v172-delete')) actions.insertAdjacentHTML('beforeend',`<button type="button" class="danger v172-delete" onclick="stockBatchDeleteV172('${idx}')">حذف</button>`);
-    });
-  };
-
-  window.addEventListener('load',()=>setTimeout(()=>{ injectV172Css(); clearFinanceCaches(); if(isFinancePage()) freshFinanceLoad(false); },900));
+  // Prevent stuck loading screens.
+  window.addEventListener('pageshow',()=>{ try{ if(window.hideTasneefLoading) window.hideTasneefLoading(); }catch(_){ } });
+  window.addEventListener('focus',()=>{ if(cameraBusy) setTimeout(()=>setCameraBusy(false),900); });
+  console.log('V175 System Stability Rebuild loaded');
 })();
