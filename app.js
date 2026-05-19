@@ -10057,3 +10057,151 @@ function financePrintReport(kind){
   window.addEventListener('focus',()=>{ if(cameraBusy) setTimeout(()=>setCameraBusy(false),900); });
   console.log('V175 System Stability Rebuild loaded');
 })();
+
+
+/* ===== V177 Monthly Permanent Projects Final Layout ===== */
+(function(){
+  'use strict';
+  if(window.__v177MonthlyPermanentFinal) return;
+  window.__v177MonthlyPermanentFinal = true;
+  const $id = (id)=>document.getElementById(id);
+  const esc = (v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const num = (v)=>{ const x=Number(v||0); return Number.isFinite(x)?x:0; };
+  const minutesText = (m)=> `${Math.round(num(m)).toLocaleString('en-US')} دقيقة`;
+  const pctText = (p)=> `${Number(num(p)).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})}%`;
+  const dateOfLog = (l)=> String(l.log_date || l.date || l.check_in || l.created_at || '').slice(0,10);
+  const monthOfLog = (l)=> dateOfLog(l).slice(0,7);
+  const projectNameSafe = (id)=> (typeof window.projectName==='function' ? window.projectName(id) : '') || (window.data?.projects||[]).find(p=>String(p.id)===String(id))?.name || '-';
+  const supervisorNameSafe = (id)=> (typeof window.supervisorName==='function' ? window.supervisorName(id) : '') || (window.data?.supervisors||[]).find(s=>String(s.id)===String(id))?.full_name || (window.data?.users||[]).find(u=>String(u.id)===String(id))?.full_name || '-';
+  const projectRow = (id)=> (window.data?.projects||[]).find(p=>String(p.id)===String(id)) || {};
+  function actualMinutes(l){
+    try{ if(typeof window.logActualMinutes==='function') return num(window.logActualMinutes(l)); }catch(_){ }
+    if(l.duration_minutes) return num(l.duration_minutes);
+    if(l.actual_minutes) return num(l.actual_minutes);
+    const inn = l.check_in || l.in_time || '';
+    const out = l.check_out || l.out_time || '';
+    if(inn && out){
+      const toM = (t)=>{ const s=String(t).slice(-5); const [h,m]=s.split(':').map(Number); return h*60+m; };
+      let a=toM(inn), b=toM(out); if(Number.isFinite(a)&&Number.isFinite(b)){ if(b<a) b+=1440; return Math.max(0,b-a); }
+    }
+    return 0;
+  }
+  function requiredMinutes(l){
+    try{ if(typeof window.logRequiredMinutes==='function') return num(window.logRequiredMinutes(l)); }catch(_){ }
+    return num(l.required_minutes || l.daily_required_minutes || l.required_daily_minutes || 0);
+  }
+  function workerNames(pid){
+    try{ if(typeof window.uniqueWorkersForProjectTextV60==='function'){ const s=window.uniqueWorkersForProjectTextV60(pid); if(s) return s; } }catch(_){ }
+    const ws=(window.data?.workers||[]).filter(w=>String(w.project_id||w.current_project_id||w.assigned_project_id||'')===String(pid) || String(w.project||'')===String(pid));
+    return ws.map(w=>w.name||w.full_name).filter(Boolean).join('، ') || '-';
+  }
+  function projectDailyRequired(pid, maxReq){
+    const p=projectRow(pid);
+    const vals=[p.required_daily_minutes,p.daily_required_minutes,p.required_minutes,p.daily_minutes,p.monthly_daily_minutes,maxReq].map(num).filter(Boolean);
+    return vals.length ? Math.max(...vals) : 0;
+  }
+  function isPermanentProject(pid, maxReq){
+    const p=projectRow(pid);
+    const text=[p.name,p.type,p.category,p.contract_type,p.operation_type,p.notes,p.service_type,p.status].join(' ');
+    const req=projectDailyRequired(pid,maxReq);
+    return req>=540 || /دائم|دائمة|دوام|٩ ساعات|9 ساعات|9h|full.?time|عمالة دائمة/i.test(text);
+  }
+  function monthRange(month){
+    const [y,m]=String(month).split('-').map(Number);
+    const last=new Date(y,m,0).getDate();
+    return {start:`${month}-01`,end:`${month}-${String(last).padStart(2,'0')}`,days:last};
+  }
+  function buildMonthlyV177(){
+    const month=$id('monthlyMonth')?.value || new Date().toISOString().slice(0,7);
+    const sid=$id('monthlySupervisor')?.value || '';
+    let logs=(window.data?.logs||[]).filter(l=>monthOfLog(l)===month);
+    if(sid) logs=logs.filter(l=>String(l.supervisor_id)===String(sid));
+    const groups=new Map();
+    logs.forEach(l=>{
+      const key=`${l.supervisor_id||''}_${l.project_id||''}`;
+      if(!groups.has(key)) groups.set(key,{s:l.supervisor_id,p:l.project_id,actual:0,requiredMax:0,records:0,workers:''});
+      const g=groups.get(key);
+      g.actual += actualMinutes(l);
+      g.requiredMax = Math.max(g.requiredMax, requiredMinutes(l));
+      g.records += 1;
+    });
+    const daily=[], permanent=[];
+    [...groups.values()].forEach(g=>{
+      g.workers=workerNames(g.p);
+      g.projectName=projectNameSafe(g.p);
+      g.supervisorName=supervisorNameSafe(g.s);
+      if(isPermanentProject(g.p,g.requiredMax)) permanent.push(g); else daily.push(g);
+    });
+    const totalsBySup={};
+    daily.forEach(r=>{ const k=String(r.s||''); totalsBySup[k]=(totalsBySup[k]||0)+num(r.actual); });
+    const bySup={};
+    daily.forEach(r=>{ const k=String(r.s||''); (bySup[k]||(bySup[k]=[])).push(r); });
+    Object.keys(bySup).forEach(s=>{
+      bySup[s].sort((a,b)=>String(a.projectName).localeCompare(String(b.projectName),'ar'));
+      let used=0;
+      bySup[s].forEach((r,i)=>{
+        const total=totalsBySup[s]||0;
+        let p= total ? (r.actual/total)*100 : 0;
+        if(i < bySup[s].length-1){ p = Math.round(p*10)/10; used += p; }
+        else { p = Math.max(0, Math.round((100-used)*10)/10); }
+        r.percent=p;
+      });
+    });
+    const dailySorted=Object.keys(bySup).sort((a,b)=>String(supervisorNameSafe(a)).localeCompare(String(supervisorNameSafe(b)),'ar')).flatMap(s=>bySup[s]);
+    permanent.sort((a,b)=>String(a.projectName).localeCompare(String(b.projectName),'ar'));
+    return {month,range:monthRange(month),daily:dailySorted,permanent,totalsBySup};
+  }
+  window.monthlyRowsV177 = buildMonthlyV177;
+  window.renderMonthly = function(){
+    const body=$id('monthlyBody'); if(!body) return;
+    const table=body.closest('table');
+    if(table?.tHead) table.tHead.innerHTML='<tr><th>المشرف</th><th>المشروع</th><th>أسماء العمال</th><th>الوقت بالدقائق</th><th>النسبة المئوية</th><th>حالة الأداء</th></tr>';
+    const res=buildMonthlyV177();
+    if(!res.daily.length){ body.innerHTML='<tr><td colspan="6">لا توجد بيانات في مشاريع الزيارة اليومية لهذا الشهر</td></tr>'; }
+    else{
+      let html='', last=null, total=0, pctSum=0;
+      const flush=()=>{ if(last!==null){ html += `<tr class="monthly-total-row" style="background:#f4fbf8;font-weight:900"><td colspan="3">مجموع ${esc(supervisorNameSafe(last))}</td><td>${minutesText(total)}</td><td><span class="badge green">${pctText(100)}</span></td><td>—</td></tr>`; }};
+      res.daily.forEach(r=>{
+        if(last!==null && String(last)!==String(r.s)){ flush(); total=0; pctSum=0; }
+        last=r.s; total+=num(r.actual); pctSum+=num(r.percent);
+        html += `<tr><td>${esc(r.supervisorName)}</td><td>${esc(r.projectName)}</td><td>${esc(r.workers||'-')}</td><td>${minutesText(r.actual)}</td><td><span class="badge green">${pctText(r.percent)}</span></td><td><span class="badge green">مكتمل</span></td></tr>`;
+      });
+      flush(); body.innerHTML=html;
+    }
+    const totalDaily=res.daily.reduce((a,r)=>a+num(r.actual),0), totalPerm=res.permanent.reduce((a,r)=>a+num(r.actual),0);
+    const supCount=new Set(res.daily.map(r=>String(r.s||''))).size;
+    if($id('monthlySummary')) $id('monthlySummary').innerHTML=`<div class="kpi"><small>مشاريع الزيارة اليومية</small><b>${res.daily.length}</b></div><div class="kpi"><small>مشاريع العمالة الدائمة</small><b>${res.permanent.length}</b></div><div class="kpi"><small>مجموع دقائق الزيارة</small><b>${minutesText(totalDaily)}</b></div><div class="kpi"><small>مجموع النسبة</small><b>100%</b></div><div class="kpi"><small>دقائق الدائمة</small><b>${minutesText(totalPerm)}</b></div><div class="kpi"><small>عدد المشرفين</small><b>${supCount}</b></div>`;
+  };
+  function permanentBlocks(permanent){
+    const cards=permanent.map(r=>{
+      const workers=String(r.workers||'-').split(/[،,\n]/).map(x=>x.trim()).filter(Boolean);
+      const workerLines=(workers.length?workers:['-']).map(w=>`<div class="worker-line">${esc(w)}</div>`).join('');
+      return `<div class="perm-col"><div class="perm-project">${esc(r.projectName)}</div><div class="perm-meta">المشرف: ${esc(r.supervisorName)}</div><div class="perm-workers">${workerLines}</div><div class="perm-mins">${minutesText(r.actual)}</div></div>`;
+    }).join('');
+    return `<section class="permanent-section"><div class="month-title">${esc((buildMonthlyV177().month||''))}</div><h2>مشاريع العمالة الدائمة</h2><div class="perm-wrap">${cards || '<div class="empty">لا توجد مشاريع دائمة 9 ساعات أو أكثر خلال هذا الشهر</div>'}</div></section>`;
+  }
+  window.printMonthlyReportV57 = window.printMonthlyReportV177 = function(){
+    const res=buildMonthlyV177();
+    const bySup={}; res.daily.forEach(r=>{ const k=String(r.s||''); (bySup[k]||(bySup[k]=[])).push(r); });
+    const supCards=Object.keys(bySup).sort((a,b)=>String(supervisorNameSafe(a)).localeCompare(String(supervisorNameSafe(b)),'ar')).map(s=>{
+      const rows=bySup[s]; const total=rows.reduce((a,r)=>a+num(r.actual),0);
+      const trs=rows.map(r=>`<tr><td>${esc(r.projectName)}</td><td>${minutesText(r.actual)}</td><td>${pctText(r.percent)}</td></tr>`).join('');
+      const workers=[...new Set(rows.flatMap(r=>String(r.workers||'').split(/[،,\n]/).map(x=>x.trim()).filter(Boolean)))].join('، ') || '-';
+      return `<div class="sup-card"><div class="sup-head"><b>${esc(supervisorNameSafe(s))}</b><span>100%</span></div><table><thead><tr><th>المشروع</th><th>الدقائق</th><th>النسبة</th></tr></thead><tbody>${trs}<tr class="sum-row"><td>المجموع</td><td>${minutesText(total)}</td><td>100%</td></tr></tbody></table><div class="workers"><b>أسماء العمال</b><p>${esc(workers)}</p></div></div>`;
+    }).join('');
+    const totalDaily=res.daily.reduce((a,r)=>a+num(r.actual),0), totalPerm=res.permanent.reduce((a,r)=>a+num(r.actual),0);
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية</title><style>
+      @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#153d33;margin:0;background:#fff;font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:14px;border:2px solid #0a5a49;min-height:100vh}.top{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0a5a49;padding-bottom:10px}.brand{display:flex;align-items:center;gap:10px}.logo{width:58px;height:58px;border-radius:18px;border:2px solid #c7a24d;display:grid;place-items:center;font-weight:900;color:#0a5a49;background:#f7fbfa}.brand h1{margin:0;font-size:20px}.title{text-align:left}.title h2{font-size:26px;margin:0;color:#0a5a49}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.box{border:1px solid #d9e6e1;border-radius:13px;padding:10px;text-align:center;background:#fff}.box small{display:block;color:#697b74}.box b{font-size:16px;color:#0a5a49}.block{margin-top:12px}.block h2,.permanent-section h2{margin:0 0 8px;text-align:center;color:#fff;background:#0a5a49;border:2px solid #c7a24d;border-radius:999px;padding:7px 35px;display:block}.sup-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.sup-card{border:2px solid #0a5a49;border-radius:12px;overflow:hidden;background:#fff;break-inside:avoid}.sup-head{display:flex;justify-content:space-between;padding:8px;background:#f7fbfa;color:#0a5a49;border-bottom:1px solid #d9e6e1}table{width:100%;border-collapse:collapse}th{background:#0a5a49;color:white;padding:6px}td{border:1px solid #e2ece8;padding:5px;text-align:center}.sum-row td{font-weight:900;background:#edf8f3}.workers{padding:8px;text-align:center}.workers p{margin:4px 0 0;line-height:1.7}.permanent-section{margin-top:14px;break-before:auto}.month-title{text-align:center;font-weight:900;color:#0a5a49;margin:8px auto 6px;border:1px solid #c7a24d;border-radius:999px;width:max-content;padding:5px 28px;background:#fffaf0}.perm-wrap{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border:2px solid #0a5a49;border-radius:13px;padding:8px;background:#f7fbfa}.perm-col{background:#fff;border:1px solid #0a5a49;border-radius:10px;overflow:hidden;text-align:center;min-height:145px;break-inside:avoid}.perm-project{background:#0a5a49;color:#fff;font-weight:900;padding:9px}.perm-meta{padding:6px;color:#0a5a49;font-weight:700;border-bottom:1px solid #e2ece8}.perm-workers{padding:7px;min-height:58px}.worker-line{padding:3px 0;border-bottom:1px dashed #e5eee9}.worker-line:last-child{border-bottom:0}.perm-mins{display:inline-block;margin:6px auto 10px;border-radius:999px;background:#edf8f3;color:#0a5a49;padding:5px 15px;font-weight:900}.empty{grid-column:1/-1;text-align:center;border:1px dashed #aabdb6;border-radius:12px;padding:20px;color:#697b74;background:#fff}.foot{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}.sign{border:1px solid #d9e6e1;border-radius:12px;padding:10px;min-height:70px}.note{margin-top:8px;text-align:center;color:#697b74}@media print{.page{border-radius:0}.sup-card,.perm-col,.sign{break-inside:avoid}}
+    </style></head><body><div class="page"><div class="top"><div class="brand"><div class="logo">تصنيف</div><div><h1>شركة تصنيف لإدارة المرافق</h1><small>تقرير تشغيل شهري</small></div></div><div class="title"><h2>تقرير الأوقات الشهرية</h2><p>الشهر: ${esc(res.month)}</p></div></div><div class="meta"><div class="box"><small>مشاريع الزيارة اليومية</small><b>${res.daily.length}</b></div><div class="box"><small>مجموع دقائق الزيارة</small><b>${minutesText(totalDaily)}</b></div><div class="box"><small>مجموع النسبة</small><b>100%</b></div><div class="box"><small>مشاريع العمالة الدائمة</small><b>${res.permanent.length}</b></div></div><section class="block"><h2>مشاريع الزيارة اليومية</h2><div class="sup-grid">${supCards || '<div class="empty">لا توجد بيانات</div>'}</div></section>${permanentBlocks(res.permanent)}<div class="foot"><div class="sign"><b>إعداد</b><br><br>الاسم: ____________</div><div class="sign"><b>مراجعة</b><br><br>الاسم: ____________</div><div class="sign"><b>اعتماد</b><br><br>الاسم: ____________</div></div><div class="note">تم توليد التقرير من نظام شركة تصنيف لإدارة المرافق. مشاريع العمالة الدائمة منفصلة ولا تدخل في نسب الزيارة اليومية.</div></div><script>window.onload=function(){setTimeout(function(){window.print()},450)}</script></body></html>`;
+    const w=window.open('','_blank'); if(!w){ if(typeof msg==='function') msg('اسمح بالنوافذ المنبثقة للطباعة','err'); return; } w.document.write(html); w.document.close();
+  };
+  window.exportMonthlyCSV = function(){
+    const res=buildMonthlyV177();
+    const lines=['المشرف,المشروع,أسماء العمال,الدقائق,النسبة,نوع المشروع'];
+    res.daily.forEach(r=>lines.push([r.supervisorName,r.projectName,r.workers,Math.round(r.actual),pctText(r.percent),'زيارة يومية'].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')));
+    res.permanent.forEach(r=>lines.push([r.supervisorName,r.projectName,r.workers,Math.round(r.actual),'','عمالة دائمة'].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')));
+    if(typeof download==='function') download('monthly-v177.csv', lines.join('\n'));
+  };
+  window.addEventListener('load',()=>setTimeout(()=>{ try{ if($id('monthlyBody')) window.renderMonthly(); }catch(e){ console.warn('V177 monthly render',e); } },900));
+  console.log('V177 Monthly Permanent Projects Final Layout loaded');
+})();
