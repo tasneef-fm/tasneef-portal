@@ -11525,3 +11525,108 @@ function financePrintReport(kind){
   setTimeout(bootV184, 1200);
   console.log('V184 invoice unit visible and values fix loaded');
 })();
+
+/* ================= V185 Invoice Unit Dropdown Final Visible Fix =================
+   يظهر خانة نوع الكمية/الوحدة فعليًا داخل نافذة إضافة فاتورة المخزون.
+   السبب السابق: حقل الوحدة كان موجودًا لكن مخفيًا بسبب كلاس قديم v161-hide-advanced-field.
+============================================================================ */
+(function(){
+  'use strict';
+  const $ = (id)=>document.getElementById(id);
+  const units = ['حبة','لتر','كرتون','علبة','متر','كيس','رول','جالون','عبوة','طقم','زوج','درزن','كيلو','ملي','أخرى'];
+  function ensureStyleV185(){
+    if($('v185UnitStyle')) return;
+    const st=document.createElement('style'); st.id='v185UnitStyle'; st.textContent=`
+      #batchUnitVisibleHolderV185{display:block!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:2!important}
+      #batchUnitVisibleHolderV185 label{display:block!important;font-weight:800!important;color:#064637!important;margin-bottom:6px!important;text-align:right!important}
+      #batchUnitV148{display:block!important;visibility:visible!important;opacity:1!important;width:100%!important;height:42px!important;border:1px solid #cfe2dc!important;border-radius:12px!important;background:#fff!important;color:#064637!important;padding:8px 12px!important;box-sizing:border-box!important}
+      #stockBatchCardV148 .v161-hide-advanced-field:has(#batchUnitV148){display:block!important;visibility:visible!important;opacity:1!important}
+      #stockBatchCardV148 .split #batchUnitVisibleHolderV185{grid-column:auto!important}
+    `; document.head.appendChild(st);
+  }
+  function ensureDataListV185(){
+    let dl=$('unitOptionsV185');
+    if(!dl){ dl=document.createElement('datalist'); dl.id='unitOptionsV185'; document.body.appendChild(dl); }
+    dl.innerHTML=units.map(u=>`<option value="${u}"></option>`).join('');
+  }
+  function forceUnitFieldV185(){
+    ensureStyleV185(); ensureDataListV185();
+    const qty=$('batchQtyV148');
+    if(!qty) return;
+    const qtyBox=qty.closest('div');
+    const split=qtyBox?.parentElement;
+    let holder=$('batchUnitVisibleHolderV185');
+    let unit=$('batchUnitV148');
+
+    if(!holder){
+      holder=document.createElement('div');
+      holder.id='batchUnitVisibleHolderV185';
+      holder.innerHTML='<label>نوع الكمية / الوحدة</label>';
+    }
+    if(!unit){
+      unit=document.createElement('input');
+      unit.id='batchUnitV148';
+      unit.value='حبة';
+    }
+
+    // انقل الحقل من أي صندوق قديم مخفي إلى صندوق ظاهر جديد
+    const oldBox=unit.closest('div');
+    if(oldBox){ oldBox.classList.remove('v161-hide-advanced-field','hidden','v180-hidden'); oldBox.hidden=false; oldBox.style.display=''; }
+    holder.classList.remove('v161-hide-advanced-field','hidden','v180-hidden');
+    holder.hidden=false;
+    holder.style.cssText='display:block!important;visibility:visible!important;opacity:1!important;';
+    unit.hidden=false; unit.disabled=false;
+    unit.setAttribute('list','unitOptionsV185');
+    unit.placeholder='اختر أو اكتب: حبة / لتر / كرتون';
+    unit.style.cssText='display:block!important;visibility:visible!important;opacity:1!important;width:100%!important;';
+    if(!unit.value) unit.value='حبة';
+    if(unit.parentElement!==holder) holder.appendChild(unit);
+
+    // ضعه داخل نفس صف الكمية قبل الكمية مباشرة
+    if(split && qtyBox && holder.parentElement!==split){ split.insertBefore(holder, qtyBox); }
+    else if(!holder.parentElement && qtyBox){ qtyBox.insertAdjacentElement('beforebegin', holder); }
+
+    // تأكد من العنوان
+    const lab=holder.querySelector('label'); if(lab) lab.textContent='نوع الكمية / الوحدة';
+  }
+
+  // لف زر فتح فاتورة المخزون حتى يظهر الحقل مباشرة عند الفتح
+  const oldOpen=window.openStockBatchModalV149;
+  if(oldOpen && !oldOpen.v185Wrapped){
+    window.openStockBatchModalV149=function(){ const out=oldOpen.apply(this,arguments); setTimeout(forceUnitFieldV185,30); setTimeout(forceUnitFieldV185,250); return out; };
+    window.openStockBatchModalV149.v185Wrapped=true;
+  }
+
+  // لف إضافة السطر حتى لا يضيع نوع الوحدة
+  const oldAdd=window.stockBatchAddLineV148;
+  if(oldAdd && !oldAdd.v185Wrapped){
+    window.stockBatchAddLineV148=function(){
+      forceUnitFieldV185();
+      const u=$('batchUnitV148'); if(u && !u.value) u.value='حبة';
+      const code=String($('batchProductCodeV148')?.value||'').trim();
+      const out=oldAdd.apply(this,arguments);
+      const arr=Array.isArray(window.batchLinesV148)?window.batchLinesV148:[];
+      const line=arr.find(x=>String(x.product_code||'').trim()===code) || arr[arr.length-1];
+      if(line) line.unit=(u?.value||line.unit||'حبة');
+      window.batchLinesV148=arr;
+      if(typeof window.stockBatchRenderLinesV148==='function') window.stockBatchRenderLinesV148();
+      setTimeout(forceUnitFieldV185,20);
+      return out;
+    };
+    window.stockBatchAddLineV148.v185Wrapped=true;
+  }
+
+  // بعد تفريغ السطر أرجع الوحدة الافتراضية
+  const oldClear=window.stockBatchClearLineV148;
+  if(oldClear && !oldClear.v185Wrapped){
+    window.stockBatchClearLineV148=function(){ const out=oldClear.apply(this,arguments); setTimeout(()=>{forceUnitFieldV185(); const u=$('batchUnitV148'); if(u) u.value='حبة';},20); return out; };
+    window.stockBatchClearLineV148.v185Wrapped=true;
+  }
+
+  document.addEventListener('click',()=>setTimeout(forceUnitFieldV185,60),true);
+  document.addEventListener('focusin',()=>setTimeout(forceUnitFieldV185,30),true);
+  window.addEventListener('load',()=>setTimeout(forceUnitFieldV185,700));
+  setInterval(()=>{ if($('stockBatchCardV148')?.classList.contains('v149-open')) forceUnitFieldV185(); },500);
+  setTimeout(forceUnitFieldV185,1200);
+  console.log('V185 invoice unit dropdown final visible fix loaded');
+})();
