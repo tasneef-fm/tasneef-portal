@@ -10788,3 +10788,167 @@ function financePrintReport(kind){
   window.addEventListener('storage', ()=>setTimeout(bootV180, 80));
   console.log('V180 finance inventory role/catalog/unit fix loaded');
 })();
+
+
+/* ================= V181 Invoice Unit & VAT Display Fix =================
+   إصلاح نافذة إدخال المخزون:
+   - إظهار نوع/وحدة الكمية بوضوح داخل إضافة صنف للفاتورة.
+   - منع إخفاء خانة الوحدة بسبب باتشات سابقة.
+   - توحيد حساب سعر قبل الضريبة / VAT / سعر شامل / الإجمالي.
+   - إصلاح عرض VAT إذا كان سعر قبل الضريبة صفر.
+======================================================================= */
+(function(){
+  const $ = (id)=>document.getElementById(id);
+  const N = (v)=>{ const x=parseFloat(String(v??'').replace(/,/g,'')); return Number.isFinite(x)?x:0; };
+  const S = (v)=>String(v??'');
+  const money = (v)=>N(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const qty = (v)=>N(v).toLocaleString('en-US',{maximumFractionDigits:2});
+  const E = (v)=>S(v).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const VAT=0.15;
+
+  function calcVat(price, mode){
+    price=N(price); mode=mode||'exclusive';
+    if(price<=0) return {net:0,vat:0,gross:0};
+    if(mode==='inclusive'){
+      const net=price/(1+VAT);
+      return {net, vat:price-net, gross:price};
+    }
+    if(mode==='exempt') return {net:price, vat:0, gross:price};
+    return {net:price, vat:price*VAT, gross:price*(1+VAT)};
+  }
+
+  function unitOptions(){
+    return ['حبة','لتر','كرتون','علبة','متر','كيس','رول','جالون','عبوة','طقم','زوج','درزن','كيلو','ملي','أخرى'];
+  }
+
+  function ensureUnitField(){
+    let u=$('batchUnitV148');
+    const qtyEl=$('batchQtyV148');
+    if(!qtyEl) return;
+
+    // إذا كانت خانة الوحدة موجودة، نعيد إظهارها مهما كانت باتشات قديمة أخفتها.
+    if(u){
+      const box=u.closest('div');
+      if(box){
+        box.classList.remove('v161-hide-advanced-field');
+        box.style.display='';
+        box.hidden=false;
+      }
+      u.style.display='';
+      u.hidden=false;
+      const lab=box?.querySelector('label');
+      if(lab) lab.textContent='نوع الكمية / الوحدة';
+      u.placeholder='اختر أو اكتب: حبة / لتر / كرتون';
+      u.setAttribute('list','unitOptionsV181');
+    } else {
+      const qtyBox=qtyEl.closest('div');
+      const holder=document.createElement('div');
+      holder.innerHTML='<label>نوع الكمية / الوحدة</label><input id="batchUnitV148" list="unitOptionsV181" placeholder="اختر أو اكتب: حبة / لتر / كرتون" value="حبة">';
+      qtyBox?.parentElement?.insertBefore(holder, qtyBox);
+      u=$('batchUnitV148');
+    }
+
+    let dl=$('unitOptionsV181') || $('unitOptionsV180');
+    if(!dl){
+      dl=document.createElement('datalist');
+      dl.id='unitOptionsV181';
+      document.body.appendChild(dl);
+    } else {
+      dl.id='unitOptionsV181';
+    }
+    dl.innerHTML=unitOptions().map(x=>`<option value="${E(x)}"></option>`).join('');
+    if(u && !u.value) u.value='حبة';
+  }
+
+  function patchLineAdd(){
+    const oldAdd=window.stockBatchAddLineV148;
+    if(!oldAdd || oldAdd.v181Wrapped) return;
+    window.stockBatchAddLineV148=function(){
+      ensureUnitField();
+      const price=N($('batchUnitPriceV148')?.value);
+      if(price<0) return (window.msg?msg('السعر غير صحيح','err'):alert('السعر غير صحيح'));
+      if($('batchUnitV148') && !$('batchUnitV148').value) $('batchUnitV148').value='حبة';
+      return oldAdd.apply(this, arguments);
+    };
+    window.stockBatchAddLineV148.v181Wrapped=true;
+  }
+
+  function patchRenderLines(){
+    const oldRemove=window.stockBatchRemoveLineV148;
+    window.stockBatchRenderLinesV148=function(){
+      const b=$('batchLinesBodyV148'); if(!b) return;
+      const mode=$('batchVatModeV148')?.value||'exclusive';
+      let netTotal=0, vatTotal=0, grossTotal=0;
+      const lines=(window.batchLinesV148 || batchLinesV148 || []);
+      b.innerHTML = lines.map(l=>{
+        const c=calcVat(l.unit_price, mode);
+        const q=N(l.quantity);
+        const net=c.net*q, vat=c.vat*q, gross=c.gross*q;
+        netTotal+=net; vatTotal+=vat; grossTotal+=gross;
+        return `<tr><td>${E(l.product_code)}</td><td><b>${E(l.item_name)}</b><br><small>${E(l.category||'')} / ${E(l.item_type||'')}</small></td><td>${qty(q)} ${E(l.unit||'حبة')}</td><td>${money(c.net)} ر.س</td><td>${money(c.vat)} ر.س</td><td>${money(c.gross)} ر.س</td><td>${money(gross)} ر.س</td><td><button class="danger" type="button" onclick="stockBatchRemoveLineV148('${E(l.product_code)}')">حذف</button></td></tr>`;
+      }).join('') || '<tr><td colspan="8">لم تتم إضافة أصناف بعد</td></tr>';
+      const t=$('batchTotalsV148');
+      if(t) t.innerHTML = `<b>Total amount before 15% VAT:</b> ${money(netTotal)} SAR &nbsp; | &nbsp; <b>Total VAT 15%:</b> ${money(vatTotal)} SAR &nbsp; | &nbsp; <b>Total Value with 15% VAT:</b> ${money(grossTotal)} SAR`;
+    };
+    if(oldRemove && !oldRemove.v181Wrapped){
+      window.stockBatchRemoveLineV148=function(code){
+        if(window.batchLinesV148) window.batchLinesV148=window.batchLinesV148.filter(l=>String(l.product_code)!==String(code));
+        if(typeof batchLinesV148!=='undefined') batchLinesV148=batchLinesV148.filter(l=>String(l.product_code)!==String(code));
+        window.stockBatchRenderLinesV148();
+      };
+      window.stockBatchRemoveLineV148.v181Wrapped=true;
+    }
+  }
+
+  function patchSaveAndPrint(){
+    // نعيد تعريف دالة حساب الطباعة فقط حتى لا يظهر VAT بدون سعر.
+    const oldPrint=window.stockBatchPrintV148;
+    if(oldPrint && !oldPrint.v181Wrapped){
+      window.stockBatchPrintV148=function(batch){
+        const rows=(batch.lines||[]).map(l=>{
+          const c={net:N(l.unit_cost),vat:N(l.unit_vat),gross:N(l.unit_gross)};
+          const unitVat=(c.net<=0 && c.gross<=0)?0:c.vat;
+          const lineGross=N(l.line_gross || c.gross*N(l.quantity));
+          return `<tr><td>${E(l.product_code)}</td><td>${E(l.item_name)}</td><td>${E(l.category||'')}</td><td>${E(l.item_type||'')}</td><td>${E(l.unit||'حبة')}</td><td>${qty(l.quantity)}</td><td>${money(c.net)} SAR</td><td>${money(unitVat)} SAR</td><td>${money(c.gross)} SAR</td><td>${money(lineGross)} SAR</td></tr>`;
+        }).join('');
+        const body=`<div class="grid"><div class="box"><b>ID</b><br>${E(batch.invoice_no)}</div><div class="box"><b>Date</b><br>${E(batch.batch_date)}</div><div class="box"><b>Warehouse / Supplier</b><br>${E(batch.supplier)}</div></div><h2>Products</h2><table><thead><tr><th>Product Code</th><th>Product Name</th><th>Category</th><th>Type</th><th>Unit</th><th>Quantity Added</th><th>Unit Price</th><th>VAT 15%</th><th>Unit Price with VAT</th><th>Value</th></tr></thead><tbody>${rows||'<tr><td colspan="10">لا توجد أصناف</td></tr>'}</tbody></table><div style="margin-top:22px;font-size:16px;line-height:2"><b>Total amount before 15% VAT:</b> ${money(batch.total_before_vat)} SAR<br><b>Total VAT 15%:</b> ${money(batch.total_vat)} SAR<br><b>Total Value with 15% VAT:</b> ${money(batch.total_with_vat)} SAR</div>`;
+        if(typeof financePrintWindow === 'function') financePrintWindow('Added Product', body); else { const w=window.open('','_blank'); w.document.write(body); w.print(); }
+      };
+      window.stockBatchPrintV148.v181Wrapped=true;
+    }
+  }
+
+  function patchLookupUnit(){
+    const oldLookup=window.lookupBatchProductV151;
+    if(oldLookup && !oldLookup.v181Wrapped){
+      window.lookupBatchProductV151=function(){
+        const out=oldLookup.apply(this, arguments);
+        setTimeout(()=>{ ensureUnitField(); const u=$('batchUnitV148'); if(u && !u.value) u.value='حبة'; }, 20);
+        return out;
+      };
+      window.lookupBatchProductV151.v181Wrapped=true;
+    }
+  }
+
+  function injectCss(){
+    if($('v181InvoiceUnitFixCss')) return;
+    const st=document.createElement('style'); st.id='v181InvoiceUnitFixCss';
+    st.textContent=`
+      #batchUnitV148{display:block!important;visibility:visible!important;opacity:1!important;}
+      #batchUnitV148.closest{display:block!important;}
+      .v161-hide-advanced-field:has(#batchUnitV148){display:block!important;}
+      #batchUnitV148 + *{display:block;}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function boot(){
+    injectCss(); ensureUnitField(); patchLineAdd(); patchRenderLines(); patchSaveAndPrint(); patchLookupUnit();
+    try{ window.stockBatchRenderLinesV148 && window.stockBatchRenderLinesV148(); }catch(e){}
+  }
+  window.addEventListener('load', ()=>setTimeout(boot, 700));
+  document.addEventListener('click', ()=>setTimeout(boot, 60), true);
+  window.addEventListener('focus', ()=>setTimeout(boot, 80));
+  setTimeout(boot, 1000);
+  console.log('V181 invoice unit and VAT display fix loaded');
+})();
