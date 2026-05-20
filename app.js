@@ -11631,254 +11631,200 @@ function financePrintReport(kind){
   console.log('V185 invoice unit dropdown final visible fix loaded');
 })();
 
-/* =========================
-   V192 Request = Custody Only Flow
-   - Hide project and cost center from inventory request forms
-   - Request carries requester + items + reason only
-   - Project/cost center are selected later during consumption
-   - Applies to admin, warehouse manager, supervisors/technicians pages
-   ========================= */
-(function(){
-  const VERSION='192';
-  const $id = id => document.getElementById(id);
-  const N = v => { const n=Number(String(v??0).replace(/,/g,'').trim()); return Number.isFinite(n)?n:0; };
-  const E = v => String(v??'').replace(/[&<>\"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[m]));
-  const T = () => (typeof today==='function'?today():new Date().toISOString().slice(0,10));
-  const userRoleText = role => ({admin:'مدير عام',general_manager:'مدير عام',operations_manager:'مدير تشغيلي',financial_manager:'مدير مالي',warehouse_manager:'مدير مخزون',supervisor:'مشرف',technician:'فني',worker:'عامل',employee:'إداري',accountant:'إداري'}[String(role||'')]||'إداري');
-  function allRequesters(){
-    const map=new Map();
-    (window.data?.supervisors||[]).forEach(s=>{
-      const id=String(s.id||''); if(!id) return;
-      map.set('sup_'+id,{id, name:s.full_name||s.name||s.username||('مشرف '+id), role:'مشرف', source:'supervisors'});
-    });
-    (window.data?.users||[]).forEach(u=>{
-      const role=String(u.role||'');
-      if(u.is_active===false) return;
-      if(!['supervisor','technician','operations_manager','warehouse_manager','admin','general_manager','financial_manager','employee','accountant'].includes(role)) return;
-      const id=String(u.id||''); if(!id) return;
-      const key='user_'+id;
-      const labelRole=userRoleText(role);
-      map.set(key,{id, name:u.full_name||u.name||u.username||('مستخدم '+id), role:labelRole, source:'users'});
-    });
-    return [...map.values()].sort((a,b)=>String(a.name).localeCompare(String(b.name),'ar'));
-  }
-  function requesterNameById(id){
-    const idStr=String(id||'');
-    const r=allRequesters().find(x=>String(x.id)===idStr);
-    if(r) return r.name;
-    try{ if(typeof supervisorName==='function') return supervisorName(id); }catch(_){ }
-    const u=(window.data?.users||[]).find(x=>String(x.id)===idStr);
-    return u?.full_name||u?.username||'';
-  }
-  function fillRequesterSelect(){
-    const rows=allRequesters();
-    ['inventoryRequestSupervisor'].forEach(id=>{
-      const el=$id(id); if(!el) return;
-      const old=el.value;
-      el.innerHTML='<option value="">اختر الطالب</option>'+rows.map(r=>`<option value="${E(r.id)}">${E(r.name)} — ${E(r.role)}</option>`).join('');
-      if(old) el.value=old;
-      const label=el.closest('label') || el.previousElementSibling;
-      if(label && label.tagName==='LABEL') label.textContent='اسم الطالب (مشرف / فني / إداري)';
-    });
-  }
-  function hideRequestProjectCostFields(){
-    // Admin request form: hide project half inside split, keep date visible.
-    const adminProject=$id('inventoryRequestProject');
-    if(adminProject){
-      const box=adminProject.closest('div');
-      if(box){ box.style.display='none'; box.classList.add('v192-hidden-request-project'); }
-      adminProject.value=''; adminProject.removeAttribute('required');
-    }
-    const adminCost=$id('inventoryRequestCostCenter');
-    if(adminCost){
-      const lab=adminCost.previousElementSibling;
-      if(lab && lab.tagName==='LABEL') lab.style.display='none';
-      adminCost.style.display='none'; adminCost.value=''; adminCost.removeAttribute('required');
-      adminCost.classList.add('v192-hidden-request-cost');
-    }
-    const adminSup=$id('inventoryRequestSupervisor');
-    if(adminSup){ const lab=adminSup.previousElementSibling; if(lab && lab.tagName==='LABEL') lab.textContent='اسم الطالب (مشرف / فني / إداري)'; }
 
-    // Supervisor/technician request form: hide project and cost; requestor is session user.
-    const supProject=$id('supInventoryRequestProject');
-    if(supProject){
-      const box=supProject.closest('div');
-      if(box){ box.style.display='none'; box.classList.add('v192-hidden-request-project'); }
-      supProject.value=''; supProject.removeAttribute('required');
-    }
-    const supCost=$id('supInventoryRequestCostCenter');
-    if(supCost){
-      const lab=supCost.previousElementSibling;
-      if(lab && lab.tagName==='LABEL') lab.style.display='none';
-      supCost.style.display='none'; supCost.value=''; supCost.removeAttribute('required');
-      supCost.classList.add('v192-hidden-request-cost');
-    }
-    const help=document.querySelector('.sup-help');
-    if(help) help.textContent='طلب الصرف هنا عهدة على الطالب فقط. المشروع ومركز التكلفة يتم تحديدهما لاحقًا عند تسجيل الاستهلاك.';
+/* ===== V194: Custody request real flow + editable permissions + delete requests ===== */
+(function(){
+  'use strict';
+  const VERSION='V194';
+  const $id = id => document.getElementById(id);
+  const n = v => Number(v || 0) || 0;
+  const e = v => (typeof esc === 'function' ? esc(v) : String(v ?? '').replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])));
+  const msg2 = (m,t) => (typeof msg === 'function' ? msg(m,t) : alert(m));
+  const current = () => (typeof session === 'function' ? (session()||{}) : {});
+  const parsePerms = u => { let p=(u||{}).permissions||{}; if(typeof p==='string'){ try{p=JSON.parse(p||'{}')}catch(_){p={}} } return p||{}; };
+  function hasPerm(k){ const u=current(); const p=parsePerms(u); return u.role==='admin' || u.role==='general_manager' || p[k]===true; }
+  function canEditRequests(){ const u=current(); return hasPerm('can_edit_inventory_requests') || ['admin','general_manager','operations_manager','warehouse_manager'].includes(u.role); }
+  function canDeleteRequests(){ const u=current(); return hasPerm('can_delete_inventory_requests') || ['admin','general_manager','operations_manager','warehouse_manager'].includes(u.role); }
+  function lineItems(r){ return (typeof v118LineItems==='function') ? v118LineItems(r) : (Array.isArray(r?.request_items)?r.request_items:(Array.isArray(r?.items)?r.items:[])); }
+  function roleArabic(role){ return ({admin:'إداري',general_manager:'إداري',operations_manager:'إداري',financial_manager:'إداري',warehouse_manager:'إداري',supervisor:'مشرف',technician:'فني'}[role] || role || ''); }
+  function uniquePeople(){
+    const out=[]; const seen=new Set();
+    const add=(id,name,role)=>{ name=String(name||'').trim(); if(!name) return; const key=(String(id||'')+'|'+name).toLowerCase(); const nameKey=name.toLowerCase(); if(seen.has(key)||seen.has(nameKey)) return; seen.add(key); seen.add(nameKey); out.push({id:id||name, name, role:role||''}); };
+    (data.users||[]).forEach(u=>{ const role=u.role||''; if(['supervisor','technician','admin','general_manager','operations_manager','financial_manager','warehouse_manager'].includes(role)) add(u.id,u.full_name||u.name||u.username,role); });
+    (data.supervisors||[]).forEach(s=>add(s.id,s.full_name||s.name||s.username,'supervisor'));
+    return out;
   }
-  function forceOpsApproval(){
-    window.inventoryDefaultApprovalPath=function(){ return ['ops']; };
-    window.inventoryGetApprovalPath=function(){ return ['ops']; };
-    try{ localStorage.setItem('tasneef_inventory_approval_path', JSON.stringify(['ops'])); }catch(_){ }
+  function fillRequesterSelect(id, selected){ const el=$id(id); if(!el) return; const old=selected ?? el.value; const rows=uniquePeople(); el.innerHTML='<option value="">اختر الطالب</option>'+rows.map(p=>`<option value="${e(p.id)}" data-name="${e(p.name)}" data-role="${e(p.role)}">${e(p.name)}${p.role?' - '+e(roleArabic(p.role)):''}</option>`).join(''); if(old) el.value=String(old); }
+  window.financeFillSupervisorSelect = function(){ fillRequesterSelect('inventoryRequestSupervisor'); fillRequesterSelect('supInventoryRequestSupervisor'); };
+
+  function hideRequestProjectCost(){
+    ['inventoryRequestProject','inventoryRequestCostCenter','supInventoryRequestProject','supInventoryRequestCostCenter'].forEach(id=>{
+      const el=$id(id); if(!el) return; const wrap=el.closest('.split') || el.closest('div') || el.parentElement; if(wrap){ wrap.classList.add('custody-hidden-v194'); wrap.style.display='none'; }
+      el.removeAttribute('required'); el.value='';
+    });
+    const supLabel=$id('inventoryRequestSupervisor')?.closest('label') || document.querySelector('label[for="inventoryRequestSupervisor"]');
+    const adminSel=$id('inventoryRequestSupervisor'); if(adminSel){ const lab=[...document.querySelectorAll('label')].find(l=>l.nextElementSibling===adminSel || l.contains(adminSel)); if(lab && !lab.querySelector('select')) lab.textContent='اسم الطالب (مشرف / فني / إداري)'; }
+    const supForm=$id('supInventoryRequestItem')?.closest('section');
+    const adminForm=$id('inventoryRequestItem')?.closest('.card');
+    [adminForm,supForm].forEach(form=>{ if(!form) return; const labels=[...form.querySelectorAll('label')]; labels.forEach(l=>{ if(/المشرف الطالب|المشرف/.test(l.textContent||'')) l.textContent='اسم الطالب (مشرف / فني / إداري)'; }); });
+    fillRequesterSelect('inventoryRequestSupervisor');
+    fillRequesterSelect('supInventoryRequestSupervisor');
   }
-  function readAdminRequestLines(){
-    if(typeof inventoryRequestLines!=='undefined' && Array.isArray(inventoryRequestLines)) return inventoryRequestLines;
-    if(Array.isArray(window.inventoryRequestLines)) return window.inventoryRequestLines;
-    return [];
-  }
-  function setAdminRequestLines(v){
-    try{ if(typeof inventoryRequestLines!=='undefined') inventoryRequestLines=v; }catch(_){ }
-    window.inventoryRequestLines=v;
-  }
-  function readSupRequestLines(){
-    if(typeof supInventoryRequestLines!=='undefined' && Array.isArray(supInventoryRequestLines)) return supInventoryRequestLines;
-    if(Array.isArray(window.supInventoryRequestLines)) return window.supInventoryRequestLines;
-    return [];
-  }
-  function setSupRequestLines(v){
-    try{ if(typeof supInventoryRequestLines!=='undefined') supInventoryRequestLines=v; }catch(_){ }
-    window.supInventoryRequestLines=v;
-  }
-  function normalizeLines(lines){
-    return (lines||[]).map(l=>{
-      const item=(window.data?.inventoryItems||[]).find(i=>String(i.id)===String(l.item_id))||{};
-      return {
-        item_id:Number(l.item_id),
-        item_name:l.item_name||item.name||'',
-        product_code:l.product_code||item.serial_number||item.product_code||item.barcode||'',
-        barcode:l.barcode||item.supplier_barcode||item.barcode||'',
-        quantity:N(l.quantity),
-        available:N(l.available ?? item.quantity),
-        unit:l.unit||item.unit||'حبة',
-        unit_cost:N(l.unit_cost||item.unit_cost||item.unit_price||0)
-      };
-    }).filter(l=>l.item_id && l.quantity>0);
-  }
+  window.applyCustodyRequestUiV194 = hideRequestProjectCost;
+
+  function getRequesterPayload(selectId){ const el=$id(selectId); const opt=el?.selectedOptions?.[0]; const id=el?.value||''; return {supervisor_id:id?Number(id)||null:null, supervisor_name: opt?.dataset?.name || opt?.textContent?.replace(/ - .*/,'')?.trim() || '', requester_role: opt?.dataset?.role || ''}; }
+  function requestPath(){ return ['ops']; }
 
   window.inventorySaveRequest = async function(btn){
     try{
       if(btn) btn.disabled=true;
-      forceOpsApproval();
-      const requesterId=$id('inventoryRequestSupervisor')?.value;
-      if(!requesterId) throw new Error('اختر اسم الطالب: مشرف / فني / إداري');
-      const lines=normalizeLines(readAdminRequestLines());
-      if(!lines.length) throw new Error('أضف صنفًا واحدًا على الأقل إلى طلب الصرف');
-      const totalQty=lines.reduce((a,l)=>a+N(l.quantity),0);
-      const row={
-        item_id:Number(lines[0].item_id), item_name:lines.map(x=>x.item_name).join('، '), quantity:totalQty,
+      hideRequestProjectCost();
+      const requester=getRequesterPayload('inventoryRequestSupervisor');
+      const requestId=$id('inventoryRequestId')?.value;
+      if(!requester.supervisor_name) throw new Error('اختر اسم الطالب');
+      if(!Array.isArray(inventoryRequestLines) || !inventoryRequestLines.length) throw new Error('أضف صنفًا واحدًا على الأقل إلى أمر الصرف');
+      const lines=inventoryRequestLines.map(l=>({...l, quantity:n(l.quantity)}));
+      const total=lines.reduce((a,l)=>a+n(l.quantity),0);
+      const base={
+        item_id:Number(lines[0].item_id), item_name:lines.map(x=>x.item_name).join('، '), quantity:total,
         request_items:lines, items:lines,
-        project_id:null, project_name:'', cost_center_id:null, cost_center_name:'', cost_code:'',
-        supervisor_id:Number(requesterId)||null, supervisor_name:requesterNameById(requesterId), requester_role:'custody',
-        request_date:$id('inventoryRequestDate')?.value||T(), reason:$id('inventoryRequestReason')?.value||'', notes:$id('inventoryRequestNotes')?.value||'',
-        status:'pending_ops', current_step:'ops', approval_path:['ops'], approval_log:[]
+        project_id:null, project_name:null, cost_center_id:null, cost_center_name:null, cost_center_type:null,
+        supervisor_id:requester.supervisor_id, supervisor_name:requester.supervisor_name, requester_role:requester.requester_role,
+        request_date:$id('inventoryRequestDate')?.value || (typeof today==='function'?today():new Date().toISOString().slice(0,10)),
+        reason:$id('inventoryRequestReason')?.value||'', notes:$id('inventoryRequestNotes')?.value||''
       };
-      const {error}=await sb.from('inventory_requests').insert(row); if(error) throw error;
-      if(typeof msg==='function') msg('تم إرسال طلب الصرف إلى مدير التشغيل');
-      setAdminRequestLines([]); if(typeof inventoryRenderRequestLines==='function') inventoryRenderRequestLines();
-      ['inventoryRequestItem','inventoryRequestQty','inventoryRequestAvailable','inventoryRequestSupervisor','inventoryRequestReason','inventoryRequestNotes'].forEach(id=>{ const el=$id(id); if(el) el.value=''; });
-      if($id('inventoryRequestDate')) $id('inventoryRequestDate').value=T();
-      if(typeof financeLoadAll==='function') await financeLoadAll();
-    }catch(e){ if(typeof msg==='function') msg(e.message||String(e),'err'); else alert(e.message||String(e)); }
+      if(requestId){
+        const res=await sb.from('inventory_requests').update(base).eq('id',requestId); if(res.error) throw res.error; msg2('تم تحديث طلب الصرف');
+      }else{
+        const row={...base,status:'pending_ops',current_step:'ops',approval_path:requestPath(),approval_log:[]};
+        const res=await sb.from('inventory_requests').insert(row); if(res.error) throw res.error; msg2('تم إرسال طلب الصرف إلى مدير التشغيل');
+      }
+      inventoryClearRequestForm();
+      await financeLoadAll();
+    }catch(err){ msg2(err.message||String(err),'err'); }
     finally{ if(btn) btn.disabled=false; }
+  };
+
+  window.inventoryClearRequestForm = function(){
+    ['inventoryRequestItem','inventoryRequestQty','inventoryRequestSupervisor','inventoryRequestReason','inventoryRequestNotes','inventoryRequestAvailable','inventoryRequestId'].forEach(id=>{ const el=$id(id); if(el) el.value=''; });
+    ['inventoryRequestProject','inventoryRequestCostCenter'].forEach(id=>{ const el=$id(id); if(el) el.value=''; });
+    if($id('inventoryRequestDate')) $id('inventoryRequestDate').value=(typeof today==='function'?today():new Date().toISOString().slice(0,10));
+    if(typeof inventoryRequestLines!=='undefined') inventoryRequestLines=[];
+    if(typeof inventoryRenderRequestLines==='function') inventoryRenderRequestLines();
+    hideRequestProjectCost();
   };
 
   window.supervisorSaveInventoryRequest = async function(btn){
     try{
       if(btn) btn.disabled=true;
-      forceOpsApproval();
-      const u=(typeof session==='function'?session():{})||{};
-      const requesterId=u.id;
-      const requesterName=u.full_name||u.name||u.username||'طالب الصرف';
-      const lines=normalizeLines(readSupRequestLines());
-      if(!lines.length) throw new Error('أضف صنفًا واحدًا على الأقل إلى طلب الصرف');
-      const totalQty=lines.reduce((a,l)=>a+N(l.quantity),0);
+      const u=current(); const lines=(Array.isArray(window.supInventoryRequestLines)?window.supInventoryRequestLines:(typeof supInventoryRequestLines!=='undefined'?supInventoryRequestLines:[]));
+      if(!lines.length) throw new Error('أضف صنفًا واحدًا على الأقل إلى أمر الصرف');
+      const clean=lines.map(l=>({...l, quantity:n(l.quantity)})); const total=clean.reduce((a,l)=>a+n(l.quantity),0);
+      const requesterName=u.full_name||u.name||u.username||'الطالب';
       const row={
-        item_id:Number(lines[0].item_id), item_name:lines.map(x=>x.item_name).join('، '), quantity:totalQty,
-        request_items:lines, items:lines,
-        project_id:null, project_name:'', cost_center_id:null, cost_center_name:'', cost_code:'',
-        supervisor_id:Number(requesterId)||null, supervisor_name:requesterName, requester_role:userRoleText(u.role),
-        request_date:$id('supInventoryRequestDate')?.value||T(), reason:$id('supInventoryRequestReason')?.value||'', notes:$id('supInventoryRequestNotes')?.value||'',
-        status:'pending_ops', current_step:'ops', approval_path:['ops'], approval_log:[]
+        item_id:Number(clean[0].item_id), item_name:clean.map(x=>x.item_name).join('، '), quantity:total,
+        request_items:clean, items:clean, project_id:null, project_name:null, cost_center_id:null, cost_center_name:null, cost_center_type:null,
+        supervisor_id:u.id||null, supervisor_name:requesterName, requester_role:u.role||'supervisor',
+        request_date:$id('supInventoryRequestDate')?.value || (typeof today==='function'?today():new Date().toISOString().slice(0,10)),
+        reason:$id('supInventoryRequestReason')?.value||'', notes:$id('supInventoryRequestNotes')?.value||'',
+        status:'pending_ops', current_step:'ops', approval_path:requestPath(), approval_log:[]
       };
-      const {error}=await sb.from('inventory_requests').insert(row); if(error) throw error;
-      if(typeof msg==='function') msg('تم إرسال طلب الصرف إلى مدير التشغيل');
-      setSupRequestLines([]); if(typeof renderSupInventoryRequestLines==='function') renderSupInventoryRequestLines();
-      ['supInventoryRequestItem','supInventoryRequestQty','supInventoryRequestReason','supInventoryRequestNotes'].forEach(id=>{ const el=$id(id); if(el) el.value=''; });
-      if($id('supInventoryRequestDate')) $id('supInventoryRequestDate').value=T();
+      const res=await sb.from('inventory_requests').insert(row); if(res.error) throw res.error;
+      msg2('تم إرسال طلب الصرف إلى مدير التشغيل');
+      if(typeof supInventoryRequestLines!=='undefined') supInventoryRequestLines=[]; window.supInventoryRequestLines=[];
+      if(typeof renderSupInventoryRequestLines==='function') renderSupInventoryRequestLines();
+      ['supInventoryRequestItem','supInventoryRequestQty','supInventoryRequestReason','supInventoryRequestNotes','supInventoryRequestProject','supInventoryRequestCostCenter'].forEach(id=>{ const el=$id(id); if(el) el.value=''; });
       if(typeof supervisorInventoryLoad==='function') await supervisorInventoryLoad();
-    }catch(e){ if(typeof msg==='function') msg(e.message||String(e),'err'); else alert(e.message||String(e)); }
+    }catch(err){ msg2(err.message||String(err),'err'); }
+    finally{ if(btn) btn.disabled=false; }
+  };
+
+  window.inventoryDeleteRequest = async function(id, btn){
+    try{
+      if(!canDeleteRequests()) throw new Error('ليست لديك صلاحية حذف طلبات الصرف');
+      if(!confirm('هل تريد حذف طلب الصرف؟')) return;
+      if(btn) btn.disabled=true;
+      const movements=(data.inventoryMovements||[]).filter(m=>String(m.request_id)===String(id));
+      const hasFinal=movements.some(m=>['consume','consumption','return'].includes(String(m.movement_type||'')));
+      if(hasFinal) throw new Error('لا يمكن حذف طلب عليه استهلاك أو مرتجع. احذف/راجع الحركات أولاً.');
+      // عكس الصرف لو كان الطلب معتمدًا وخرجت كميات
+      for(const m of movements.filter(m=>String(m.movement_type)==='out')){
+        const item=(data.inventoryItems||[]).find(x=>String(x.id)===String(m.item_id));
+        if(item){ await sb.from('inventory_items').update({quantity:n(item.quantity)+n(m.quantity)}).eq('id', item.id); }
+      }
+      await sb.from('inventory_movements').delete().eq('request_id', id);
+      const res=await sb.from('inventory_requests').delete().eq('id', id); if(res.error) throw res.error;
+      msg2('تم حذف طلب الصرف'); await financeLoadAll();
+    }catch(err){ msg2(err.message||String(err),'err'); }
     finally{ if(btn) btn.disabled=false; }
   };
 
   window.inventoryRenderRequests = function(){
-    const b=$id('inventoryRequestsBody'); if(!b) return;
+    const b=$id('inventoryRequestsBody'); if(!b) return; hideRequestProjectCost();
     const table=b.closest('table');
-    if(table && table.tHead){
-      table.tHead.innerHTML='<tr><th>التاريخ</th><th>اسم الطالب</th><th>الأصناف</th><th>الكمية</th><th>سبب الصرف</th><th>الحالة</th><th>إجراء</th></tr>';
-    }
-    let rows=[...(window.data?.inventoryRequests||[])];
-    const st=$id('inventoryRequestStatusFilter')?.value; if(st) rows=rows.filter(r=>String(r.status)===String(st));
-    rows.sort((a,b)=>String(b.created_at||b.request_date||'').localeCompare(String(a.created_at||a.request_date||'')));
+    if(table && table.tHead){ table.tHead.innerHTML='<tr><th>التاريخ</th><th>اسم الطالب</th><th>الأصناف</th><th>الكمية</th><th>سبب الصرف</th><th>الحالة</th><th>إجراء</th></tr>'; }
+    let rows=(typeof financeFilterRows==='function')?financeFilterRows(data.inventoryRequests||[],'request_date'):(data.inventoryRequests||[]);
+    const st=$id('inventoryRequestStatusFilter')?.value; if(st) rows=rows.filter(r=>r.status===st);
     b.innerHTML=rows.map(r=>{
-      let lines=[]; try{ lines=typeof v118LineItems==='function'?v118LineItems(r):(Array.isArray(r.request_items)?r.request_items:[]); }catch(_){ lines=[]; }
-      const itemsHtml=(lines||[]).map(l=>`<div><b>${E(l.product_code||'')}</b> ${E(l.item_name||'')} × ${N(l.quantity)} ${E(l.unit||'')}</div>`).join('') || E(r.item_name||'-');
-      const total=(lines||[]).reduce((a,l)=>a+N(l.quantity),0)||N(r.quantity);
+      const arr=lineItems(r); const total=arr.reduce((a,l)=>a+n(l.quantity),0)||n(r.quantity);
+      const itemsHtml=arr.length?arr.map(l=>`${e(l.product_code||'')} - <b>${e(l.item_name||'')}</b> × ${n(l.quantity)} ${e(l.unit||'')}`).join('<br>'):e(r.item_name||'-');
       const actions=[];
-      if(String(r.status||'').startsWith('pending_')){
-        const step=String(r.status).replace('pending_','');
-        try{
-          if(typeof inventoryCurrentUserCanApprove==='function' && inventoryCurrentUserCanApprove(step)){
-            actions.push(`<button onclick="inventoryApproveRequest('${E(r.id)}','${E(step)}',this)">اعتماد مدير التشغيل</button>`);
-            if(typeof inventoryRejectRequest==='function') actions.push(`<button class="danger" onclick="inventoryRejectRequest('${E(r.id)}',this)">رفض</button>`);
-          }else{ actions.push(`<span class="badge neutral">بانتظار مدير التشغيل</span>`); }
-        }catch(_){ actions.push(`<span class="badge neutral">بانتظار مدير التشغيل</span>`); }
-      }
-      if(String(r.status||'')==='approved') actions.push(`<button class="light" onclick="openRequestConsumptionV178('${E(r.id)}')">تسجيل استهلاك</button>`);
-      if(typeof inventoryPrintRequest==='function') actions.unshift(`<button class="light" onclick="inventoryPrintRequest('${E(r.id)}')">طباعة</button>`);
-      const statusText=typeof inventoryRequestStatusText==='function'?inventoryRequestStatusText(r.status):E(r.status||'-');
-      const statusClass=typeof inventoryRequestStatusClass==='function'?inventoryRequestStatusClass(r.status):'';
-      return `<tr><td>${E(r.request_date||String(r.created_at||'').slice(0,10)||'')}</td><td><b>${E(r.supervisor_name||requesterNameById(r.supervisor_id)||'-')}</b><br><small>${E(r.requester_role||'طالب صرف')}</small></td><td>${itemsHtml}</td><td>${N(total)}</td><td>${E(r.reason||'-')}<br><small>${E(r.notes||'')}</small></td><td><span class="badge ${statusClass}">${statusText}</span><br><small>المشروع ومركز التكلفة عند الاستهلاك</small></td><td class="row-actions">${actions.join(' ')||'-'}</td></tr>`;
+      if(typeof inventoryCanApprove==='function' && inventoryCanApprove(r)) actions.push(`<button onclick="inventoryApproveRequest(${r.id},this)">اعتماد</button>`);
+      if(canEditRequests()) actions.push(`<button class="light" onclick="inventoryEditRequest(${r.id})">تعديل</button>`);
+      if(canDeleteRequests()) actions.push(`<button class="danger" onclick="inventoryDeleteRequest(${r.id},this)">حذف</button>`);
+      if(r.status==='approved' && typeof inventoryOpenConsumption==='function') actions.push(`<button class="light" onclick="inventoryOpenConsumption(${r.id})">تسجيل استهلاك</button>`);
+      if(typeof inventoryOpenRequestInvoice==='function') actions.push(`<button class="light" onclick="inventoryOpenRequestInvoice(${r.id})">عرض</button>`);
+      return `<tr><td>${e(r.request_date||'')}</td><td><b>${e(r.supervisor_name||supervisorName?.(r.supervisor_id)||'-')}</b><br><small>${e(roleArabic(r.requester_role||''))}</small></td><td>${itemsHtml}</td><td>${total}</td><td>${e(r.reason||'-')}</td><td><span class="badge ${typeof inventoryRequestStatusClass==='function'?inventoryRequestStatusClass(r.status):''}">${e(typeof inventoryRequestStatusText==='function'?inventoryRequestStatusText(r.status):(r.status||'-'))}</span><br><small>المرحلة: ${e(typeof inventoryRequestNextRole==='function'?inventoryRequestNextRole(r.status):'')}</small></td><td class="row-actions">${actions.join(' ')||'-'}</td></tr>`;
     }).join('') || '<tr><td colspan="7">لا توجد طلبات صرف</td></tr>';
   };
 
-  // Supervisor request list: remove project column and show custody request only.
-  window.renderSupInventoryRequests = function(){
-    const b=$id('supInventoryRequestsBody'); if(!b) return;
-    const table=b.closest('table'); if(table && table.tHead) table.tHead.innerHTML='<tr><th>التاريخ</th><th>الأصناف</th><th>الكمية</th><th>السبب</th><th>الحالة</th></tr>';
-    const rows=window.data?.inventoryRequests||[];
-    b.innerHTML=rows.map(r=>{
-      let lines=[]; try{ lines=typeof v118LineItems==='function'?v118LineItems(r):[]; }catch(_){ }
-      const items=(lines||[]).map(l=>`${E(l.product_code||'')} ${E(l.item_name||'')} × ${N(l.quantity)} ${E(l.unit||'')}`).join('<br>')||E(r.item_name||'-');
-      const total=(lines||[]).reduce((a,l)=>a+N(l.quantity),0)||N(r.quantity);
-      const statusText=typeof inventoryRequestStatusText==='function'?inventoryRequestStatusText(r.status):E(r.status||'-');
-      const statusClass=typeof inventoryRequestStatusClass==='function'?inventoryRequestStatusClass(r.status):'';
-      return `<tr><td>${E(r.request_date||'')}</td><td><b>${items}</b></td><td>${N(total)}</td><td>${E(r.reason||'-')}</td><td><span class="badge ${statusClass}">${statusText}</span><br><small>${String(r.status||'').startsWith('pending_')?'بانتظار مدير التشغيل':'-'}</small></td></tr>`;
-    }).join('') || '<tr><td colspan="5">لا توجد طلبات صرف</td></tr>';
+  window.inventoryEditRequest = function(id){
+    const r=(data.inventoryRequests||[]).find(x=>String(x.id)===String(id)); if(!r) return;
+    hideRequestProjectCost();
+    if($id('inventoryRequestId')) $id('inventoryRequestId').value=r.id;
+    if($id('inventoryRequestDate')) $id('inventoryRequestDate').value=String(r.request_date||'').slice(0,10) || (typeof today==='function'?today():new Date().toISOString().slice(0,10));
+    fillRequesterSelect('inventoryRequestSupervisor', r.supervisor_id||'');
+    if($id('inventoryRequestSupervisor') && r.supervisor_id) $id('inventoryRequestSupervisor').value=String(r.supervisor_id);
+    if($id('inventoryRequestReason')) $id('inventoryRequestReason').value=r.reason||'';
+    if($id('inventoryRequestNotes')) $id('inventoryRequestNotes').value=r.notes||'';
+    if(typeof inventoryRequestLines!=='undefined') inventoryRequestLines=lineItems(r).map(l=>({...l}));
+    if(typeof inventoryRenderRequestLines==='function') inventoryRenderRequestLines();
+    const card=$id('inventoryRequestItem')?.closest('.card'); if(card){ card.scrollIntoView({behavior:'smooth',block:'start'}); const h=card.querySelector('h2'); if(h) h.textContent='تعديل طلب صرف من المخزون'; }
   };
 
-  // Print request should not show project/cost center.
-  window.inventoryPrintRequest = function(id){
-    const r=(window.data?.inventoryRequests||[]).find(x=>String(x.id)===String(id)); if(!r){ if(typeof msg==='function') msg('الطلب غير موجود','err'); return; }
-    let lines=[]; try{ lines=typeof v118LineItems==='function'?v118LineItems(r):[]; }catch(_){ }
-    const lineRows=(lines||[]).map(l=>`<tr><td>${E(l.product_code||'')}</td><td>${E(l.item_name||'')}</td><td>${N(l.available)}</td><td>${N(l.quantity)} ${E(l.unit||'')}</td></tr>`).join('')||'<tr><td colspan="4">لا توجد أصناف</td></tr>';
-    const log=Array.isArray(r.approval_log)?r.approval_log:[];
-    const logRows=log.map(l=>`<tr><td>${E(l.role||l.step||'')}</td><td>${E(l.by||'-')}</td><td>${E(l.at?new Date(l.at).toLocaleString('ar-SA'):'-')}</td></tr>`).join('')||'<tr><td colspan="3">لا يوجد سجل اعتماد</td></tr>';
-    const body=`<div class="grid"><div class="box"><b>رقم الطلب</b><br>OUT-${E(r.id)}</div><div class="box"><b>الحالة</b><br>${E(typeof inventoryRequestStatusText==='function'?inventoryRequestStatusText(r.status):r.status)}</div><div class="box"><b>التاريخ</b><br>${E(r.request_date||'')}</div></div><table><tr><th>اسم الطالب</th><td>${E(r.supervisor_name||requesterNameById(r.supervisor_id)||'-')}</td><th>نوع الطلب</th><td>عهدة مخزون</td></tr><tr><th>سبب الصرف</th><td colspan="3">${E(r.reason||'-')}</td></tr><tr><th>ملاحظات</th><td colspan="3">${E(r.notes||'-')}</td></tr></table><h3>الأصناف المطلوبة</h3><table><thead><tr><th>كود المنتج</th><th>الصنف</th><th>المتوفر</th><th>الكمية</th></tr></thead><tbody>${lineRows}</tbody></table><p style="margin-top:14px"><b>تنبيه:</b> المشروع ومركز التكلفة يتم تحديدهما عند تسجيل الاستهلاك الفعلي، وليس عند طلب الصرف.</p><h3>سجل الاعتماد</h3><table><thead><tr><th>المرحلة</th><th>المعتمد</th><th>الوقت</th></tr></thead><tbody>${logRows}</tbody></table>`;
-    if(typeof financePrintWindow==='function') financePrintWindow('أمر صرف مخزون', body); else { const w=window.open('','_blank'); w.document.write(body); w.print(); }
+  // تعديل عرض الفاتورة/التفاصيل: الصرف عهدة فقط ولا يظهر المشروع أو مركز التكلفة في أمر الصرف
+  const oldReqInvoice = window.inventoryOpenRequestInvoice;
+  window.inventoryOpenRequestInvoice = function(id){
+    const r=(data.inventoryRequests||[]).find(x=>String(x.id)===String(id));
+    if(!r || typeof smartOpen!=='function'){ if(typeof oldReqInvoice==='function') return oldReqInvoice(id); return; }
+    const rows=lineItems(r).map(l=>`<tr><td>${e(l.product_code||'')}</td><td>${e(l.item_name||'')}</td><td>${n(l.quantity)} ${e(l.unit||'')}</td></tr>`).join('');
+    smartOpen('أمر صرف عهدة', `<div class="smart-meta-v129"><div class="m"><small>رقم الطلب</small><b>REQ-${e(r.id)}</b></div><div class="m"><small>التاريخ</small><b>${e(r.request_date||'-')}</b></div><div class="m"><small>اسم الطالب</small><b>${e(r.supervisor_name||'-')}</b></div><div class="m"><small>الحالة</small><b>${e(typeof inventoryRequestStatusText==='function'?inventoryRequestStatusText(r.status):r.status)}</b></div></div><h3>الأصناف</h3><table><thead><tr><th>الكود</th><th>الصنف</th><th>الكمية</th></tr></thead><tbody>${rows}</tbody></table><h3>سبب الصرف</h3><p>${e(r.reason||'-')}</p><h3>ملاحظات</h3><p>${e(r.notes||'-')}</p>`, `<button onclick="inventoryPrintRequest && inventoryPrintRequest('${e(id)}')">طباعة</button>`);
   };
 
-  // Keep approval to operations only.
-  window.inventoryDefaultApprovalPath=function(){ return ['ops']; };
-  window.inventoryGetApprovalPath=function(){ return ['ops']; };
-  window.inventoryCurrentUserCanApprove=function(step){
-    let r=''; try{ r=(JSON.parse(localStorage.getItem('tasneef_session')||'{}').role)||''; }catch(_){ }
-    return String(step)==='ops' && ['admin','general_manager','operations_manager'].includes(String(r));
+  // صلاحيات تعديل/حذف طلبات الصرف في إدارة المستخدمين
+  function addRequestPermissionCheckboxes(){
+    const box=document.getElementById('userPermissionsBoxV72'); if(!box) return;
+    const grid=box.querySelector('.perm-grid-v72') || box;
+    [['can_edit_inventory_requests','تعديل طلبات الصرف'],['can_delete_inventory_requests','حذف طلبات الصرف']].forEach(([key,label])=>{
+      if(!document.getElementById('perm_'+key)) grid.insertAdjacentHTML('beforeend', `<label class="perm-item-v72"><input type="checkbox" id="perm_${key}" data-perm="${key}"> <span>${label}</span></label>`);
+    });
+  }
+  const oldSaveUser=window.saveUser;
+  window.saveUser = async function(){
+    addRequestPermissionCheckboxes();
+    const id=$id('userId')?.value;
+    const perms={}; document.querySelectorAll('[data-perm]').forEach(el=>{ perms[el.dataset.perm]=!!el.checked; });
+    const row={full_name:$id('userFullName')?.value.trim(),username:$id('userUsername')?.value.trim(),password:$id('userPassword')?.value.trim()||'123456',role:$id('userRole')?.value,is_active:$id('userActive')?.value==='true',permissions:perms};
+    if(!row.full_name||!row.username) return msg2('الاسم واسم المستخدم مطلوبان','err');
+    let res=id?await sb.from('app_users').update(row).eq('id',id):await sb.from('app_users').insert(row);
+    if(res.error && String(res.error.message||'').includes('permissions')){ const safe={...row}; delete safe.permissions; res=id?await sb.from('app_users').update(safe).eq('id',id):await sb.from('app_users').insert(safe); }
+    if(res.error) return msg2(res.error.message,'err');
+    msg2('تم حفظ المستخدم والصلاحيات'); if(typeof clearUserForm==='function') clearUserForm(); if(typeof refreshAll==='function') await refreshAll(); setTimeout(addRequestPermissionCheckboxes,100);
   };
+  ['hydrateForms','renderUsers','editUser','clearUserForm'].forEach(fn=>{ const old=window[fn]; if(typeof old==='function'){ window[fn]=function(){ const r=old.apply(this,arguments); setTimeout(addRequestPermissionCheckboxes,100); return r; }; } });
 
-  function boot(){ forceOpsApproval(); fillRequesterSelect(); hideRequestProjectCostFields(); if(typeof inventoryRenderRequests==='function') inventoryRenderRequests(); try{ window.renderSupInventoryRequests&&window.renderSupInventoryRequests(); }catch(_){ } }
-  window.addEventListener('load',()=>setTimeout(boot,500));
-  document.addEventListener('click',()=>setTimeout(boot,80),true);
-  document.addEventListener('change',()=>setTimeout(boot,80),true);
-  setTimeout(boot,1000); setTimeout(boot,2200);
-  console.log('V192 custody-only inventory request flow loaded');
+  function boot(){ hideRequestProjectCost(); addRequestPermissionCheckboxes(); }
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,300));
+  window.addEventListener('load',()=>setTimeout(boot,900));
+  const oldOpen=window.openFinanceTab; if(typeof oldOpen==='function'){ window.openFinanceTab=function(){ const r=oldOpen.apply(this,arguments); setTimeout(()=>{ hideRequestProjectCost(); if(arguments[0]==='requests' && typeof inventoryRenderRequests==='function') inventoryRenderRequests(); },50); return r; }; }
 })();

@@ -633,9 +633,9 @@
           <div class="card report-form-card">
             <h2>طلب صرف من المخزون</h2>
             <p class="muted">المسار قابل للتحديد من الإدارة: مدير مخازن / مدير تشغيلي / مدير مالي / مدير عام. لا يظهر زر الاعتماد إلا للحساب صاحب المرحلة الحالية فقط.</p>
-            <div class="split"><div><label>تاريخ الطلب</label><input type="date" id="inventoryRequestDate"></div><div><label>المشروع</label><select id="inventoryRequestProject"></select></div></div>
-            <label>مركز التكلفة</label><select id="inventoryRequestCostCenter"><option value="">اختر مركز التكلفة</option></select>
-            <label>المشرف الطالب</label><select id="inventoryRequestSupervisor"></select>
+            <div class="split"><div><label>تاريخ الطلب</label><input type="date" id="inventoryRequestDate"></div></div>
+            <div class="custody-hidden-v194" style="display:none"><select id="inventoryRequestProject"></select><select id="inventoryRequestCostCenter"><option value="">اختر مركز التكلفة</option></select></div>
+            <label>اسم الطالب (مشرف / فني / إداري)</label><select id="inventoryRequestSupervisor"></select>
             <div class="card soft-card" style="padding:12px;margin:10px 0">
               <h3>إضافة أصناف إلى نفس أمر الصرف</h3>
               <label>الصنف</label><select id="inventoryRequestItem"></select>
@@ -649,7 +649,7 @@
           </div>
           <div class="card">
             <div class="table-head"><h2>طلبات الصرف والاعتمادات</h2><select id="inventoryRequestStatusFilter" onchange="inventoryRenderRequests()"><option value="">كل الحالات</option><option value="pending_warehouse">بانتظار مدير مخازن</option><option value="pending_ops">بانتظار مدير تشغيلي</option><option value="pending_finance">بانتظار مدير مالي</option><option value="pending_general">بانتظار مدير عام</option><option value="approved">معتمد ومصروف</option><option value="rejected">مرفوض</option></select></div>
-            <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المشرف</th><th>المشروع</th><th>مركز التكلفة</th><th>الأصناف</th><th>الصادر / المرتجع / المستهلك</th><th>سبب الصرف</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody id="inventoryRequestsBody"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>اسم الطالب</th><th>الأصناف</th><th>الكمية</th><th>سبب الصرف</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody id="inventoryRequestsBody"></tbody></table></div>
           </div>
         </div>
       </div>
@@ -727,6 +727,6 @@
     <section id="export" class="page hidden"><div class="card"><h2>التصدير</h2><p>صدّر بيانات النظام الحالية بصيغة CSV.</p><div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div></div></section>
   </main>
 </div>
-<script src="app.js?v=192"></script>
+<script src="app.js?v=194"></script>
 </body>
 </html>
