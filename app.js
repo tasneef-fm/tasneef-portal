@@ -13979,7 +13979,7 @@ function financePrintReport(kind){
     ensureStyles(); sec.classList.add('client-reports-clean-v213');
     if(!$id('clientReportToolbarV213')){
       const toolbar=document.createElement('div'); toolbar.id='clientReportToolbarV213'; toolbar.className='client-report-toolbar-v213';
-      toolbar.innerHTML=`<div class="title"><h2>تقارير العملاء</h2><p>تقرير واحد لكل مشروع في الشهر، مع تعديل وعرض مرتب بدون ازدحام الصفحة.</p></div><div class="actions"><button type="button" onclick="tasneefOpenReportModal213('new')">+ إنشاء تقرير جديد</button><button type="button" class="light" onclick="tasneefOpenGatewayModal213()">إدارة خدمات التقارير</button><button type="button" class="light" onclick="loadPremiumReportsOnly(true).then(()=>renderPremiumReports())">تحديث</button></div>`;
+      toolbar.innerHTML=`<div class="title"><h2>تقارير العملاء</h2></div><div class="actions"><button type="button" onclick="tasneefOpenReportModal213('new')">+ إنشاء تقرير جديد</button><button type="button" class="light" onclick="tasneefOpenGatewayModal213()">إدارة خدمات التقارير</button><button type="button" class="light" onclick="loadPremiumReportsOnly(true).then(()=>renderPremiumReports())">تحديث</button></div>`;
       const kpis=sec.querySelector('.report-kpis') || sec.querySelector('.card') || sec.firstElementChild;
       (kpis?.parentNode||sec).insertBefore(toolbar, kpis?.nextSibling||sec.firstChild);
     }
@@ -14145,4 +14145,131 @@ function financePrintReport(kind){
     window.showPage=function(page,btn){ const r=oldShow.apply(this,arguments); if(page==='clientReports') setTimeout(boot,80); return r; };
   }
   window.addEventListener('load',()=>setTimeout(boot,900));
+})();
+
+
+/* ===== V214: Client reports clean monthly grouping + remove instructional notes ===== */
+(function(){
+  if(window.__tasneefV214ClientReportsMonthlyGroup) return;
+  window.__tasneefV214ClientReportsMonthlyGroup = true;
+  const $ = (id)=>document.getElementById(id);
+  const S = (v)=>String(v??'');
+  const E = (v)=>S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const monthOf = (v)=>S(v).slice(0,7) || (new Date().toISOString().slice(0,7));
+  const today214 = ()=> (typeof today==='function' ? today() : new Date().toISOString().slice(0,10));
+  const projectLabel = (r)=> r?.project_name || (typeof projectName==='function' ? projectName(r?.project_id) : '') || '-';
+  const reportTime = (r)=> Date.parse(r?.updated_at || r?.created_at || r?.report_date || '') || 0;
+  const servicesForIds = (ids)=>{
+    const set = new Set(ids.map(String));
+    return (window.data?.clientReportServices||[]).filter(s=>set.has(String(s.report_id)));
+  };
+  const ratingsForIds = (ids)=>{
+    const set = new Set(ids.map(String));
+    return (window.data?.clientServiceRatings||[]).filter(s=>set.has(String(s.report_id)));
+  };
+  const statusText = (st)=> (typeof statusText159==='function'?statusText159(st):(typeof reportStatusText==='function'?reportStatusText(st):(st==='published'?'منشور':st==='draft'?'مسودة':S(st||'مسودة'))));
+  const statusClass = (st)=> (typeof statusClass159==='function'?statusClass159(st):(typeof reportStatusClass==='function'?reportStatusClass(st):''));
+  const ratingClass = (v)=> (typeof ratingClass159==='function'?ratingClass159(v):(typeof ratingClass==='function'?ratingClass(v):''));
+  const reportUrl = (token)=> (typeof clientReportUrl==='function'?clientReportUrl(token):('client-report.html?token='+encodeURIComponent(token||'')));
+  const serviceName = (s)=> S(s?.service_type || s?.title || 'خدمة').trim();
+  const serviceNames = (ids)=> [...new Set(servicesForIds(ids).map(serviceName).filter(Boolean))];
+  const ratingLabel = (ids)=>{
+    const rs=ratingsForIds(ids);
+    if(!rs.length) return 'لم يتم التقييم';
+    if(rs.some(r=>r.rating==='يحتاج تحسين'||r.followup_requested)) return 'يحتاج تحسين';
+    return rs[0].rating || 'تم التقييم';
+  };
+  function cleanClientReportNotes214(){
+    document.querySelectorAll('.monthly-note-v213').forEach(n=>n.remove());
+    document.querySelectorAll('#clientReportsPage .title p, .client-reports-page .title p').forEach(p=>{
+      const t=S(p.textContent);
+      if(t.includes('تقرير واحد لكل مشروع') || t.includes('بدون ازدحام الصفحة')) p.remove();
+    });
+    document.querySelectorAll('*').forEach(el=>{
+      if(el.childElementCount===0){
+        const t=S(el.textContent).trim();
+        if(t==='تنبيه: كل مشروع له تقرير واحد فقط في الشهر. عند رفع تقرير لنفس المشروع والشهر سيتم تحديث التقرير نفسه بدل إنشاء كرت جديد.' || t==='تقرير واحد لكل مشروع في الشهر، مع تعديل وعرض مرتب بدون ازدحام الصفحة.') el.remove();
+      }
+    });
+  }
+  function groupedMonthlyReports214(reports){
+    const map=new Map();
+    reports.forEach(r=>{
+      const key=`${S(r.project_id||projectLabel(r))}__${monthOf(r.report_date)}`;
+      if(!map.has(key)) map.set(key, []);
+      map.get(key).push(r);
+    });
+    return [...map.values()].map(group=>{
+      group.sort((a,b)=>reportTime(b)-reportTime(a));
+      const primary = group[0];
+      const ids = group.map(r=>r.id).filter(Boolean);
+      const published = group.find(r=>r.status==='published' && r.public_token);
+      return { primary, group, ids, published };
+    }).sort((a,b)=>{
+      const ad=S(a.primary.report_date), bd=S(b.primary.report_date);
+      return bd.localeCompare(ad) || projectLabel(a.primary).localeCompare(projectLabel(b.primary),'ar');
+    });
+  }
+  window.tasneefDeleteMonthlyReportGroup214 = async function(idsCsv){
+    const ids=S(idsCsv).split(',').filter(Boolean);
+    if(!ids.length) return;
+    if(!confirm('حذف تقرير هذا المشروع لهذا الشهر؟')) return;
+    try{
+      for(const id of ids){
+        if(window.sb) await sb.from('client_reports').delete().eq('id', id);
+      }
+      if(typeof msg==='function') msg('تم حذف التقرير');
+      if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false);
+      window.renderPremiumReports();
+    }catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||String(e),'err'); }
+  };
+  window.renderPremiumReports = function(){
+    cleanClientReportNotes214();
+    const body=$('premiumReportsBody'); if(!body) return;
+    const reports=window.data?.clientReports||[];
+    const ratings=window.data?.clientServiceRatings||[];
+    const month=$('premiumReportFilterMonth')?.value || today214().slice(0,7);
+    const mReports=reports.filter(r=>S(r.report_date).startsWith(month));
+    const groupedAll = groupedMonthlyReports214(reports);
+    const groupedMonth = groupedMonthlyReports214(mReports);
+    if($('reportsTotalKpi')) $('reportsTotalKpi').textContent=groupedAll.length;
+    if($('reportsMonthKpi')) $('reportsMonthKpi').textContent=groupedMonth.length;
+    if($('reportsDraftKpi')) $('reportsDraftKpi').textContent=groupedAll.filter(g=>g.group.some(r=>r.status==='draft')).length;
+    if($('reportsPublishedKpi')) $('reportsPublishedKpi').textContent=groupedAll.filter(g=>g.group.some(r=>r.status==='published')).length;
+    if($('reportsFollowKpi')) $('reportsFollowKpi').textContent=ratings.filter(r=>r.rating==='يحتاج تحسين'||r.followup_requested).length;
+
+    const q=($('premiumReportSearch')?.value||'').trim();
+    const smart=($('premiumServiceSmartSearch')?.value||'').trim();
+    const pid=$('premiumReportFilterProject')?.value||'';
+    const st=$('premiumReportFilterStatus')?.value||'';
+    const sv=$('premiumReportFilterService')?.value||'';
+    const rt=$('premiumReportFilterRating')?.value||'';
+    let rows=[...reports];
+    if(q) rows=rows.filter(r=>[r.report_no,r.project_name,r.title,r.report_type,serviceNames([r.id]).join(' ')].join(' ').includes(q));
+    if(smart) rows=rows.filter(r=>[r.report_no,r.project_name,r.title,r.report_type,serviceNames([r.id]).join(' ')].join(' ').includes(smart));
+    if(pid) rows=rows.filter(r=>S(r.project_id)===S(pid));
+    if(st) rows=rows.filter(r=>(r.status||'unpublished')===st);
+    if(month) rows=rows.filter(r=>S(r.report_date).startsWith(month));
+    let groups=groupedMonthlyReports214(rows);
+    if(sv) groups=groups.filter(g=>serviceNames(g.ids).some(n=>S(n).includes(sv)));
+    if(rt) groups=groups.filter(g=> rt==='none' ? !ratingsForIds(g.ids).length : ratingsForIds(g.ids).some(x=>x.rating===rt));
+
+    body.innerHTML = groups.map(g=>{
+      const r=g.primary, names=serviceNames(g.ids), rating=ratingLabel(g.ids), pub=g.published || r, url=pub?.public_token?reportUrl(pub.public_token):'';
+      const servicesHtml=names.length?names.map(n=>`<span class="service-chip">${E(n)}</span>`).join(''):'<span class="service-chip">غير محدد</span>';
+      const monthLabel=monthOf(r.report_date);
+      const countBadge=g.group.length>1?`<br><small style="color:#60706a">مدمج من ${g.group.length} تقارير</small>`:'';
+      const status = g.group.some(x=>x.status==='published')?'published':(r.status||'draft');
+      return `<tr data-report-id="${E(r.id)}"><td><b>${E(r.report_no||r.id)}</b><br><small>تقرير شهري - ${E(projectLabel(r))} - ${E(monthLabel)}</small>${countBadge}</td><td>${E(monthLabel)}</td><td>${E(projectLabel(r))}</td><td>${servicesHtml}</td><td><span class="badge ${statusClass(status)}">${statusText(status)}</span></td><td><span class="badge ${ratingClass(rating)}">${E(rating)}</span></td><td>${url?`<div class="client-copy">${E(url)}</div><button type="button" class="light" onclick="copyText('${encodeURIComponent(url)}')">نسخ</button>`:'غير منشور'}</td><td class="row-actions"><button type="button" onclick="editPremiumReport('${E(r.id)}')">تعديل</button>${url?`<button type="button" class="light" onclick="openClientReport('${E(pub.public_token)}')">عرض</button><button type="button" class="light" onclick="sendPremiumWhatsapp('${E(pub.id||r.id)}')">واتساب</button>`:''}<button type="button" class="danger" onclick="tasneefDeleteMonthlyReportGroup214('${g.ids.map(encodeURIComponent).join(',')}')">حذف</button></td></tr>`;
+    }).join('') || `<tr><td colspan="8">${window.data?.clientReportsError?'شغّل ملف SQL الخاص بالتقارير في Supabase':'لا توجد تقارير'}</td></tr>`;
+    cleanClientReportNotes214();
+  };
+  // Extra clean after V213 UI creation.
+  const oldEnsure=window.tasneefOpenReportModal213;
+  if(typeof oldEnsure==='function') window.tasneefOpenReportModal213=function(){ cleanClientReportNotes214(); return oldEnsure.apply(this,arguments); };
+  const oldShow=window.showPage;
+  if(typeof oldShow==='function') window.showPage=function(page,btn){ const r=oldShow.apply(this,arguments); if(page==='clientReports') setTimeout(()=>{cleanClientReportNotes214(); try{window.renderPremiumReports();}catch(_){ }},150); return r; };
+  window.addEventListener('load',()=>setTimeout(()=>{ cleanClientReportNotes214(); try{window.renderPremiumReports();}catch(_){ } },1100));
+  setTimeout(()=>{ cleanClientReportNotes214(); try{window.renderPremiumReports();}catch(_){ } },1800);
+  console.log('Tasneef V214 client reports monthly grouping loaded');
 })();
