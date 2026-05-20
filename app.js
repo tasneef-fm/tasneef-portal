@@ -14838,3 +14838,107 @@ function financePrintReport(kind){
   setTimeout(()=>{try{updateVersion(); window.renderMonthly&&window.renderMonthly();}catch(e){}},1600);
   console.log('Tasneef V219 monthly first-style report and worker de-dup loaded');
 })();
+
+
+/* ===== V220: Workers list grouped by worker name, with projects combined ===== */
+(function(){
+  if(window.__tasneefV220WorkersGrouped) return;
+  window.__tasneefV220WorkersGrouped = true;
+  const $id = (id)=>document.getElementById(id);
+  const S = (v)=>String(v ?? '').trim();
+  const N = (v)=>Number(v || 0);
+  const esc2 = (v)=>{ try{ return (typeof esc==='function') ? esc(v) : S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }catch(_){ return S(v); } };
+  function normWorkerKey(name){
+    return S(name).toLowerCase()
+      .replace(/[\u064B-\u065F\u0670]/g,'')
+      .replace(/[أإآا]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+  function getSupId(w){ try{ return (typeof workerSupId==='function') ? workerSupId(w) : (w.app_supervisor_id||w.supervisor_id||''); }catch(_){ return w.app_supervisor_id||w.supervisor_id||''; } }
+  function getProjId(w){ try{ return (typeof workerProjectId==='function') ? workerProjectId(w) : (w.project_id||w.assigned_project_id||''); }catch(_){ return w.project_id||w.assigned_project_id||''; } }
+  function supText(id){ try{ return (typeof supervisorName==='function') ? supervisorName(id) : (typeof supName==='function'?supName(id):id); }catch(_){ return id||'-'; } }
+  function projText(id){ try{ return (typeof projectName==='function') ? projectName(id) : (typeof projName==='function'?projName(id):id); }catch(_){ return id||'-'; } }
+  function typeText(t){ try{ return (typeof workerTypeText==='function') ? workerTypeText(t) : (t==='support'?'بديل / مساند':'أساسي'); }catch(_){ return t==='support'?'بديل / مساند':'أساسي'; } }
+  function uniquePush(map, key, value){ key=S(key); value=S(value); if(key && !map.has(key)) map.set(key,value||key); }
+  function buildWorkerGroupsV220(){
+    const s=$id('workerFilterSupervisor')?.value || '';
+    const p=$id('workerFilterProject')?.value || '';
+    const st=$id('workerFilterStatus')?.value || '';
+    const tp=$id('workerFilterType')?.value || '';
+    const q=S($id('workerSearch')?.value);
+    let rows=[...(window.data?.workers||[])].filter(w=>S(w.status||'active').toLowerCase()!=='deleted');
+    if(s) rows=rows.filter(w=>S(getSupId(w))===S(s));
+    if(p) rows=rows.filter(w=>S(getProjId(w))===S(p));
+    if(st) rows=rows.filter(w=>S(w.status||'active')===S(st));
+    if(tp) rows=rows.filter(w=>S(w.worker_type||'primary')===S(tp));
+    const groups=new Map();
+    rows.forEach(w=>{
+      const sid=getSupId(w), pid=getProjId(w);
+      const name=S(w.name||w.full_name);
+      const phone=S(w.phone||w.mobile||'');
+      const key=[normWorkerKey(name), phone, S(sid)].join('|');
+      if(!groups.has(key)){
+        groups.set(key,{rep:w, ids:[], name:name, phone:phone, sid:sid, projects:new Map(), types:new Map(), statuses:new Map(), notes:[], salary:w.salary||0});
+      }
+      const g=groups.get(key);
+      g.ids.push(w.id);
+      if(N(w.id)>N(g.rep.id)) g.rep=w;
+      if(!g.phone && phone) g.phone=phone;
+      if(!g.salary && w.salary) g.salary=w.salary;
+      uniquePush(g.projects, pid, projText(pid));
+      uniquePush(g.types, S(w.worker_type||'primary'), typeText(w.worker_type||'primary'));
+      uniquePush(g.statuses, S(w.status||'active'), w.status==='inactive'?'موقوف':'نشط');
+      if(w.notes && !g.notes.includes(S(w.notes))) g.notes.push(S(w.notes));
+    });
+    let out=[...groups.values()];
+    if(q){
+      out=out.filter(g=>[g.name,g.phone,supText(g.sid),[...g.projects.values()].join(' '),g.notes.join(' ')].join(' ').includes(q));
+    }
+    out.sort((a,b)=>a.name.localeCompare(b.name,'ar') || supText(a.sid).localeCompare(supText(b.sid),'ar'));
+    return out;
+  }
+  window.renderWorkers = function(){
+    const b=$id('workersBody'); if(!b) return;
+    const groups=buildWorkerGroupsV220();
+    b.innerHTML=groups.map(g=>{
+      const types=[...g.types.values()].join('، ') || 'أساسي';
+      const projects=[...g.projects.values()].filter(Boolean).join('، ') || '-';
+      const statusVals=[...g.statuses.keys()];
+      const isInactive=statusVals.length===1 && statusVals[0]==='inactive';
+      const statusText = isInactive ? 'موقوف' : 'نشط';
+      const notes=g.notes.join(' / ') || (g.ids.length>1 ? `مرتبط بـ ${g.ids.length} مشاريع` : '-');
+      const repId=g.rep?.id;
+      return `<tr>
+        <td>${esc2(g.name)}</td>
+        <td>${esc2(supText(g.sid))}</td>
+        <td>${esc2(projects)}</td>
+        <td><span class="badge ${types.includes('بديل')?'amber':'green'}">${esc2(types)}</span></td>
+        <td>${esc2(g.phone)}</td>
+        <td>${g.salary||0}</td>
+        <td><span class="badge ${isInactive?'red':'green'}">${statusText}</span></td>
+        <td>${esc2(notes)}</td>
+        <td class="row-actions"><button onclick="editWorker(${repId})">تعديل</button><button class="light" onclick="toggleWorkerStatus(${repId})">${isInactive?'تفعيل':'إيقاف'}</button><button class="danger" onclick="deleteRow('workers',${repId})">حذف</button></td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="9">لا توجد بيانات</td></tr>';
+  };
+  const previousSaveWorkerV220 = window.saveWorker;
+  window.saveWorker = async function(){
+    const id=S($id('workerId')?.value);
+    const name=S($id('workerName')?.value);
+    const sup=S($id('workerSupervisor')?.value);
+    const pid=S($id('workerProject')?.value);
+    if(name && sup && pid){
+      const key=normWorkerKey(name)+'|'+S(sup)+'|'+S(pid);
+      const exists=(window.data?.workers||[]).find(w=>S(w.id)!==id && S(w.status||'active').toLowerCase()!=='deleted' && (normWorkerKey(w.name||w.full_name)+'|'+S(getSupId(w))+'|'+S(getProjId(w))===key));
+      if(exists){ if(typeof msg==='function') msg('هذا العامل موجود بالفعل في نفس المشروع ونفس المشرف، لن يتم تكراره','err'); return; }
+    }
+    return previousSaveWorkerV220 ? previousSaveWorkerV220.apply(this,arguments) : undefined;
+  };
+  function updateVersionV220(){
+    document.querySelectorAll('h1,h2,h3,.version,.app-version').forEach(el=>{ const t=S(el.textContent); if(t.includes('V219')) el.textContent=t.replace('V219','V220'); if(t.includes('V218')) el.textContent=t.replace('V218','V220'); if(t.includes('V217')) el.textContent=t.replace('V217','V220'); });
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{try{updateVersionV220(); window.renderWorkers&&window.renderWorkers();}catch(e){}},ev==='load'?1300:500)));
+  setTimeout(()=>{try{updateVersionV220(); window.renderWorkers&&window.renderWorkers();}catch(e){}},1800);
+  console.log('Tasneef V220 workers grouped list loaded');
+})();
