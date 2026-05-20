@@ -11828,3 +11828,29 @@ function financePrintReport(kind){
   window.addEventListener('load',()=>setTimeout(boot,900));
   const oldOpen=window.openFinanceTab; if(typeof oldOpen==='function'){ window.openFinanceTab=function(){ const r=oldOpen.apply(this,arguments); setTimeout(()=>{ hideRequestProjectCost(); if(arguments[0]==='requests' && typeof inventoryRenderRequests==='function') inventoryRenderRequests(); },50); return r; }; }
 })();
+
+
+/* V200 Stable Compatibility Layer - لا يغير آلية العمل، فقط يمنع تعطل الأزرار القديمة عند عدم وجود دالة */
+(function(){
+  if (window.__tasneefV200Compat) return;
+  window.__tasneefV200Compat = true;
+
+  window.enableSupervisorSounds = window.enableSupervisorSounds || function(){
+    try {
+      ['checkin','checkout','ticket'].forEach(function(name){
+        var audio = new Audio('sounds/' + name + '.wav');
+        audio.volume = 0.01;
+        var p = audio.play();
+        if (p && p.then) p.then(function(){ audio.pause(); audio.currentTime = 0; }).catch(function(){});
+      });
+      if (typeof msg === 'function') msg('تم تفعيل الأصوات');
+    } catch(e) {}
+  };
+
+  window.tasneefSafeCall = window.tasneefSafeCall || function(fnName){
+    if (typeof window[fnName] === 'function') {
+      return window[fnName].apply(window, Array.prototype.slice.call(arguments, 1));
+    }
+    console.warn('Tasneef V200: missing function', fnName);
+  };
+})();
