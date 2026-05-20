@@ -15258,3 +15258,176 @@ function financePrintReport(kind){
   setTimeout(bootV222,1400);
   console.log('Tasneef V222 smart export slides and attendance without project loaded');
 })();
+
+
+/* ===== V223: منع تكرار أسماء العمال + شرائح تصدير ذكية حقيقية ===== */
+(function(){
+  const $id = id => document.getElementById(id);
+  const A = v => Array.isArray(v) ? v : [];
+  const S = v => String(v ?? '').trim();
+  const E = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const D = () => window.data || (typeof data !== 'undefined' ? data : {});
+  function normName(v){ return S(v).replace(/\s+/g,' ').replace(/[إأآا]/g,'ا').replace(/ى/g,'ي').toLowerCase(); }
+  function workerSidV223(w){ try{return workerSupId(w)}catch(e){ return w?.supervisor_id || w?.assigned_supervisor_id || ''; } }
+  function supNameV223(id){ try{return supervisorName(id)}catch(e){ return A(D().supervisors).concat(A(D().users)).find(u=>String(u.id)===String(id))?.full_name || '-'; } }
+  function workerByIdV223(id){ return A(D().workers).find(w=>String(w.id)===String(id)) || {}; }
+  function todayV223(){ try{return today()}catch(e){ return new Date().toISOString().slice(0,10); } }
+  function statusBadgeV223(status){ return status==='present' ? '<span class="badge green">حاضر</span>' : '<span class="badge red">غائب</span>'; }
+  function uniqueWorkersByNameV223(sid){
+    const seen = new Map();
+    A(D().workers).forEach(w=>{
+      if(sid && String(workerSidV223(w))!==String(sid)) return;
+      const key = normName(w.name || w.worker_name || w.full_name) || ('id:'+w.id);
+      if(!key) return;
+      const old = seen.get(key);
+      // نختار أول عامل له مشروع/بيانات أو الأقل id لضمان الثبات، لكن العرض يكون مرة واحدة فقط
+      if(!old) seen.set(key,w);
+      else {
+        const oldScore = (old.project_id?1:0)+(old.phone?1:0)+(old.notes?1:0);
+        const newScore = (w.project_id?1:0)+(w.phone?1:0)+(w.notes?1:0);
+        if(newScore>oldScore) seen.set(key,w);
+      }
+    });
+    return [...seen.values()].sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
+  }
+  function refreshAttendanceWorkerSelectV223(sid, selected){
+    const sel=$id('attendanceWorker'); if(!sel) return;
+    const ws=uniqueWorkersByNameV223(sid||$id('attendanceSupervisor')?.value||'');
+    const old=selected || sel.value || '';
+    sel.innerHTML='<option value="">اختر العامل</option>'+ws.map(w=>`<option value="${Number(w.id)}">${E(w.name||'-')}</option>`).join('');
+    if(old && [...sel.options].some(o=>String(o.value)===String(old))) sel.value=old;
+  }
+
+  window.renderAttendanceWorkersQuick = function(){
+    const div=$id('attendanceQuick'); if(!div) return;
+    const sid=$id('attendanceSupervisor')?.value || '';
+    refreshAttendanceWorkerSelectV223(sid);
+    if(!sid){ div.innerHTML='<div class="quick-item">اختر المشرف لعرض العمال بدون تكرار.</div>'; return; }
+    const ws=uniqueWorkersByNameV223(sid);
+    div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${E(w.name)}</b><div><button onclick="quickAttendance(${Number(w.id)},'present')">حاضر</button> <button class="danger" onclick="quickAttendance(${Number(w.id)},'absent')">غائب</button></div></div>`).join('') || '<div class="quick-item">لا يوجد عمال مرتبطون بهذا المشرف</div>';
+  };
+
+  window.renderSupervisorAttendanceList = function(){
+    const div=$id('supervisorAttendanceList'); if(!div) return;
+    const u=typeof session==='function'?session():null;
+    const ws=uniqueWorkersByNameV223(u?.id);
+    div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${E(w.name)}</b><select data-worker="${Number(w.id)}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('') || '<div class="quick-item">لا يوجد عمال مرتبطين بك</div>';
+  };
+
+  window.saveAttendance = async function(){
+    const id=$id('attendanceId')?.value || '';
+    const workerId=Number($id('attendanceWorker')?.value)||0;
+    if(!workerId) return (typeof msg==='function'?msg('اختر العامل','err'):alert('اختر العامل'));
+    const w=workerByIdV223(workerId);
+    const row={attendance_date:$id('attendanceDate')?.value || todayV223(), worker_id:workerId, supervisor_id:Number($id('attendanceSupervisor')?.value || workerSidV223(w)) || null, project_id:null, status:$id('attendanceStatus')?.value || 'present', notes:$id('attendanceNotes')?.value || '', created_by:(typeof session==='function'?session()?.id:null) || null};
+    const res=id?await sb.from('attendance').update(row).eq('id',id):await sb.from('attendance').upsert(row,{onConflict:'attendance_date,worker_id'});
+    if(res.error) return (typeof msg==='function'?msg(res.error.message,'err'):alert(res.error.message));
+    if(typeof msg==='function') msg('تم حفظ الحضور بدون تكرار وبدون ربطه بمشروع');
+    try{ clearAttendanceForm(); }catch(e){}
+    try{ await refreshAll(); }catch(e){}
+    try{ renderAttendance(); renderAttendanceWorkersQuick(); }catch(e){}
+  };
+
+  window.quickAttendance = async function(workerId,status){
+    const w=workerByIdV223(workerId);
+    if($id('attendanceWorker')) refreshAttendanceWorkerSelectV223(workerSidV223(w), workerId);
+    if($id('attendanceWorker')) $id('attendanceWorker').value=workerId;
+    if($id('attendanceSupervisor')) $id('attendanceSupervisor').value=workerSidV223(w)||$id('attendanceSupervisor').value||'';
+    if($id('attendanceStatus')) $id('attendanceStatus').value=status;
+    if($id('attendanceProject')) $id('attendanceProject').value='';
+    await window.saveAttendance();
+  };
+
+  window.renderAttendance = function(){
+    const b=$id('attendanceBody'); if(!b) return;
+    const date=$id('attendanceFilterDate')?.value || '';
+    const sid=$id('attendanceFilterSupervisor')?.value || '';
+    const q=S($id('attendanceSearch')?.value);
+    let rows=A(D().attendance);
+    if(date) rows=rows.filter(a=>S(a.attendance_date)===date);
+    if(sid) rows=rows.filter(a=>{ const w=workerByIdV223(a.worker_id); return String(a.supervisor_id || workerSidV223(w))===String(sid); });
+    if(q) rows=rows.filter(a=>{ const w=workerByIdV223(a.worker_id); const sn=supNameV223(a.supervisor_id || workerSidV223(w)); return [w.name,a.worker_name,sn,a.status,a.notes].join(' ').includes(q); });
+    // في السجلات الفعلية نعرض السجلات المحفوظة، لكن نمنع تكرار نفس العامل في نفس اليوم والمشرف عند وجود صفوف قديمة مكررة
+    const seen=new Set();
+    rows=rows.filter(a=>{ const w=workerByIdV223(a.worker_id); const key=[S(a.attendance_date), normName(w.name||a.worker_name), String(a.supervisor_id || workerSidV223(w))].join('|'); if(seen.has(key)) return false; seen.add(key); return true; });
+    b.innerHTML=rows.map(a=>{ const w=workerByIdV223(a.worker_id); const sid2=a.supervisor_id || workerSidV223(w); return `<tr><td>${E(a.attendance_date||'')}</td><td>${E(w.name||a.worker_name||'-')}</td><td>${E(supNameV223(sid2))}</td><td>${statusBadgeV223(a.status)}</td><td>${E(a.notes||'')}</td><td class="row-actions"><button onclick="editAttendance(${Number(a.id)})">تعديل</button><button class="danger" onclick="deleteRow('attendance',${Number(a.id)})">حذف</button></td></tr>`; }).join('') || '<tr><td colspan="6">لا توجد بيانات</td></tr>';
+    window.renderAttendanceWorkersQuick();
+  };
+
+  window.editAttendance = function(id){
+    const a=A(D().attendance).find(x=>String(x.id)===String(id)); if(!a) return;
+    const w=workerByIdV223(a.worker_id);
+    if($id('attendanceId')) $id('attendanceId').value=a.id;
+    if($id('attendanceDate')) $id('attendanceDate').value=a.attendance_date||todayV223();
+    if($id('attendanceSupervisor')) $id('attendanceSupervisor').value=a.supervisor_id || workerSidV223(w) || '';
+    refreshAttendanceWorkerSelectV223(a.supervisor_id || workerSidV223(w), a.worker_id);
+    if($id('attendanceProject')) $id('attendanceProject').value='';
+    if($id('attendanceWorker')) $id('attendanceWorker').value=a.worker_id||'';
+    if($id('attendanceStatus')) $id('attendanceStatus').value=a.status||'present';
+    if($id('attendanceNotes')) $id('attendanceNotes').value=a.notes||'';
+    if($id('attendanceFormTitle')) $id('attendanceFormTitle').textContent='تعديل حضور / غياب';
+    window.renderAttendanceWorkersQuick();
+  };
+
+  window.saveSupervisorAttendance = async function(){
+    const u=typeof session==='function'?session():null;
+    const date=$id('attendanceDate')?.value || todayV223();
+    const rows=[]; const seen=new Set();
+    document.querySelectorAll('#supervisorAttendanceList select').forEach(s=>{
+      const w=workerByIdV223(s.dataset.worker); const key=normName(w.name)||String(s.dataset.worker);
+      if(seen.has(key)) return; seen.add(key);
+      rows.push({attendance_date:date, worker_id:Number(s.dataset.worker), supervisor_id:Number(u?.id)||null, project_id:null, status:s.value, created_by:Number(u?.id)||null});
+    });
+    if(!rows.length) return (typeof msg==='function'?msg('لا يوجد عمال للتحضير','err'):alert('لا يوجد عمال للتحضير'));
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'attendance_date,worker_id'});
+    if(error) return (typeof msg==='function'?msg(error.message,'err'):alert(error.message));
+    if(typeof msg==='function') msg('تم حفظ التحضير بدون تكرار أسماء العمال');
+    try{ await initSupervisor(); }catch(e){ try{ await refreshAll(); window.renderSupervisorAttendanceList(); }catch(_){} }
+  };
+
+  window.renderAttendanceMonthly = function(){
+    const body=$id('attendanceMatrixBody'); const head=$id('attendanceMatrixHead'); if(!body||!head) return;
+    const month=$id('attendanceMatrixMonth')?.value || todayV223().slice(0,7);
+    const sid=$id('attendanceMatrixSupervisor')?.value || '';
+    const q=S($id('attendanceMatrixSearch')?.value);
+    const [y,m]=month.split('-').map(Number); const last=new Date(y,m,0).getDate();
+    const days=Array.from({length:last},(_,i)=>String(i+1).padStart(2,'0'));
+    head.innerHTML=`<tr><th>العامل</th><th>المشرف</th>${days.map(d=>`<th>${d}</th>`).join('')}<th>حضور</th><th>غياب</th><th>النسبة</th></tr>`;
+    let workers=uniqueWorkersByNameV223(sid);
+    if(q) workers=workers.filter(w=>S(w.name).includes(q));
+    let totalP=0,totalA=0;
+    body.innerHTML=workers.map(w=>{
+      let p=0,a=0;
+      const cells=days.map(d=>{
+        const ds=`${month}-${d}`;
+        const rec=A(D().attendance).find(r=>{ const rw=workerByIdV223(r.worker_id); return normName(rw.name||r.worker_name)===normName(w.name) && S(r.attendance_date)===ds && (!sid || String(r.supervisor_id || workerSidV223(rw))===String(sid)); });
+        if(!rec) return '<td><span class="badge">-</span></td>';
+        if(rec.status==='present'){p++; totalP++; return '<td><span class="badge green">ح</span></td>';}
+        a++; totalA++; return '<td><span class="badge red">غ</span></td>';
+      }).join('');
+      const pct=(p+a)?(p/(p+a)*100):0;
+      return `<tr><td>${E(w.name)}</td><td>${E(supNameV223(workerSidV223(w)))}</td>${cells}<td>${p}</td><td>${a}</td><td>${pct.toFixed(1)}%</td></tr>`;
+    }).join('') || `<tr><td colspan="${days.length+5}">لا توجد بيانات</td></tr>`;
+    const sum=$id('attendanceMatrixSummary'); if(sum){ const pct=(totalP+totalA)?(totalP/(totalP+totalA)*100):0; sum.innerHTML=`<div class="kpi"><small>عدد العمال</small><b>${workers.length}</b></div><div class="kpi"><small>إجمالي الحضور</small><b>${totalP}</b></div><div class="kpi"><small>إجمالي الغياب</small><b>${totalA}</b></div><div class="kpi"><small>نسبة الحضور</small><b>${pct.toFixed(1)}%</b></div>`; }
+  };
+
+  window.showExportSlideV223 = function(index, btn){
+    const slides=[...document.querySelectorAll('.export-slide-v222')];
+    const buttons=[...document.querySelectorAll('.export-nav-v223 button')];
+    slides.forEach((s,i)=>s.classList.toggle('active', i===index));
+    buttons.forEach((b,i)=>b.classList.toggle('active', i===index));
+    if(btn) btn.classList.add('active');
+  };
+
+  function bootV223(){
+    try{ document.querySelector('.export-hero-badge-v222') && (document.querySelector('.export-hero-badge-v222').textContent='V223'); }catch(e){}
+    try{ showExportSlideV223(0); }catch(e){}
+    try{ refreshAttendanceWorkerSelectV223($id('attendanceSupervisor')?.value||''); }catch(e){}
+    try{ renderAttendanceWorkersQuick(); }catch(e){}
+    try{ renderSupervisorAttendanceList(); }catch(e){}
+    try{ if($id('attendanceMatrixBody')) renderAttendanceMonthly(); }catch(e){}
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV223, ev==='load'?900:250)));
+  setTimeout(bootV223,1500);
+  console.log('Tasneef V223 workers attendance dedupe + smart export slides loaded');
+})();

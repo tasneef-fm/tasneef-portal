@@ -55,6 +55,16 @@
 .hero-title-v155 h1{margin:0 0 8px!important}.hero-title-v155 p{margin:0;color:#e9f5f1;line-height:1.7}.hero-app-name-v155{display:block;font-weight:900;color:#fff;font-size:15px;margin-top:6px;letter-spacing:.2px}
 .hero-action-v155{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.hero-action-v155 .status-pill-v155{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;color:#fff;font-size:12px;font-weight:800}
 @media(max-width:760px){.hero{align-items:flex-start;flex-direction:column}.hero-brand-v155{flex-direction:column;align-items:flex-start}.hero-logo-card-v155{width:132px;height:62px}.hero-action-v155{width:100%;justify-content:space-between}}
+
+
+/* V223: شرائح ذكية حقيقية لقسم التصدير والاستيراد */
+.export-smart-v222{max-width:1280px;margin:0 auto;}
+.export-hero-v222{display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(135deg,#0a4033,#11624d);color:#fff;border-radius:28px;padding:24px;margin-bottom:18px;box-shadow:0 18px 44px rgba(10,64,51,.16)}
+.export-hero-v222 h2{color:#fff;margin:6px 0;font-size:30px}.export-hero-v222 p{color:#e9f5f1;margin:0;line-height:1.8}.export-kicker-v222{display:inline-flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:6px 12px;border-radius:999px;font-weight:800}.export-hero-badge-v222{min-width:76px;height:76px;border-radius:24px;background:#fff;color:#0a4033;display:grid;place-items:center;font-weight:900;font-size:20px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
+.export-nav-v223{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 16px}.export-nav-v223 button{background:#edf7f3;color:#0a4033;border:1px solid #cfe2da;border-radius:18px;padding:14px;font-weight:900}.export-nav-v223 button.active{background:#0a4033;color:#fff;box-shadow:0 10px 24px rgba(10,64,51,.18)}
+.export-slides-v222{display:block!important}.export-slide-v222{display:none;min-height:360px;background:#fff;border:1px solid #d9e9e2;border-radius:28px;padding:28px;box-shadow:0 18px 42px rgba(16,77,59,.08);position:relative;overflow:hidden}.export-slide-v222.active{display:block!important;border:2px solid #0a4033}.export-slide-v222:before{content:"";position:absolute;left:-90px;bottom:-90px;width:240px;height:240px;border-radius:50%;background:rgba(10,64,51,.07)}.export-slide-v222 h3{font-size:26px;margin:6px 0 12px;color:#0a4033}.export-slide-v222 p{font-size:15px;color:#597069;line-height:1.9;max-width:900px}.slide-no-v222{width:58px;height:58px;border-radius:20px;background:#0a4033;color:#fff;font-size:20px;font-weight:900;display:grid;place-items:center;box-shadow:0 10px 24px rgba(10,64,51,.18)}.export-filter-grid-v222{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}.export-filter-grid-v222 label{font-weight:900;color:#0a4033}.export-actions-v222{position:relative;z-index:2}.mini-note-v222{position:relative;z-index:2;margin-top:14px;background:#fff8df;border:1px solid #ead698;color:#66531f;padding:13px;border-radius:16px}.export-preview-v222{background:#fff;border:1px dashed #b9d8ca;border-radius:20px;margin-top:16px;padding:16px;line-height:1.9}
+@media(max-width:900px){.export-hero-v222{flex-direction:column;align-items:flex-start}.export-nav-v223,.export-filter-grid-v222{grid-template-columns:1fr}.export-slide-v222{min-height:auto}}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -732,7 +742,13 @@
             <h2>التصدير والاستيراد</h2>
             <p>ملف اجتماع Excel واحد، منظم على شكل تبويبات واضحة وجاهز للعرض على الإدارة، مع نموذج استيراد منظم للبيانات.</p>
           </div>
-          <div class="export-hero-badge-v222">V222</div>
+          <div class="export-hero-badge-v222">V223</div>
+        </div>
+
+        <div class="export-nav-v223">
+          <button class="active" onclick="showExportSlideV223(0,this)">01 الفلتر</button>
+          <button onclick="showExportSlideV223(1,this)">02 ملف الاجتماع</button>
+          <button onclick="showExportSlideV223(2,this)">03 نموذج الاستيراد</button>
         </div>
 
         <div class="export-slides-v222">
@@ -752,8 +768,8 @@
             <h3>تصدير ملف اجتماع شامل</h3>
             <p>ينزل ملف Excel واحد يحتوي على الملخص التنفيذي، المشاريع، المشرفين، العمال، السجلات اليومية، الحضور والغياب، الأوقات الشهرية، التكتات، المخزون، المصروفات، تقارير العملاء، التقييمات والتنبيهات.</p>
             <div class="actions export-actions-v222">
-              <button onclick="exportMeetingExcelV222(this)">تنزيل ملف الاجتماع Excel</button>
-              <button class="light" onclick="previewMeetingExportV222()">معاينة قبل التنزيل</button>
+              <button onclick="exportMeetingExcelV223(this)">تنزيل ملف الاجتماع Excel</button>
+              <button class="light" onclick="previewMeetingExportV223()">معاينة قبل التنزيل</button>
             </div>
           </article>
 
@@ -762,7 +778,7 @@
             <h3>نموذج استيراد شامل</h3>
             <p>ملف Excel واحد فارغ بتبويبات منظمة لتجهيز بيانات المشاريع، المشرفين، العمال، المستخدمين، التكتات، السجلات اليومية، المخزون والمصروفات.</p>
             <div class="actions export-actions-v222">
-              <button class="light" onclick="downloadImportTemplateV222()">تنزيل نموذج الاستيراد</button>
+              <button class="light" onclick="downloadImportTemplateV223()">تنزيل نموذج الاستيراد</button>
             </div>
             <div class="mini-note-v222">الاستيراد الفعلي لا يعتمد إلا بعد المعاينة وفحص الأخطاء في مرحلة لاحقة.</div>
           </article>
@@ -779,6 +795,6 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=222"></script>
+<script src="app.js?v=223"></script>
 </body>
 </html>
