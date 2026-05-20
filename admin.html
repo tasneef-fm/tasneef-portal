@@ -356,7 +356,7 @@
           <input type="hidden" id="attendanceId">
           <label>التاريخ</label><input type="date" id="attendanceDate">
           <label>المشرف</label><select id="attendanceSupervisor" onchange="renderAttendanceWorkersQuick()"></select>
-          <label>المشروع</label><select id="attendanceProject"></select>
+          <input type="hidden" id="attendanceProject" value="">
           <label>العامل</label><select id="attendanceWorker"></select>
           <label>الحالة</label><select id="attendanceStatus"><option value="present">حاضر</option><option value="absent">غائب</option></select>
           <label>ملاحظات</label><textarea id="attendanceNotes"></textarea>
@@ -366,7 +366,7 @@
         <div class="card">
           <h2>سجلات الحضور</h2>
           <div class="filters"><input type="date" id="attendanceFilterDate" onchange="renderAttendance()"><select id="attendanceFilterSupervisor" onchange="renderAttendance()"></select><input id="attendanceSearch" oninput="renderAttendance()" placeholder="بحث"></div>
-          <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>العامل</th><th>المشرف</th><th>المشروع</th><th>الحالة</th><th>ملاحظات</th><th>واتساب</th><th>إجراء</th></tr></thead><tbody id="attendanceBody"></tbody></table></div>
+          <div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>العامل</th><th>المشرف</th><th>الحالة</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody id="attendanceBody"></tbody></table></div>
         </div>
       </div>
 
@@ -375,7 +375,7 @@
         <div class="filters">
           <div><label>الشهر</label><input type="month" id="attendanceMatrixMonth" onchange="renderAttendanceMonthly()"></div>
           <div><label>المشرف</label><select id="attendanceMatrixSupervisor" onchange="renderAttendanceMonthly()"></select></div>
-          <div><label>المشروع</label><select id="attendanceMatrixProject" onchange="renderAttendanceMonthly()"></select></div>
+          <input type="hidden" id="attendanceMatrixProject" value="">
           <div><label>بحث العامل</label><input id="attendanceMatrixSearch" oninput="renderAttendanceMonthly()" placeholder="اسم العامل"></div>
         </div>
         <div id="attendanceMatrixSummary" class="kpis small"></div>
@@ -725,45 +725,60 @@
     </section>
 
     <section id="export" class="page hidden">
-      <div class="card meeting-export-card">
-        <h2>التصدير والاستيراد</h2>
-        <p class="muted">ملف Excel واحد مرتب للعرض في الاجتماع، مع تبويبات منفصلة لكل قسم داخل نفس الملف.</p>
-        <div class="grid two">
-          <div class="card soft-card">
-            <h3>تصدير ملف اجتماع شامل</h3>
-            <p>يحتوي على الملخص التنفيذي، المشاريع، المشرفين، العمال، السجلات اليومية، الأوقات الشهرية، التكتات، المخزون، المصروفات، تقارير العملاء، تقييمات العملاء والتنبيهات.</p>
-            <div class="filters">
-              <label>الشهر</label>
-              <input type="month" id="meetingExportMonth">
-              <label>المشرف</label>
-              <select id="meetingExportSupervisor"></select>
-              <label>المشروع</label>
-              <select id="meetingExportProject"></select>
-            </div>
-            <div class="actions">
-              <button onclick="exportMeetingExcelV221(this)">تنزيل ملف الاجتماع Excel</button>
-              <button class="light" onclick="previewMeetingExportV221()">معاينة الملخص</button>
-            </div>
-            <div id="meetingExportPreview" class="footer-note"></div>
+      <div class="export-smart-v222">
+        <div class="export-hero-v222">
+          <div>
+            <span class="export-kicker-v222">مركز ذكي</span>
+            <h2>التصدير والاستيراد</h2>
+            <p>ملف اجتماع Excel واحد، منظم على شكل تبويبات واضحة وجاهز للعرض على الإدارة، مع نموذج استيراد منظم للبيانات.</p>
           </div>
-          <div class="card soft-card">
-            <h3>نموذج استيراد شامل</h3>
-            <p>ملف Excel واحد فارغ ومنظم لتجهيز البيانات قبل الرفع، يحتوي على تبويبات: المشاريع، المشرفين، العمال، المستخدمين، التكتات، السجلات اليومية، المخزون والمصروفات.</p>
-            <div class="actions">
-              <button class="light" onclick="downloadImportTemplateV221()">تنزيل نموذج الاستيراد</button>
-            </div>
-            <div class="footer-note">الاستيراد الفعلي يتم لاحقًا بعد إضافة فحص الأخطاء والمعاينة قبل الحفظ.</div>
-          </div>
+          <div class="export-hero-badge-v222">V222</div>
         </div>
+
+        <div class="export-slides-v222">
+          <article class="export-slide-v222 active">
+            <div class="slide-no-v222">01</div>
+            <h3>فلتر ملف الاجتماع</h3>
+            <p>اختر الشهر أو المشرف أو المشروع قبل التصدير. إذا تركت الفلاتر فارغة يتم تصدير البيانات حسب الشهر الحالي.</p>
+            <div class="export-filter-grid-v222">
+              <div><label>الشهر</label><input type="month" id="meetingExportMonth"></div>
+              <div><label>المشرف</label><select id="meetingExportSupervisor"></select></div>
+              <div><label>المشروع</label><select id="meetingExportProject"></select></div>
+            </div>
+          </article>
+
+          <article class="export-slide-v222">
+            <div class="slide-no-v222">02</div>
+            <h3>تصدير ملف اجتماع شامل</h3>
+            <p>ينزل ملف Excel واحد يحتوي على الملخص التنفيذي، المشاريع، المشرفين، العمال، السجلات اليومية، الحضور والغياب، الأوقات الشهرية، التكتات، المخزون، المصروفات، تقارير العملاء، التقييمات والتنبيهات.</p>
+            <div class="actions export-actions-v222">
+              <button onclick="exportMeetingExcelV222(this)">تنزيل ملف الاجتماع Excel</button>
+              <button class="light" onclick="previewMeetingExportV222()">معاينة قبل التنزيل</button>
+            </div>
+          </article>
+
+          <article class="export-slide-v222 import-slide-v222">
+            <div class="slide-no-v222">03</div>
+            <h3>نموذج استيراد شامل</h3>
+            <p>ملف Excel واحد فارغ بتبويبات منظمة لتجهيز بيانات المشاريع، المشرفين، العمال، المستخدمين، التكتات، السجلات اليومية، المخزون والمصروفات.</p>
+            <div class="actions export-actions-v222">
+              <button class="light" onclick="downloadImportTemplateV222()">تنزيل نموذج الاستيراد</button>
+            </div>
+            <div class="mini-note-v222">الاستيراد الفعلي لا يعتمد إلا بعد المعاينة وفحص الأخطاء في مرحلة لاحقة.</div>
+          </article>
+        </div>
+
+        <div id="meetingExportPreview" class="export-preview-v222"></div>
       </div>
-      <div class="card">
+
+      <div class="card export-quick-v222">
         <h3>تصدير CSV سريع</h3>
-        <p class="muted">للاستخدام السريع فقط، أما ملف الاجتماع فهو الأفضل للعرض على الإدارة.</p>
+        <p class="muted">للاستخدام السريع فقط. ملف الاجتماع Excel هو الأفضل للعرض الرسمي.</p>
         <div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div>
       </div>
     </section>
   </main>
 </div>
-<script src="app.js?v=221"></script>
+<script src="app.js?v=222"></script>
 </body>
 </html>

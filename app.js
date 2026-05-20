@@ -14943,10 +14943,10 @@ function financePrintReport(kind){
   console.log('Tasneef V220 workers grouped list loaded');
 })();
 
-/* ===== V221: Smart Export / Import Center - one meeting Excel workbook ===== */
+/* ===== V222: Smart Export / Import Center - one meeting Excel workbook ===== */
 (function(){
-  if(window.__tasneefExportImportV221) return;
-  window.__tasneefExportImportV221 = true;
+  if(window.__tasneefExportImportV222) return;
+  window.__tasneefExportImportV222 = true;
   const byId = id => document.getElementById(id);
   const S = v => String(v ?? '').trim();
   const N = v => { const n=Number(String(v??0).replace(/,/g,'')); return Number.isFinite(n)?n:0; };
@@ -14971,16 +14971,16 @@ function financePrintReport(kind){
     try{ if(typeof financeLoadAll==='function') await financeLoadAll(false); else if(window.financeLoadAll) await window.financeLoadAll(false); }catch(e){ console.warn('finance load export', e.message); }
     try{ if(window.loadPremiumReportsOnly) await window.loadPremiumReportsOnly(false); else if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(e){ console.warn('client reports load export', e.message); }
   }
-  function hydrateExportCenterV221(){
+  function hydrateExportCenterV222(){
     const month=byId('meetingExportMonth'); if(month && !month.value) month.value=(byId('monthlyMonth')?.value || todayStr().slice(0,7));
     const sup=byId('meetingExportSupervisor'); if(sup){ const cur=sup.value; sup.innerHTML='<option value="">كل المشرفين</option>'+(dset().supervisors||[]).map(u=>`<option value="${safe(u.id)}">${safe(u.full_name||u.username)}</option>`).join(''); sup.value=cur; }
     const pro=byId('meetingExportProject'); if(pro){ const cur=pro.value; pro.innerHTML='<option value="">كل المشاريع</option>'+(dset().projects||[]).map(p=>`<option value="${safe(p.id)}">${safe(p.name)}</option>`).join(''); pro.value=cur; }
   }
-  window.hydrateExportCenterV221 = hydrateExportCenterV221;
+  window.hydrateExportCenterV222 = hydrateExportCenterV222;
 
   function filteredLogs(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().logs||[]).filter(l=>inMonth(l.log_date||l.check_in,f.month) && (!f.project || String(l.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(l.project_id)))); }
   function filteredTickets(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().tickets||[]).filter(t=>inMonth(t.created_at||t.opened_at||t.date,f.month) && (!f.project || String(t.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(t.project_id)))); }
-  function filteredAttendance(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().attendance||[]).filter(a=>inMonth(a.attendance_date||a.date,f.month) && (!f.project || String(a.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(a.project_id||'')))); }
+  function filteredAttendance(){ const f=currentFilters(); const workers=dset().workers||[]; return (dset().attendance||[]).filter(a=>{ if(!inMonth(a.attendance_date||a.date,f.month)) return false; if(f.supervisor){ const w=workers.find(x=>String(x.id)===String(a.worker_id))||{}; const sid=a.supervisor_id || w.supervisor_id || w.assigned_supervisor_id; if(String(sid)!==String(f.supervisor)) return false; } return true; }); }
   function filteredExpenses(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().financeExpenses||[]).filter(e=>inMonth(e.expense_date||e.created_at,f.month) && (!f.project || String(e.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(e.project_id||'')))); }
   function filteredMovements(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().inventoryMovements||[]).filter(m=>inMonth(m.movement_date||m.created_at,f.month) && (!f.project || String(m.project_id)===String(f.project)) && (!f.supervisor || !m.project_id || pids.has(String(m.project_id)))); }
   function filteredClientReports(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().clientReports||[]).filter(r=>inMonth(r.report_date||r.created_at,f.month) && (!f.project || String(r.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(r.project_id||'')))); }
@@ -15030,7 +15030,7 @@ function financePrintReport(kind){
   function supervisorsRows(){ const projects=filterProjects(), tickets=filteredTickets(); return [['المشرف','عدد المشاريع الحالية','عدد العمال','التكتات المفتوحة','التكتات المغلقة'], ...(dset().supervisors||[]).filter(s=>!currentFilters().supervisor||String(s.id)===String(currentFilters().supervisor)).map(s=>{ const pids=projects.filter(p=>String(p.supervisor_id)===String(s.id)).map(p=>String(p.id)); const workers=(dset().workers||[]).filter(w=>pids.includes(String(wProjectId(w)))||String(wSupId(w))===String(s.id)); const ts=tickets.filter(t=>pids.includes(String(t.project_id))); const open=ts.filter(t=>!['closed','done','مغلق'].includes(String(t.status||'').toLowerCase())).length; return [s.full_name||s.username,pids.length,workers.length,open,ts.length-open]; })]; }
   function workersRows(){ const pids=allowedProjectIds(); const map=new Map(); (dset().workers||[]).forEach(w=>{ const pid=String(wProjectId(w)||''); if(currentFilters().project && pid!==String(currentFilters().project)) return; if(currentFilters().supervisor && !pids.has(pid) && String(wSupId(w))!==String(currentFilters().supervisor)) return; const key=S(w.name).toLowerCase()+'|'+S(w.phone); if(!map.has(key)) map.set(key,{name:w.name,phone:w.phone,supervisor:sName(wSupId(w)),projects:new Set(),status:w.status,notes:w.notes}); const rec=map.get(key); if(pid) rec.projects.add(pName(pid)); }); return [['اسم العامل','الجوال','المشرف','المشاريع','الحالة','ملاحظات'], ...[...map.values()].map(w=>[w.name,w.phone||'',w.supervisor,[...w.projects].join('، '),statusText(w.status),w.notes||''])]; }
   function logsRows(){ return [['التاريخ','المشروع','المشرف الحالي','وقت الدخول','وقت الخروج','الدقائق','وقت الانتقال','حالة الوقت','ملاحظات'], ...filteredLogs().map(l=>[l.log_date||S(l.check_in).slice(0,10),pName(l.project_id),sName((dset().projects||[]).find(p=>String(p.id)===String(l.project_id))?.supervisor_id||l.supervisor_id),fmtDate(l.check_in),fmtDate(l.check_out),N(l.duration_minutes||mins(l.check_in,l.check_out)),N(l.travel_minutes),l.time_status||'',l.notes||''])]; }
-  function attendanceRows(){ return [['التاريخ','العامل','المشروع','المشرف الحالي','الحالة','ملاحظات'], ...filteredAttendance().map(a=>[a.attendance_date||a.date, (dset().workers||[]).find(w=>String(w.id)===String(a.worker_id))?.name||a.worker_name||'-', pName(a.project_id), sName((dset().projects||[]).find(p=>String(p.id)===String(a.project_id))?.supervisor_id||a.supervisor_id), a.status||'', a.notes||''])]; }
+  function attendanceRows(){ const workers=dset().workers||[]; return [['التاريخ','العامل','المشرف','الحالة','ملاحظات'], ...filteredAttendance().map(a=>{ const w=workers.find(x=>String(x.id)===String(a.worker_id))||{}; const sid=a.supervisor_id || w.supervisor_id || w.assigned_supervisor_id; return [a.attendance_date||a.date, w.name||a.worker_name||'-', sName(sid), a.status==='present'?'حاضر':(a.status==='absent'?'غائب':(a.status||'')), a.notes||'']; })]; }
   function monthlyRows(){
     let rows=[['القسم','المشرف الحالي','المشروع','العمال','الدقائق','النسبة','مجموع دقائق المشرف','مجموع النسبة']];
     try{ if(typeof buildMonthlyV219==='function'){ const res=buildMonthlyV219(); [...(res.daily||[]),(res.permanent||[])].forEach(r=>{ if(currentFilters().supervisor && String((dset().projects||[]).find(p=>p.name===r.projectName)?.supervisor_id||'')!==String(currentFilters().supervisor)) return; rows.push([res.daily?.includes(r)?'زيارة يومية':'مشروع دائم',r.supervisorName,r.projectName,r.workers||'',Math.round(N(r.actual)),r.percent?String(Math.round(N(r.percent)*10)/10)+'%':'',Math.round(N(r.supTotal||r.actual)),r.percent?'100%':'']); }); return rows; } }catch(e){}
@@ -15065,23 +15065,23 @@ function financePrintReport(kind){
       sheetXml('تقييمات العملاء', ratingsRows(), {title:'تقييمات العملاء', subtitle:sub}),
       sheetXml('التنبيهات', alertsRows(), {title:'التنبيهات', subtitle:sub})
     ]; }
-  window.exportMeetingExcelV221 = async function(btn){
+  window.exportMeetingExcelV222 = async function(btn){
     try{
       if(btn) btn.disabled=true;
-      await ensureExportData(); hydrateExportCenterV221();
+      await ensureExportData(); hydrateExportCenterV222();
       const f=currentFilters(); const name=`تقرير اجتماع تصنيف - ${f.month||todayStr().slice(0,7)}.xls`;
       downloadXmlWorkbook(name, exportSheets());
       if(typeof msg==='function') msg('تم تجهيز ملف Excel للاجتماع');
     }catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||'تعذر تصدير ملف الاجتماع','err'); alert(e.message||'تعذر تصدير ملف الاجتماع'); }
     finally{ if(btn) btn.disabled=false; }
   };
-  window.previewMeetingExportV221 = function(){
-    hydrateExportCenterV221();
+  window.previewMeetingExportV222 = function(){
+    hydrateExportCenterV222();
     const box=byId('meetingExportPreview'); if(!box) return;
     const p=filterProjects(), logs=filteredLogs(), tickets=filteredTickets(), exp=filteredExpenses();
     box.innerHTML=`<b>معاينة سريعة:</b><br>المشاريع: ${p.length} | سجلات التشغيل: ${logs.length} | التكتات: ${tickets.length} | المصروفات: ${exp.length}<br>سيتم إنشاء ملف Excel واحد يحتوي على تبويبات منظمة لكل أقسام النظام.`;
   };
-  window.downloadImportTemplateV221 = function(){
+  window.downloadImportTemplateV222 = function(){
     const sub='نموذج فارغ لتجهيز البيانات قبل الاستيراد - لا تغيّر أسماء الأعمدة';
     const sheets=[
       sheetXml('المشاريع', [['اسم المشروع','المشرف','نوع التشغيل','الدقائق اليومية','دقائق الجمعة','الموقع','الحالة','ملاحظات'],['مثال مشروع','اسم المشرف','زيارة يومية',180,90,'الرياض','نشط','']], {title:'نموذج استيراد المشاريع', subtitle:sub}),
@@ -15095,9 +15095,166 @@ function financePrintReport(kind){
     ];
     downloadXmlWorkbook('نموذج استيراد شامل - تصنيف.xls', sheets);
   };
-  const oldShowPageV221 = window.showPage || (typeof showPage==='function'?showPage:null);
-  if(oldShowPageV221){
-    window.showPage = function(id,btn){ const r=oldShowPageV221(id,btn); if(id==='export'){ setTimeout(()=>{ try{ hydrateExportCenterV221(); previewMeetingExportV221(); }catch(e){} },120); } return r; };
+  const oldShowPageV222 = window.showPage || (typeof showPage==='function'?showPage:null);
+  if(oldShowPageV222){
+    window.showPage = function(id,btn){ const r=oldShowPageV222(id,btn); if(id==='export'){ setTimeout(()=>{ try{ hydrateExportCenterV222(); previewMeetingExportV222(); }catch(e){} },120); } return r; };
   }
-  setTimeout(()=>{ try{ hydrateExportCenterV221(); }catch(e){} },800);
+  setTimeout(()=>{ try{ hydrateExportCenterV222(); }catch(e){} },800);
+})();
+
+/* ===== V222: Smart export slides + attendance without project relation ===== */
+(function(){
+  if(window.__tasneefV222AttendanceExportPatch) return;
+  window.__tasneefV222AttendanceExportPatch = true;
+  const $id = id => document.getElementById(id);
+  const A = v => Array.isArray(v) ? v : [];
+  const S = v => String(v ?? '').trim();
+  const E = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const D = () => window.data || data || {};
+  function workerSid(w){ try{return workerSupId(w)}catch(e){ return w?.supervisor_id || w?.assigned_supervisor_id || ''; } }
+  function supNameV222(id){ try{return supervisorName(id)}catch(e){ return A(D().supervisors).concat(A(D().users)).find(u=>String(u.id)===String(id))?.full_name || '-'; } }
+  function workerById(id){ return A(D().workers).find(w=>String(w.id)===String(id)) || {}; }
+  function uniqueWorkersBySupervisor(sid){
+    const seen = new Set();
+    return A(D().workers).filter(w=>{
+      if(sid && String(workerSid(w))!==String(sid)) return false;
+      const key = String(w.id || w.name || '').trim();
+      if(!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  function todayV222(){ try{return today()}catch(e){ return new Date().toISOString().slice(0,10); } }
+  function statusBadge(status){ return status==='present' ? '<span class="badge green">حاضر</span>' : '<span class="badge red">غائب</span>'; }
+
+  window.renderAttendanceWorkersQuick = function(){
+    const div=$id('attendanceQuick'); if(!div) return;
+    const sid=$id('attendanceSupervisor')?.value || '';
+    if(!sid){ div.innerHTML='<div class="quick-item">اختر المشرف لعرض العمال المرتبطين به فقط.</div>'; return; }
+    const ws=uniqueWorkersBySupervisor(sid);
+    div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${E(w.name)}</b><div><button onclick="quickAttendance(${Number(w.id)},'present')">حاضر</button> <button class="danger" onclick="quickAttendance(${Number(w.id)},'absent')">غائب</button></div></div>`).join('') || '<div class="quick-item">لا يوجد عمال مرتبطون بهذا المشرف</div>';
+  };
+
+  window.saveAttendance = async function(){
+    const id=$id('attendanceId')?.value || '';
+    const workerId=Number($id('attendanceWorker')?.value)||0;
+    if(!workerId) return (typeof msg==='function'?msg('اختر العامل','err'):alert('اختر العامل'));
+    const w=workerById(workerId);
+    const row={
+      attendance_date:$id('attendanceDate')?.value || todayV222(),
+      worker_id:workerId,
+      supervisor_id:Number($id('attendanceSupervisor')?.value || workerSid(w)) || null,
+      project_id:null,
+      status:$id('attendanceStatus')?.value || 'present',
+      notes:$id('attendanceNotes')?.value || '',
+      created_by:(typeof session==='function'?session()?.id:null) || null
+    };
+    const res=id?await sb.from('attendance').update(row).eq('id',id):await sb.from('attendance').upsert(row,{onConflict:'attendance_date,worker_id'});
+    if(res.error) return (typeof msg==='function'?msg(res.error.message,'err'):alert(res.error.message));
+    if(typeof msg==='function') msg('تم حفظ الحضور بدون ربطه بمشروع');
+    try{ clearAttendanceForm(); }catch(e){}
+    try{ await refreshAll(); }catch(e){}
+    try{ renderAttendance(); renderAttendanceWorkersQuick(); }catch(e){}
+  };
+
+  window.quickAttendance = async function(workerId,status){
+    const w=workerById(workerId);
+    if($id('attendanceWorker')) $id('attendanceWorker').value=workerId;
+    if($id('attendanceSupervisor')) $id('attendanceSupervisor').value=workerSid(w)||$id('attendanceSupervisor').value||'';
+    if($id('attendanceStatus')) $id('attendanceStatus').value=status;
+    if($id('attendanceProject')) $id('attendanceProject').value='';
+    await window.saveAttendance();
+  };
+
+  window.renderAttendance = function(){
+    const b=$id('attendanceBody'); if(!b) return;
+    const date=$id('attendanceFilterDate')?.value || '';
+    const sid=$id('attendanceFilterSupervisor')?.value || '';
+    const q=S($id('attendanceSearch')?.value);
+    let rows=A(D().attendance);
+    if(date) rows=rows.filter(a=>S(a.attendance_date)===date);
+    if(sid) rows=rows.filter(a=>{ const w=workerById(a.worker_id); return String(a.supervisor_id || workerSid(w))===String(sid); });
+    if(q) rows=rows.filter(a=>{ const w=workerById(a.worker_id); const sn=supNameV222(a.supervisor_id || workerSid(w)); return [w.name,a.worker_name,sn,a.status,a.notes].join(' ').includes(q); });
+    b.innerHTML=rows.map(a=>{ const w=workerById(a.worker_id); const sid2=a.supervisor_id || workerSid(w); return `<tr><td>${E(a.attendance_date||'')}</td><td>${E(w.name||a.worker_name||'-')}</td><td>${E(supNameV222(sid2))}</td><td>${statusBadge(a.status)}</td><td>${E(a.notes||'')}</td><td class="row-actions"><button onclick="editAttendance(${Number(a.id)})">تعديل</button><button class="danger" onclick="deleteRow('attendance',${Number(a.id)})">حذف</button></td></tr>`; }).join('') || '<tr><td colspan="6">لا توجد بيانات</td></tr>';
+    window.renderAttendanceWorkersQuick();
+  };
+
+  window.editAttendance = function(id){
+    const a=A(D().attendance).find(x=>String(x.id)===String(id)); if(!a) return;
+    const w=workerById(a.worker_id);
+    if($id('attendanceId')) $id('attendanceId').value=a.id;
+    if($id('attendanceDate')) $id('attendanceDate').value=a.attendance_date||todayV222();
+    if($id('attendanceSupervisor')) $id('attendanceSupervisor').value=a.supervisor_id || workerSid(w) || '';
+    if($id('attendanceProject')) $id('attendanceProject').value='';
+    if($id('attendanceWorker')) $id('attendanceWorker').value=a.worker_id||'';
+    if($id('attendanceStatus')) $id('attendanceStatus').value=a.status||'present';
+    if($id('attendanceNotes')) $id('attendanceNotes').value=a.notes||'';
+    if($id('attendanceFormTitle')) $id('attendanceFormTitle').textContent='تعديل حضور / غياب';
+    window.renderAttendanceWorkersQuick();
+  };
+
+  window.renderSupervisorAttendanceList = function(){
+    const div=$id('supervisorAttendanceList'); if(!div) return;
+    const u=typeof session==='function'?session():null;
+    const ws=uniqueWorkersBySupervisor(u?.id);
+    div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${E(w.name)}</b><select data-worker="${Number(w.id)}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('') || '<div class="quick-item">لا يوجد عمال مرتبطين بك</div>';
+  };
+
+  window.saveSupervisorAttendance = async function(){
+    const u=typeof session==='function'?session():null;
+    const date=$id('attendanceDate')?.value || todayV222();
+    const rows=[...document.querySelectorAll('#supervisorAttendanceList select')].map(s=>({
+      attendance_date:date,
+      worker_id:Number(s.dataset.worker),
+      supervisor_id:Number(u?.id)||null,
+      project_id:null,
+      status:s.value,
+      created_by:Number(u?.id)||null
+    })).filter(r=>r.worker_id);
+    if(!rows.length) return (typeof msg==='function'?msg('لا يوجد عمال للتحضير','err'):alert('لا يوجد عمال للتحضير'));
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'attendance_date,worker_id'});
+    if(error) return (typeof msg==='function'?msg(error.message,'err'):alert(error.message));
+    if(typeof msg==='function') msg('تم حفظ التحضير بدون ربطه بمشروع');
+    try{ await initSupervisor(); }catch(e){ try{ await refreshAll(); window.renderSupervisorAttendanceList(); }catch(_){} }
+  };
+
+  window.renderAttendanceMonthly = function(){
+    const body=$id('attendanceMatrixBody'); const head=$id('attendanceMatrixHead'); if(!body||!head) return;
+    const month=$id('attendanceMatrixMonth')?.value || todayV222().slice(0,7);
+    const sid=$id('attendanceMatrixSupervisor')?.value || '';
+    const q=S($id('attendanceMatrixSearch')?.value);
+    const [y,m]=month.split('-').map(Number); const last=new Date(y,m,0).getDate();
+    const days=Array.from({length:last},(_,i)=>String(i+1).padStart(2,'0'));
+    head.innerHTML=`<tr><th>العامل</th><th>المشرف</th>${days.map(d=>`<th>${d}</th>`).join('')}<th>حضور</th><th>غياب</th><th>النسبة</th></tr>`;
+    let workers=uniqueWorkersBySupervisor(sid);
+    if(q) workers=workers.filter(w=>S(w.name).includes(q));
+    let totalP=0,totalA=0;
+    body.innerHTML=workers.map(w=>{
+      let p=0,a=0;
+      const cells=days.map(d=>{
+        const ds=`${month}-${d}`;
+        const rec=A(D().attendance).find(r=>String(r.worker_id)===String(w.id) && S(r.attendance_date)===ds);
+        if(!rec) return '<td><span class="badge">-</span></td>';
+        if(rec.status==='present'){p++; totalP++; return '<td><span class="badge green">ح</span></td>';}
+        a++; totalA++; return '<td><span class="badge red">غ</span></td>';
+      }).join('');
+      const pct=(p+a)?(p/(p+a)*100):0;
+      return `<tr><td>${E(w.name)}</td><td>${E(supNameV222(workerSid(w)))}</td>${cells}<td>${p}</td><td>${a}</td><td>${pct.toFixed(1)}%</td></tr>`;
+    }).join('') || `<tr><td colspan="${days.length+5}">لا توجد بيانات</td></tr>`;
+    const sum=$id('attendanceMatrixSummary'); if(sum){ const pct=(totalP+totalA)?(totalP/(totalP+totalA)*100):0; sum.innerHTML=`<div class="kpi"><small>عدد العمال</small><b>${workers.length}</b></div><div class="kpi"><small>إجمالي الحضور</small><b>${totalP}</b></div><div class="kpi"><small>إجمالي الغياب</small><b>${totalA}</b></div><div class="kpi"><small>نسبة الحضور</small><b>${pct.toFixed(1)}%</b></div>`; }
+  };
+
+  // Compatibility aliases after V222 rename
+  if(window.exportMeetingExcelV222) window.exportMeetingExcelV221 = window.exportMeetingExcelV222;
+  if(window.previewMeetingExportV222) window.previewMeetingExportV221 = window.previewMeetingExportV222;
+  if(window.downloadImportTemplateV222) window.downloadImportTemplateV221 = window.downloadImportTemplateV222;
+
+  function bootV222(){
+    try{ if($id('attendanceProject')) $id('attendanceProject').value=''; }catch(e){}
+    try{ window.renderAttendanceWorkersQuick(); }catch(e){}
+    try{ if($id('attendanceMatrixBody')) window.renderAttendanceMonthly(); }catch(e){}
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV222, ev==='load'?900:250)));
+  setTimeout(bootV222,1400);
+  console.log('Tasneef V222 smart export slides and attendance without project loaded');
 })();
