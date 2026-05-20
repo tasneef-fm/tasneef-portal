@@ -11854,3 +11854,328 @@ function financePrintReport(kind){
     console.warn('Tasneef V200: missing function', fnName);
   };
 })();
+
+/* ================= V201 Inventory Reports Permissions Fix =================
+   الهدف: إصلاح حساب المخزون، منع طباعة بيانات محذوفة قدر الإمكان،
+   وإضافة صلاحيات مشاهدة/إضافة/تعديل/حذف/طباعة لكل تبويب بدون تغيير آلية العمل.
+======================================================================= */
+(function(){
+  'use strict';
+  if(window.__tasneefV201Loaded) return;
+  window.__tasneefV201Loaded = true;
+
+  const $ = id => document.getElementById(id);
+  const S = v => String(v ?? '');
+  const N = v => { const x = parseFloat(S(v).replace(/,/g,'')); return Number.isFinite(x) ? x : 0; };
+  const E = v => S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const Q = v => N(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const M = v => N(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const arr = v => Array.isArray(v) ? v : [];
+  const say = (txt,type) => { try{ if(typeof msg==='function') msg(txt,type); else alert(txt); }catch(_){ alert(txt); } };
+
+  function currentUser(){
+    try{ if(typeof session === 'function') return session() || {}; }catch(_){ }
+    try{ return JSON.parse(localStorage.getItem('tasneef_user') || '{}') || {}; }catch(_){ return {}; }
+  }
+  function role(){ return S(currentUser().role); }
+  function perms(){
+    const u = currentUser();
+    if(typeof u.permissions === 'string') { try{ return JSON.parse(u.permissions) || {}; }catch(_){ return {}; } }
+    return u.permissions || {};
+  }
+  function isAdmin(){ return ['admin','مدير عام','system_admin'].includes(role()); }
+  function hasPerm(key){
+    if(isAdmin()) return true;
+    const p = perms();
+    if(Object.prototype.hasOwnProperty.call(p, key)) return !!p[key];
+    // توافق مع الصلاحيات القديمة حتى لا تتعطل النسخة على المستخدمين القدامى
+    const legacy = {
+      tab_overview_view: 'can_reports',
+      tab_reports_view: 'can_reports', tab_reports_print: 'can_reports',
+      tab_monthly_view: 'can_monthly', tab_monthly_print: 'can_monthly',
+      tab_users_view: 'can_manage_users', tab_users_add: 'can_manage_users', tab_users_edit: 'can_manage_users', tab_users_delete: 'can_manage_users',
+      tab_workers_view: 'can_manage_workers', tab_workers_add: 'can_manage_workers', tab_workers_edit: 'can_manage_workers', tab_workers_delete: 'can_manage_workers',
+      tab_inventory_view: 'can_manage_inventory', tab_inventory_add: 'can_manage_inventory', tab_inventory_edit: 'can_manage_inventory', tab_inventory_delete: 'can_manage_inventory', tab_inventory_print: 'can_manage_inventory',
+      tab_catalog_view: 'can_manage_inventory', tab_catalog_add: 'can_manage_inventory', tab_catalog_edit: 'can_manage_inventory', tab_catalog_delete: 'can_manage_inventory', tab_catalog_print: 'can_manage_inventory',
+      tab_movements_view: 'can_manage_inventory', tab_movements_add: 'can_manage_inventory', tab_movements_edit: 'can_manage_inventory', tab_movements_delete: 'can_manage_inventory', tab_movements_print: 'can_manage_inventory',
+      tab_requests_view: 'can_inventory_requests', tab_requests_add: 'can_inventory_requests', tab_requests_edit: 'can_edit_inventory_requests', tab_requests_delete: 'can_delete_inventory_requests', tab_requests_print: 'can_inventory_requests',
+      tab_expenses_view: 'can_expenses_inventory', tab_expenses_add: 'can_expenses_inventory', tab_expenses_edit: 'can_expenses_inventory', tab_expenses_delete: 'can_expenses_inventory', tab_expenses_print: 'can_expenses_inventory',
+      tab_costCenters_view: 'can_expenses_inventory', tab_costCenters_add: 'can_expenses_inventory', tab_costCenters_edit: 'can_expenses_inventory', tab_costCenters_delete: 'can_expenses_inventory', tab_costCenters_print: 'can_expenses_inventory',
+      tab_suppliers_view: 'can_manage_inventory', tab_suppliers_add: 'can_manage_inventory', tab_suppliers_edit: 'can_manage_inventory', tab_suppliers_delete: 'can_manage_inventory',
+      tab_tickets_view: 'can_tickets', tab_tickets_add: 'can_tickets', tab_tickets_edit: 'can_tickets', tab_tickets_delete: 'can_tickets', tab_tickets_print: 'can_tickets',
+      tab_attendance_view: 'can_attendance', tab_attendance_add: 'can_attendance', tab_attendance_edit: 'can_attendance', tab_attendance_delete: 'can_attendance', tab_attendance_print: 'can_attendance',
+      tab_time_logs_view: 'can_time_logs', tab_time_logs_add: 'can_time_logs', tab_time_logs_edit: 'can_edit_time_logs', tab_time_logs_delete: 'can_edit_time_logs', tab_time_logs_print: 'can_time_logs'
+    };
+    return legacy[key] ? !!p[legacy[key]] : false;
+  }
+  window.tasneefCanV201 = hasPerm;
+
+  const TAB_LABELS = {
+    overview:'الملخص', expenses:'المصروفات', inventory:'المخزون', catalog:'الأصناف', movements:'حركة المخزون',
+    requests:'طلبات الصرف', reports:'التقارير', costCenters:'مراكز التكلفة', suppliers:'الموردين', costReduction:'تقليل التكلفة',
+    users:'إدارة المستخدمين', workers:'إدارة العمال', tickets:'التكتات', attendance:'الحضور والغياب', time_logs:'السجلات اليومية', monthly:'الأوقات الشهرية'
+  };
+  const ACTIONS = [['view','مشاهدة'],['add','إضافة'],['edit','تعديل'],['delete','حذف'],['print','طباعة/تصدير']];
+  const CORE_TABS = ['overview','expenses','inventory','catalog','movements','requests','reports','costCenters','suppliers','users','workers','tickets','attendance','time_logs','monthly'];
+
+  function ensurePermissionsMatrix(){
+    const box = $('userPermissionsBoxV72');
+    if(!box || $('v201PermMatrix')) return;
+    const html = `<div id="v201PermMatrix" class="v201-perm-card">
+      <h3>صلاحيات التبويبات</h3>
+      <div class="v201-perm-actions"><button type="button" class="light" id="v201SelectAllPerms">تحديد الكل</button><button type="button" class="light" id="v201ClearAllPerms">إلغاء الكل</button></div>
+      <div class="v201-perm-table-wrap"><table class="v201-perm-table"><thead><tr><th>التبويب</th>${ACTIONS.map(a=>`<th>${a[1]}</th>`).join('')}</tr></thead><tbody>
+      ${CORE_TABS.map(t=>`<tr><td><b>${TAB_LABELS[t]}</b></td>${ACTIONS.map(a=>`<td><input type="checkbox" id="perm_tab_${t}_${a[0]}" data-perm="tab_${t}_${a[0]}"></td>`).join('')}</tr>`).join('')}
+      </tbody></table></div><div class="footer-note">الصلاحية تطبق على ظهور التبويب والأزرار، وتمنع تنفيذ الإجراء عند محاولة استخدامه بدون صلاحية.</div></div>`;
+    box.insertAdjacentHTML('beforeend', html);
+    $('v201SelectAllPerms')?.addEventListener('click',()=>box.querySelectorAll('#v201PermMatrix input[data-perm]').forEach(x=>x.checked=true));
+    $('v201ClearAllPerms')?.addEventListener('click',()=>box.querySelectorAll('#v201PermMatrix input[data-perm]').forEach(x=>x.checked=false));
+  }
+
+  function hydratePermissionChecks(){
+    ensurePermissionsMatrix();
+    const id = $('userId')?.value;
+    let user = null;
+    try{ user = arr(window.data?.appUsers || window.appUsers).find(u => S(u.id) === S(id)); }catch(_){ }
+    if(!user) return;
+    let p = user.permissions || {};
+    if(typeof p === 'string'){ try{ p = JSON.parse(p) || {}; }catch(_){ p = {}; } }
+    document.querySelectorAll('[data-perm]').forEach(el => { if(Object.prototype.hasOwnProperty.call(p, el.dataset.perm)) el.checked = !!p[el.dataset.perm]; });
+  }
+
+  ['renderUsers','editUser','clearUserForm','hydrateForms','financeHydrateForms'].forEach(fn=>{
+    const old = window[fn];
+    if(typeof old === 'function' && !old.__v201Wrapped){
+      window[fn] = function(){ const r = old.apply(this, arguments); setTimeout(hydratePermissionChecks, 120); return r; };
+      window[fn].__v201Wrapped = true;
+    }
+  });
+
+  const oldSaveUser = window.saveUser;
+  if(typeof oldSaveUser === 'function' && !oldSaveUser.__v201Wrapped){
+    window.saveUser = async function(){
+      ensurePermissionsMatrix();
+      // نعتمد على دالة الحفظ الحالية لأنها تجمع كل data-perm، ونضيف عليها المصفوفة فقط.
+      return oldSaveUser.apply(this, arguments);
+    };
+    window.saveUser.__v201Wrapped = true;
+  }
+
+  function tabKeyFromButton(btn){
+    const oc = btn?.getAttribute?.('onclick') || '';
+    const m = oc.match(/financeShowTab\(['"]([^'"]+)['"]/);
+    if(m) return m[1] === 'items' ? 'catalog' : m[1];
+    const text = S(btn?.textContent).replace(/\s+/g,' ').trim();
+    const byText = {'الملخص':'overview','المصروفات':'expenses','المخزون':'inventory','الأصناف':'catalog','حركة المخزون':'movements','طلبات الصرف':'requests','التقارير':'reports','مراكز التكلفة':'costCenters','الموردين':'suppliers','تقليل التكلفة':'costReduction'};
+    return byText[text] || '';
+  }
+  function applyTabPermissions(){
+    if(isAdmin()) return;
+    document.querySelectorAll('#financeDashboard .finance-tabs button, #financeDashboard .finance-tabs .finance-tab').forEach(btn=>{
+      const key = tabKeyFromButton(btn);
+      if(!key) return;
+      const ok = hasPerm(`tab_${key}_view`);
+      btn.hidden = !ok;
+      btn.style.display = ok ? '' : 'none';
+    });
+  }
+  function actionForButton(btn){
+    const txt = S(btn.textContent).replace(/\s+/g,' ').trim();
+    const oc = S(btn.getAttribute('onclick'));
+    if(/حذف|delete/i.test(txt) || /financeDelete|Delete|delete/i.test(oc)) return 'delete';
+    if(/تعديل|edit/i.test(txt) || /Edit|edit/i.test(oc)) return 'edit';
+    if(/طباعة|تصدير|PDF|print/i.test(txt) || /Print|print|Report/i.test(oc)) return 'print';
+    if(/إضافة|اضافة|جديد|حفظ|اعتماد|صرف|مرتجع|استهلاك|add|save|approve|return/i.test(txt+oc)) return 'add';
+    return '';
+  }
+  function currentFinanceTab(){
+    const active = document.querySelector('#financeDashboard .finance-tabs button.active, #financeDashboard .finance-tabs .finance-tab.active');
+    return tabKeyFromButton(active) || S(window.financeCurrentTab || 'overview');
+  }
+  function applyActionPermissions(){
+    if(isAdmin()) return;
+    const tab = currentFinanceTab();
+    document.querySelectorAll('#financeDashboard button').forEach(btn=>{
+      if(btn.closest('.finance-tabs')) return;
+      const act = actionForButton(btn); if(!act) return;
+      const ok = hasPerm(`tab_${tab}_${act}`);
+      btn.style.display = ok ? '' : 'none';
+    });
+  }
+  const oldFinanceShowTab = window.financeShowTab;
+  if(typeof oldFinanceShowTab === 'function' && !oldFinanceShowTab.__v201Wrapped){
+    window.financeShowTab = function(tab, btn){
+      const key = tab === 'items' ? 'catalog' : tab;
+      if(!isAdmin() && !hasPerm(`tab_${key}_view`)){ say('لا تملك صلاحية مشاهدة هذا التبويب','err'); return; }
+      const r = oldFinanceShowTab.apply(this, arguments);
+      setTimeout(()=>{ applyTabPermissions(); applyActionPermissions(); },150);
+      return r;
+    };
+    window.financeShowTab.__v201Wrapped = true;
+  }
+
+  function guard(action, tab, fnName){
+    return function(oldFn){
+      if(typeof oldFn !== 'function' || oldFn.__v201Guarded) return oldFn;
+      const wrapped = function(){
+        if(!hasPerm(`tab_${tab}_${action}`)){ say('لا تملك صلاحية '+({'add':'الإضافة','edit':'التعديل','delete':'الحذف','print':'الطباعة'}[action]||action),'err'); return; }
+        return oldFn.apply(this, arguments);
+      };
+      wrapped.__v201Guarded = true;
+      return wrapped;
+    };
+  }
+
+  // حماية أهم الإجراءات التنفيذية، بجانب إخفاء الأزرار.
+  window.inventoryEditItem = guard('edit','catalog','inventoryEditItem')(window.inventoryEditItem);
+  window.inventoryEditMovement = guard('edit','movements','inventoryEditMovement')(window.inventoryEditMovement);
+  window.inventoryEditRequest = guard('edit','requests','inventoryEditRequest')(window.inventoryEditRequest);
+  window.inventoryPrintRequest = guard('print','requests','inventoryPrintRequest')(window.inventoryPrintRequest);
+  window.inventoryPrintMovement = guard('print','movements','inventoryPrintMovement')(window.inventoryPrintMovement);
+
+  const oldFinanceDelete = window.financeDelete;
+  if(typeof oldFinanceDelete === 'function' && !oldFinanceDelete.__v201Wrapped){
+    window.financeDelete = async function(table, id){
+      let tab = currentFinanceTab();
+      if(table === 'inventory_items') tab = 'catalog';
+      if(table === 'inventory_movements') tab = 'movements';
+      if(table === 'inventory_requests') tab = 'requests';
+      if(!hasPerm(`tab_${tab}_delete`)){ say('لا تملك صلاحية الحذف','err'); return; }
+      const r = await oldFinanceDelete.apply(this, arguments);
+      clearReportCacheV201();
+      await reloadFinanceFreshV201();
+      return r;
+    };
+    window.financeDelete.__v201Wrapped = true;
+  }
+
+  // ===== المخزون: مصدر واحد للحساب يمنع تضاعف الصادر =====
+  function itemCode(it){ return S(it?.product_code || it?.serial_number || it?.barcode || it?.supplier_barcode || it?.company_code || it?.id); }
+  function matchItem(it, row){
+    const id = S(it?.id), name = S(it?.name), code = itemCode(it);
+    return S(row?.item_id) === id || S(row?.item_name) === name || (!!code && [row?.product_code,row?.barcode,row?.supplier_barcode,row?.company_code].map(S).includes(code));
+  }
+  function lineItems(r){
+    let lines = r?.request_items || r?.items || r?.request_lines || r?.lines || [];
+    if(typeof lines === 'string'){ try{ lines = JSON.parse(lines); }catch(_){ lines = []; } }
+    if(Array.isArray(lines) && lines.length) return lines;
+    if(r?.item_id || r?.item_name) return [{item_id:r.item_id,item_name:r.item_name,quantity:r.quantity,product_code:r.product_code,unit_cost:r.unit_cost}];
+    return [];
+  }
+  function requestIsIssued(r){ return /approved|issued|صرف|معتمد|done|completed/i.test(S(r?.status)); }
+  function itemStatsV201(it){
+    const movements = arr(window.data?.inventoryMovements).filter(m => matchItem(it,m));
+    let enteredMov = 0, enteredBatch = 0, issuedReq = 0, issuedMov = 0, returned = 0, direct = 0;
+    movements.forEach(m=>{
+      const t = S(m.movement_type).toLowerCase(); const q = Math.abs(N(m.quantity));
+      if(['in','إدخال','add','invoice_add','purchase'].includes(t)) enteredMov += q;
+      else if(['out','صرف','issue'].includes(t)) issuedMov += q;
+      else if(['return','مرتجع','رجوع'].includes(t)) returned += q;
+      else if(['consume','consumption','استهلاك'].includes(t)) direct += q;
+    });
+    arr(window.stockBatchesV148).forEach(b => arr(b.lines).forEach(l => { if(matchItem(it,l)) enteredBatch += Math.abs(N(l.quantity)); }));
+    arr(window.data?.inventoryRequests).filter(requestIsIssued).forEach(r=>{
+      lineItems(r).forEach(l=>{ if(matchItem(it,l)) issuedReq += Math.abs(N(l.quantity)); });
+    });
+    // إذا كانت أوامر الصرف موجودة نعتبرها المصدر الرسمي للصادر ونمنع جمعها مرة ثانية مع حركة out.
+    const issued = issuedReq > 0 ? issuedReq : issuedMov;
+    const netIssued = Math.max(0, issued - returned);
+    const consumed = netIssued + direct;
+    const entered = enteredMov > 0 ? enteredMov : enteredBatch;
+    const remaining = Number.isFinite(N(it?.quantity)) ? N(it?.quantity) : Math.max(0, entered - consumed);
+    return { entered, issued, returned, netIssued, direct, consumed, remaining, movements };
+  }
+  window.inventoryItemStatsV151 = itemStatsV201;
+  window.inventoryProductMetricsV153 = function(id){
+    const it = arr(window.data?.inventoryItems).find(x=>S(x.id)===S(id)) || {id};
+    const st = itemStatsV201(it);
+    return { movements:st.movements, issued:st.issued, returned:st.returned, directConsumed:st.direct, consumed:st.consumed };
+  };
+
+  function renderCatalogV201(){
+    const body = $('inventoryItemsBody'); if(!body) return;
+    const search = S($('financeSearch')?.value || $('inventorySearch')?.value).toLowerCase();
+    const supplier = S($('inventoryReportSupplier')?.value || $('inventorySupplierFilter')?.value);
+    const cat = S($('inventoryCategoryFilter')?.value || $('inventoryItemCategoryFilter')?.value);
+    let rows = arr(window.data?.inventoryItems).slice();
+    if(search) rows = rows.filter(it => [it.name,itemCode(it),it.supplier,it.category,it.unit,it.notes].map(S).join(' ').toLowerCase().includes(search));
+    if(supplier) rows = rows.filter(it => S(it.supplier) === supplier);
+    if(cat) rows = rows.filter(it => S(it.category) === cat);
+    if(!rows.length){ body.innerHTML = '<tr><td colspan="20">لا توجد أصناف</td></tr>'; return; }
+    const cards = rows.map(it=>{
+      const st = itemStatsV201(it); const low = st.remaining <= N(it.min_quantity || it.reorder_level || 0);
+      const img = S(it.image_url || it.product_image || it.image) ? `<img src="${E(it.image_url || it.product_image || it.image)}" alt="${E(it.name)}">` : '<span>لا توجد</span>';
+      const canEdit = hasPerm('tab_catalog_edit'), canDel = hasPerm('tab_catalog_delete');
+      return `<article class="v180-catalog-card"><div class="v180-item-head"><div class="v180-img">${img}</div><div class="v180-title"><h3>${E(it.name||'-')}</h3><small>كود المنتج: ${E(itemCode(it)||'-')}</small><br><small>المورد: ${E(it.supplier||'-')}</small></div><span class="${low?'v180-low':'v180-ok'}">${low?'منخفض':'متوفر'}</span></div><div class="v180-stats"><div><small>الكمية</small><b>${Q(st.remaining)} ${E(it.unit||'')}</b></div><div><small>دخل</small><b>${Q(st.entered)}</b></div><div><small>خرج</small><b>${Q(st.issued)}</b></div><div><small>مرتجع</small><b>${Q(st.returned)}</b></div><div><small>صافي الصادر</small><b>${Q(st.netIssued)}</b></div><div><small>استهلاك مباشر</small><b>${Q(st.direct)}</b></div><div><small>إجمالي مستهلك</small><b>${Q(st.consumed)}</b></div><div><small>حد الطلب</small><b>${Q(it.min_quantity||it.reorder_level||0)}</b></div></div><div class="row-actions v180-actions"><button type="button" onclick="inventoryOpenItemSmart&&inventoryOpenItemSmart('${E(it.id)}')">عرض المنتج</button>${canEdit?`<button type="button" class="light" onclick="inventoryEditItem&&inventoryEditItem('${E(it.id)}')">تعديل</button>`:''}${canDel?`<button type="button" class="danger" onclick="financeDelete&&financeDelete('inventory_items','${E(it.id)}')">حذف</button>`:''}</div></article>`;
+    }).join('');
+    body.innerHTML = `<tr class="v180-catalog-row"><td colspan="20"><div class="v180-catalog-grid">${cards}</div></td></tr>`;
+    setTimeout(applyActionPermissions,50);
+  }
+  window.inventoryRenderItems = renderCatalogV201;
+
+  window.inventoryOpenItemSmart = function(id){
+    const it = arr(window.data?.inventoryItems).find(x => S(x.id) === S(id));
+    if(!it) return say('الصنف غير موجود','err');
+    const st = itemStatsV201(it);
+    const rows = st.movements.slice(0,60).map(x=>{
+      const t = S(x.movement_type).toLowerCase();
+      const label = t==='out'?'صرف':(t==='return'?'مرتجع':(t==='consume'?'استهلاك مباشر':(t==='in'?'إدخال':'تعديل')));
+      return `<tr><td>${E(x.movement_date || S(x.created_at).slice(0,10) || '-')}</td><td>${E(label)}</td><td>${Q(x.quantity)}</td><td>${E(x.project_name || (typeof financeProjectName==='function'?financeProjectName(x.project_id):'-'))}</td><td>${E(x.receiver || '-')}</td><td>${E(x.reason || x.notes || '-')}</td></tr>`;
+    }).join('') || '<tr><td colspan="6">لا توجد حركات مسجلة</td></tr>';
+    const img = S(it.image_url || it.product_image || it.image);
+    const html = `<div style="display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap">${img?`<img class="smart-img-v129" style="width:150px;height:150px;object-fit:contain" src="${E(img)}">`:''}<div style="flex:1;min-width:260px"><h2>${E(it.name||'-')}</h2><div class="smart-meta-v129"><div class="m"><small>كود المنتج</small><b>${E(itemCode(it)||'-')}</b></div><div class="m"><small>المورد</small><b>${E(it.supplier||'-')}</b></div><div class="m"><small>التصنيف</small><b>${E(it.category||'-')}</b></div><div class="m"><small>المتبقي</small><b>${Q(st.remaining)} ${E(it.unit||'')}</b></div><div class="m"><small>سعر الحبة</small><b>${M(it.unit_cost)}</b></div></div></div></div><h3>ملخص الحركة</h3><div class="smart-meta-v129"><div class="m"><small>الصادر لأوامر الصرف</small><b>${Q(st.issued)}</b></div><div class="m"><small>المرتجع</small><b>${Q(st.returned)}</b></div><div class="m"><small>صافي الصادر</small><b>${Q(st.netIssued)}</b></div><div class="m"><small>الاستهلاك المباشر</small><b>${Q(st.direct)}</b></div><div class="m"><small>إجمالي المستهلك</small><b>${Q(st.consumed)}</b></div><div class="m"><small>المتبقي</small><b>${Q(st.remaining)}</b></div></div><h3>آخر الحركات</h3><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>الكمية</th><th>المشروع</th><th>المستلم</th><th>السبب</th></tr></thead><tbody>${rows}</tbody></table>`;
+    if(typeof window.smartOpenV129 === 'function') window.smartOpenV129('تفاصيل المنتج', html, hasPerm('tab_catalog_print')?`<button onclick="financePrintReport&&financePrintReport('productDetail')">طباعة</button>`:'');
+    else { const box = $('inventoryProductDetailBox'); if(box) box.innerHTML = html; }
+  };
+
+  // ===== الطباعة: تحديث البيانات وإزالة الكاش قبل الطباعة =====
+  function clearReportCacheV201(){
+    try{
+      Object.keys(localStorage).forEach(k=>{ if(/report|print|deleted|cache/i.test(k)) localStorage.removeItem(k); });
+    }catch(_){ }
+  }
+  async function reloadFinanceFreshV201(){
+    try{
+      if(typeof financeLoadAll === 'function') await financeLoadAll();
+      else if(typeof refreshAll === 'function') await refreshAll();
+      if(typeof financeRenderAll === 'function') financeRenderAll();
+      if(typeof financeRenderReports === 'function') financeRenderReports();
+      if(typeof inventoryRenderItems === 'function') inventoryRenderItems();
+    }catch(e){ console.warn('V201 refresh warning', e); }
+  }
+  window.tasneefReloadFinanceFreshV201 = reloadFinanceFreshV201;
+  const oldPrintReport = window.financePrintReport;
+  if(typeof oldPrintReport === 'function' && !oldPrintReport.__v201Wrapped){
+    window.financePrintReport = function(kind){
+      if(!hasPerm(`tab_${currentFinanceTab()}_print`) && kind !== 'productDetail'){ say('لا تملك صلاحية الطباعة','err'); return; }
+      clearReportCacheV201();
+      try{ if(typeof financeRenderReports === 'function') financeRenderReports(); }catch(_){ }
+      // طباعة جدول مرئي بعد الفلترة الحالية، مع استبعاد الصفوف المخفية.
+      const bodyIds = {expensesByProject:'expenseByProjectBody',stockOutByProject:'stockOutByProjectBody',stockOutBySupervisor:'stockOutBySupervisorBody',inventoryUsageDetail:'inventoryUsageDetailBody',costCenters:'costCenterReportBody'};
+      if(kind !== 'productDetail' && bodyIds[kind] && typeof window.financePrintWindow === 'function'){
+        const table = $(bodyIds[kind])?.closest('table');
+        if(table){
+          const clone = table.cloneNode(true);
+          clone.querySelectorAll('tr').forEach(tr=>{ const cs = getComputedStyle(tr); if(tr.hidden || cs.display === 'none' || cs.visibility === 'hidden') tr.remove(); });
+          window.financePrintWindow('تقرير', `<table>${clone.innerHTML}</table>`);
+          return;
+        }
+      }
+      return oldPrintReport.apply(this, arguments);
+    };
+    window.financePrintReport.__v201Wrapped = true;
+  }
+
+  function injectCss(){
+    if($('v201Css')) return;
+    const st = document.createElement('style'); st.id = 'v201Css';
+    st.textContent = `.v201-perm-card{margin-top:14px;border:1px solid #d7e8e1;border-radius:16px;padding:12px;background:#fbfffd}.v201-perm-card h3{margin:0 0 10px;color:#07563d}.v201-perm-actions{display:flex;gap:8px;margin-bottom:8px}.v201-perm-table-wrap{overflow:auto;border:1px solid #e2eee9;border-radius:12px}.v201-perm-table{width:100%;border-collapse:collapse;font-size:12px}.v201-perm-table th{background:#07563d;color:#fff;padding:8px;white-space:nowrap}.v201-perm-table td{border:1px solid #e2eee9;padding:7px;text-align:center}.v201-perm-table td:first-child{text-align:right;white-space:nowrap;background:#f7fbfa;color:#164638}.v201-perm-table input{transform:scale(1.1)}.v180-stats{grid-template-columns:repeat(auto-fit,minmax(105px,1fr))}`;
+    document.head.appendChild(st);
+  }
+  function boot(){ injectCss(); ensurePermissionsMatrix(); hydratePermissionChecks(); applyTabPermissions(); applyActionPermissions(); }
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,300));
+  window.addEventListener('load',()=>setTimeout(boot,900));
+  document.addEventListener('click',()=>setTimeout(()=>{ applyTabPermissions(); applyActionPermissions(); },120), true);
+  setTimeout(boot,1200);
+  console.log('V201 inventory/reports/permissions patch loaded');
+})();
