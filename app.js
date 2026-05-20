@@ -3956,7 +3956,7 @@ function financeResetFilters(){ ['financeSearch','financeProjectFilter','finance
 })();
 
 /* =========================
-   V118 Advanced Inventory Reports Overrides
+   V208 Advanced Inventory Reports Overrides
    ========================= */
 let inventoryRequestLines = [];
 if(typeof inventoryItemImageData === 'undefined') var inventoryItemImageData = '';
@@ -12475,7 +12475,7 @@ function financePrintReport(kind){
       else { btn.classList.add('v205-hidden-perm'); }
     });
     // تحديث عنوان التقارير حتى نعرف أن النسخة الجديدة وصلت
-    [...dash.querySelectorAll('h2')].forEach(h=>{ if(/V118 Advanced Inventory Reports/i.test(h.textContent||'')) h.textContent='V205 Advanced Inventory Reports'; });
+    [...dash.querySelectorAll('h2')].forEach(h=>{ if(/V208 Advanced Inventory Reports/i.test(h.textContent||'')) h.textContent='V208 Advanced Inventory Reports'; });
   }
   function showTabPage(key, btn){
     ensureTabs();
@@ -12923,3 +12923,281 @@ function financePrintReport(kind){
   console.log('Tasneef V207 direct tickets PDF download loaded');
 })();
 
+
+/* ===================== V208 REAL FIX: PDF, DUPLICATE TABS, CONSUMPTION LABEL, PURCHASE PRICES =====================
+   إصلاحات مباشرة للملاحظات:
+   1) تنزيل PDF للتكتات لا يطلع فارغ.
+   2) إزالة تكرار تبويبات المصروفات والمخزون.
+   3) حذف خانة إجمالي الاستهلاك من الكروت وتفاصيل المنتج.
+   4) دعم سعر دفعة إدخال المخزون وحفظه في حركة الإدخال، مع متوسط تكلفة مرجح، وإظهار دفعات الشراء.
+=============================================================================================================== */
+(function(){
+  'use strict';
+  window.TASNEEF_BUILD = 'V208_REAL_FIX_2026_05_20';
+  const $ = id => document.getElementById(id);
+  const S = v => String(v ?? '').trim();
+  const N = v => { const x = Number(String(v ?? 0).replace(/,/g,'')); return Number.isFinite(x) ? x : 0; };
+  const A = v => Array.isArray(v) ? v : [];
+  const E = v => S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const say = (t,type) => { try{ if(typeof msg==='function') msg(t,type); else alert(t); }catch(_){ alert(t); } };
+  const money = v => { try{ return (Number(v)||0).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' ر.س'; }catch(_){ return (Number(v)||0).toFixed(2)+' ر.س'; } };
+  const qty = v => { try{ return (Number(v)||0).toLocaleString('ar-SA',{maximumFractionDigits:2}); }catch(_){ return String(v||0); } };
+
+  /* 1) إزالة التبويبات المكررة */
+  function removeDuplicateFinanceTabsV208(){
+    const tabs = [...document.querySelectorAll('.finance-tab, .finance-tabs button, button[onclick*="financeShowTab"]')];
+    const seen = new Set();
+    tabs.forEach(btn=>{
+      const text = S(btn.textContent).replace(/\s+/g,' ');
+      if(!text) return;
+      const key = text;
+      if(seen.has(key)) btn.remove();
+      else seen.add(key);
+    });
+  }
+
+  /* 2) حذف إجمالي الاستهلاك من أي كرت أو تفاصيل */
+  function removeTotalConsumptionBlocksV208(){
+    const bad = /إجمالي\s*(الاستهلاك|استهلاك|المستهلك)|Total\s*Consumed|Total\s*Consumption/i;
+    document.querySelectorAll('.v180-stats > div, .smart-meta-v129 .m, .smart-meta-v129 > div, .m').forEach(el=>{
+      const small = S(el.querySelector('small')?.textContent || el.textContent);
+      if(bad.test(small)) el.remove();
+    });
+    document.querySelectorAll('th,td,div,span,small').forEach(el=>{
+      if(el.children.length) return;
+      if(bad.test(S(el.textContent))) {
+        const parent = el.closest('.m') || el.closest('.v180-stats > div');
+        if(parent) parent.remove();
+      }
+    });
+  }
+
+  /* 3) سعر دفعة الإدخال */
+  function ensureMovementCostInputV208(){
+    const type = $('inventoryMovementType');
+    const qtyEl = $('inventoryMovementQty');
+    if(!type || !qtyEl || $('inventoryMovementUnitCostV208')) return;
+    const wrap = document.createElement('div');
+    wrap.id = 'inventoryMovementUnitCostWrapV208';
+    wrap.innerHTML = '<label>سعر هذه الدفعة</label><input type="number" id="inventoryMovementUnitCostV208" step="0.01" placeholder="اكتب سعر الشراء لهذه الكمية">';
+    const parent = qtyEl.closest('.split') || qtyEl.parentElement;
+    parent.insertAdjacentElement('afterend', wrap);
+    function toggle(){
+      const show = S(type.value)==='in';
+      wrap.style.display = show ? '' : 'none';
+      if(show){
+        const item = A(window.data?.inventoryItems).find(i=>S(i.id)===S($('inventoryMovementItem')?.value));
+        if(item && !N($('inventoryMovementUnitCostV208')?.value)) $('inventoryMovementUnitCostV208').value = N(item.unit_cost || item.unit_price || 0) || '';
+      }
+    }
+    type.addEventListener('change', toggle);
+    $('inventoryMovementItem')?.addEventListener('change', toggle);
+    setTimeout(toggle,50);
+  }
+
+  function weightedCostV208(oldQty, oldCost, inQty, inCost){
+    oldQty=N(oldQty); oldCost=N(oldCost); inQty=N(inQty); inCost=N(inCost);
+    const totalQty = oldQty + inQty;
+    if(totalQty<=0) return inCost || oldCost || 0;
+    if(inCost<=0) return oldCost || 0;
+    return ((oldQty*oldCost) + (inQty*inCost)) / totalQty;
+  }
+
+  // استبدال حفظ حركة المخزون حتى يقبل سعر الدفعة الجديدة، ولا يحسب كل شيء بالسعر القديم.
+  window.inventorySaveMovement = async function(btn){
+    try{
+      if(btn) btn.disabled = true;
+      const itemId = $('inventoryMovementItem')?.value;
+      if(!itemId) throw new Error('اختر الصنف');
+      const item = A(window.data?.inventoryItems).find(i=>S(i.id)===S(itemId));
+      if(!item) throw new Error('الصنف غير موجود');
+      const type = $('inventoryMovementType')?.value || 'out';
+      const q = N($('inventoryMovementQty')?.value);
+      if(q<=0) throw new Error('الكمية مطلوبة');
+      const pid = $('inventoryMovementProject')?.value || null;
+      const oldQty = N(item.quantity);
+      const oldCost = N(item.unit_cost || item.unit_price || 0);
+      const batchCost = type==='in' ? (N($('inventoryMovementUnitCostV208')?.value) || oldCost) : oldCost;
+      const row = {
+        item_id: Number(itemId),
+        item_name: item.name || '',
+        movement_type: type,
+        quantity: q,
+        movement_date: $('inventoryMovementDate')?.value || (typeof today==='function' ? today() : new Date().toISOString().slice(0,10)),
+        project_id: pid ? Number(pid) : null,
+        project_name: pid ? (typeof projectName==='function' ? projectName(pid) : '') : '',
+        receiver: $('inventoryMovementReceiver')?.value || '',
+        reason: $('inventoryMovementReason')?.value || '',
+        notes: $('inventoryMovementNotes')?.value || '',
+        product_code: (typeof v118ProductCode==='function' ? v118ProductCode(item) : (item.product_code || item.serial_number || '')),
+        barcode: (typeof v118Barcode==='function' ? v118Barcode(item) : (item.barcode || item.supplier_barcode || '')),
+        unit_cost: batchCost
+      };
+      const id = $('inventoryMovementId')?.value;
+      if(id) throw new Error('تعديل حركة المخزون غير متاح؛ احذف الحركة وأضف حركة جديدة للحفاظ على دقة الرصيد');
+      const res = await sb.from('inventory_movements').insert(row);
+      if(res.error) throw res.error;
+      let newQty = oldQty;
+      let newCost = oldCost;
+      if(type==='in'){
+        newQty = oldQty + q;
+        newCost = weightedCostV208(oldQty, oldCost, q, batchCost);
+      }else if(type==='out' || type==='consume'){
+        newQty = oldQty - q;
+      }else if(type==='return'){
+        newQty = oldQty + q;
+      }else if(type==='adjust'){
+        newQty = q;
+      }
+      const upd = type==='in' ? {quantity:newQty, unit_cost:newCost} : {quantity:newQty};
+      const ures = await sb.from('inventory_items').update(upd).eq('id', itemId);
+      if(ures.error) throw ures.error;
+      say(type==='in' ? 'تم حفظ إدخال المخزون بسعر الدفعة وتحديث متوسط التكلفة' : 'تم حفظ حركة المخزون وتحديث الرصيد');
+      try{ if(typeof inventoryClearMovementForm==='function') inventoryClearMovementForm(); }catch(_){ }
+      try{ await financeLoadAll(); }catch(_){ }
+      setTimeout(bootV208,300);
+    }catch(e){ say(e.message || String(e), 'err'); }
+    finally{ if(btn) btn.disabled = false; }
+  };
+
+  /* 4) إظهار دفعات الشراء داخل تفاصيل المنتج */
+  function appendPurchaseBatchesToProductModalV208(){
+    const modal = document.querySelector('.modal.show, .modal[style*="display: block"], .smart-modal, #productDetailModal, #smartModal');
+    const holder = modal || document.body;
+    if(!holder || holder.querySelector('#purchaseBatchesV208')) return;
+    const titleText = S(holder.textContent);
+    if(!/تفاصيل المنتج|ملخص الحركة|آخر الحركات/.test(titleText)) return;
+    let itemId = '';
+    const codeText = S(holder.textContent);
+    const item = A(window.data?.inventoryItems).find(i => codeText.includes(S(i.name)) || codeText.includes(S(i.product_code||i.serial_number||'')));
+    if(item) itemId = S(item.id);
+    if(!itemId) return;
+    const ins = A(window.data?.inventoryMovements).filter(m=>S(m.item_id)===itemId && S(m.movement_type)==='in')
+      .sort((a,b)=>String(b.movement_date||b.created_at||'').localeCompare(String(a.movement_date||a.created_at||'')));
+    if(!ins.length) return;
+    const box = document.createElement('div');
+    box.id = 'purchaseBatchesV208';
+    box.innerHTML = `<h3>دفعات الشراء وأسعارها</h3><table><thead><tr><th>التاريخ</th><th>الكمية</th><th>سعر الدفعة</th><th>المورد</th><th>السبب / الفاتورة</th></tr></thead><tbody>${ins.map(m=>`<tr><td>${E(m.movement_date||String(m.created_at||'').slice(0,10)||'-')}</td><td>${qty(m.quantity)}</td><td>${money(m.unit_cost)}</td><td>${E(m.receiver||'-')}</td><td>${E(m.reason||m.notes||'-')}</td></tr>`).join('')}</tbody></table>`;
+    const table = [...holder.querySelectorAll('table')].pop();
+    if(table) table.insertAdjacentElement('afterend', box); else holder.appendChild(box);
+  }
+
+  /* 5) تنزيل PDF للتكتات بدون ملف فارغ: نترك العنصر ظاهرًا أثناء الالتقاط ثم نحذفه */
+  function waitImagesV208(node){
+    const imgs=[...node.querySelectorAll('img')];
+    return Promise.all(imgs.map(img=>{
+      if(img.complete) return Promise.resolve();
+      return new Promise(resolve=>{ img.onload=resolve; img.onerror=resolve; setTimeout(resolve,1200); });
+    }));
+  }
+  async function loadHtml2PdfV208(){
+    if(window.html2pdf) return window.html2pdf;
+    await new Promise((resolve,reject)=>{
+      const old=document.querySelector('script[data-tasneef-html2pdf="1"]');
+      if(old){ old.addEventListener('load',resolve,{once:true}); old.addEventListener('error',reject,{once:true}); return; }
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      s.async=true; s.dataset.tasneefHtml2pdf='1'; s.onload=resolve; s.onerror=reject; document.head.appendChild(s);
+    });
+    if(!window.html2pdf) throw new Error('تعذر تحميل مكتبة PDF');
+    return window.html2pdf;
+  }
+  function printFallbackV208(node,title){
+    const w=window.open('', '_blank');
+    if(!w) return say('المتصفح منع فتح نافذة التقرير. اسمح بالنوافذ المنبثقة ثم حاول مرة أخرى.','err');
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(title)}</title><style>body{margin:0;background:#fff}</style></head><body>${node.outerHTML}<script>setTimeout(()=>window.print(),800)<\/script></body></html>`);
+    w.document.close();
+  }
+  async function savePdfNodeV208(node, filename){
+    node.style.position = 'absolute';
+    node.style.top = '0';
+    node.style.right = '0';
+    node.style.left = 'auto';
+    node.style.zIndex = '2147483647';
+    node.style.background = '#fff';
+    node.style.opacity = '1';
+    node.style.transform = 'none';
+    document.body.appendChild(node);
+    try{
+      await waitImagesV208(node);
+      await new Promise(r=>setTimeout(r,350));
+      const html2pdf = await loadHtml2PdfV208();
+      await html2pdf().set({
+        margin: 6,
+        filename,
+        image: {type:'jpeg', quality:0.98},
+        html2canvas: {scale:2, useCORS:true, allowTaint:true, backgroundColor:'#ffffff', logging:false, scrollX:0, scrollY:0},
+        jsPDF: {unit:'mm', format:'a4', orientation:'landscape'},
+        pagebreak: {mode:['css','legacy']}
+      }).from(node).save();
+      say('تم تنزيل ملف PDF في التنزيلات');
+    }catch(e){
+      console.warn('V208 PDF direct failed', e);
+      say('تعذر التنزيل المباشر، فتحت لك نافذة الطباعة كحل بديل','err');
+      printFallbackV208(node.cloneNode(true), filename.replace(/\.pdf$/,''));
+    }finally{
+      try{ node.remove(); }catch(_){ }
+    }
+  }
+
+  // نستخدم دالة بناء تقرير V207 إن كانت موجودة داخليًا غير متاحة؛ لذلك نبني تقريرًا مستقلًا هنا.
+  function ticketNo(t){ return t?.ticket_number || ('T-' + S(t?.id || 0).padStart(4,'0')); }
+  function statusText(s){ return s==='closed'?'مغلق':(s==='processing'?'تحت المعالجة':'مفتوح'); }
+  function priorityText(p){ return p==='urgent'?'عاجل':(p==='high'?'مهم':(p==='low'?'منخفض':'عادي')); }
+  function pName(id){ try{ return typeof projectName==='function' ? projectName(id) : '-'; }catch(_){ return '-'; } }
+  function sName(id){ try{ return typeof supervisorName==='function' ? supervisorName(id) : '-'; }catch(_){ return '-'; } }
+  function uName(id){ const u=A(window.data?.users).find(x=>S(x.id)===S(id)||S(x.username)===S(id)); return u ? S(u.full_name||u.name||u.username) : (S(id)||'-'); }
+  function raisedBy(t){ return S(t.created_by_name||t.created_by_full_name||t.raised_by_name||t.created_user_name) || uName(t.created_by||t.raised_by||t.user_id||t.created_user_id); }
+  function currentTicketListV208(){
+    let list=A(window.data?.tickets).slice();
+    const status = $('ticketFilterStatus')?.value || $('supTicketFilterStatus')?.value || '';
+    const search = S($('ticketSearch')?.value || $('supTicketSearch')?.value).toLowerCase();
+    const project = $('supTicketFilterProject')?.value || '';
+    if(status) list=list.filter(t=>S(t.status||'open')===S(status));
+    if(project) list=list.filter(t=>S(t.project_id)===S(project));
+    if(search) list=list.filter(t=>[ticketNo(t),t.title,t.description,pName(t.project_id),sName(t.supervisor_id),raisedBy(t),statusText(t.status)].join(' ').toLowerCase().includes(search));
+    return list.sort((a,b)=>S(sName(a.supervisor_id)).localeCompare(S(sName(b.supervisor_id)),'ar') || new Date(b.created_at||0)-new Date(a.created_at||0));
+  }
+  function buildTicketsNodeV208(list,title){
+    const groups=new Map();
+    list.forEach(t=>{ const k=S(t.supervisor_id)||'none'; if(!groups.has(k)) groups.set(k,{name:S(sName(t.supervisor_id))||'بدون مشرف',rows:[]}); groups.get(k).rows.push(t); });
+    const root=document.createElement('div'); root.dir='rtl'; root.className='tasneef-ticket-pdf-v208';
+    root.innerHTML=`<style>.tasneef-ticket-pdf-v208{font-family:Tahoma,Arial,sans-serif;color:#123b2f;background:#fff;width:1120px;padding:28px;direction:rtl;box-sizing:border-box}.tasneef-ticket-pdf-v208 *{box-sizing:border-box}.t-head{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0b5b49;padding-bottom:14px;margin-bottom:16px}.t-head h1{margin:0;color:#0b5b49;font-size:30px}.t-head p{margin:5px 0 0;color:#60726a}.brand{font-weight:900;color:#0b5b49}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}.box{border:1px solid #d6e7e0;background:#f4faf7;border-radius:13px;padding:10px}.box small{display:block;color:#6a7a73}.box b{font-size:20px}.section{page-break-inside:avoid;margin:18px 0;border:1px solid #cadbd4;border-radius:14px;overflow:hidden}.section-h{background:#2779b7;color:#fff;padding:10px 13px;font-weight:900;display:flex;justify-content:space-between}.tbl{width:100%;border-collapse:collapse;font-size:12px}.tbl th{background:#e9f1f5;color:#123b2f}.tbl th,.tbl td{border:1px solid #d7e0e4;padding:8px;text-align:right;vertical-align:top}.tbl tr:nth-child(even) td{background:#f6f9fb}.desc{white-space:pre-wrap;line-height:1.5;max-width:270px}.footer{text-align:center;border-top:1px solid #d5e3dd;margin-top:18px;padding-top:10px;color:#71837b;font-size:12px}</style><div class="t-head"><div><h1>${E(title)}</h1><p>حسب الفلاتر الحالية — تاريخ التصدير: ${E(new Date().toLocaleString('ar-SA'))}</p></div><div class="brand">شركة تصنيف لإدارة المرافق</div></div><div class="meta"><div class="box"><small>إجمالي التكتات</small><b>${list.length}</b></div><div class="box"><small>مفتوح</small><b>${list.filter(t=>S(t.status||'open')==='open').length}</b></div><div class="box"><small>تحت المعالجة</small><b>${list.filter(t=>S(t.status)==='processing').length}</b></div><div class="box"><small>مغلق</small><b>${list.filter(t=>S(t.status)==='closed').length}</b></div></div>${[...groups.values()].map(g=>`<section class="section"><div class="section-h"><span>المشرف: ${E(g.name)}</span><span>عدد التكتات: ${g.rows.length}</span></div><table class="tbl"><thead><tr><th>#</th><th>رقم التكت</th><th>المشروع</th><th>العنوان / الوصف</th><th>الحالة</th><th>الأولوية</th><th>رفع بواسطة</th><th>استلام / إغلاق</th><th>التاريخ</th></tr></thead><tbody>${g.rows.map((t,i)=>`<tr><td>${i+1}</td><td><b>${E(ticketNo(t))}</b></td><td>${E(pName(t.project_id))}</td><td class="desc"><b>${E(t.title||'-')}</b><br>${E(t.description||'-')}</td><td>${E(statusText(t.status))}</td><td>${E(priorityText(t.priority))}</td><td>${E(raisedBy(t))}</td><td>استلم: ${E(t.claimed_by_name||'-')}<br>أغلق: ${E(t.closed_by_name||'-')}<br>${t.closure_note?`الحل: ${E(t.closure_note)}`:''}</td><td>${E(String(t.created_at||'').slice(0,10)||'-')}</td></tr>`).join('')}</tbody></table></section>`).join('') || '<div class="box">لا توجد تكتات مطابقة للفلاتر الحالية</div>'}<div class="footer">تم إنشاء التقرير آليًا من نظام تصنيف</div>`;
+    return root;
+  }
+  async function ticketsDownloadPdfV208(){
+    const list=currentTicketListV208();
+    if(!list.length) return say('لا توجد تكتات مطابقة للفلاتر الحالية','err');
+    const node=buildTicketsNodeV208(list,'تقرير التكتات حسب المشرف');
+    await savePdfNodeV208(node, `تقرير-التكتات-حسب-المشرف-${new Date().toISOString().slice(0,10)}.pdf`);
+  }
+  async function ticketDownloadPdfSingleV208(id){
+    const t=A(window.data?.tickets).find(x=>S(x.id)===S(id));
+    if(!t) return say('التكت غير موجود','err');
+    const node=buildTicketsNodeV208([t],'تقرير تكت واحد');
+    await savePdfNodeV208(node, `تكت-${ticketNo(t)}.pdf`);
+  }
+  window.ticketsDownloadPdfV207 = ticketsDownloadPdfV208;
+  window.ticketsDownloadPdfV206 = ticketsDownloadPdfV208;
+  window.ticketDownloadPdfV207 = ticketDownloadPdfSingleV208;
+  window.ticketDownloadPdfV206 = ticketDownloadPdfSingleV208;
+
+  function patchPdfButtonsV208(){
+    document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207').forEach(b=>{ b.textContent='تنزيل PDF'; b.onclick=ticketsDownloadPdfV208; });
+  }
+
+  function bootV208(){
+    ensureMovementCostInputV208();
+    removeDuplicateFinanceTabsV208();
+    removeTotalConsumptionBlocksV208();
+    appendPurchaseBatchesToProductModalV208();
+    patchPdfButtonsV208();
+  }
+  window.tasneefBootV208 = bootV208;
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV208, ev==='load'?1000:300)));
+  setInterval(bootV208, 1200);
+  setTimeout(bootV208, 500);
+  setTimeout(bootV208, 2000);
+  console.log('Tasneef V208 real fixes loaded');
+})();
