@@ -16901,3 +16901,97 @@ function financePrintReport(kind){
   };
   console.log('Tasneef V233 settlement filters loaded');
 })();
+
+
+/* ===== TASNEEF V234: role-aware product details (admin sees cost, warehouse manager hidden) + fixed product image ===== */
+(function(){
+  if(window.__tasneefV234ProductDetail) return;
+  window.__tasneefV234ProductDetail = true;
+  const A=v=>Array.isArray(v)?v:[];
+  const D=()=>window.data||{};
+  const N=v=>Number(v||0)||0;
+  const E=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const Q=v=>{ const n=N(v); return Number.isInteger(n)?String(n):n.toFixed(2); };
+  const M=v=>`${N(v).toFixed(2)} ر.س`;
+  const U=()=>{ try{return typeof session==='function'?(session()||{}):(window.currentUser||{});}catch(e){return window.currentUser||{};} };
+  const role=()=>String(U().role||'').toLowerCase();
+  const isWarehouse=()=>['warehouse_manager','مدير المخزون','warehouse'].includes(role());
+  const isAdmin=()=>['admin','مدير النظام','administrator'].includes(role()) || !role();
+  const imgSrc=it=>String(it?.image_url||it?.product_image||it?.image||it?.photo_url||it?.img||'');
+  const codeOf=it=>{ try{return (typeof v118ProductCode==='function'?v118ProductCode(it):'') || it.product_code || it.serial_number || it.barcode || ('INV-'+(it.id||''));}catch(e){return it.product_code||it.serial_number||it.barcode||'';} };
+  const itemBy=id=>A(D().inventoryItems).find(i=>String(i.id)===String(id))||{};
+  const movesOf=id=>A(D().inventoryMovements).filter(m=>String(m.item_id)===String(id));
+  function lotsFor(id){
+    const ins=movesOf(id).filter(m=>['in','add','purchase'].includes(String(m.movement_type||'')) || /إدخال|شراء/.test(String(m.movement_type||'')));
+    const outs=movesOf(id).filter(m=>['out','consume'].includes(String(m.movement_type||'')) || /صرف|استهلاك/.test(String(m.movement_type||'')));
+    let remainingOut=outs.reduce((a,m)=>a+N(m.quantity),0);
+    return ins.map(m=>{
+      const qty=N(m.quantity);
+      const issued=Math.min(qty, remainingOut);
+      remainingOut=Math.max(0, remainingOut-issued);
+      const cost=N(m.unit_cost||m.unit_price||m.price||m.cost);
+      return {date:String(m.movement_date||m.created_at||'').slice(0,10), invoice:m.invoice_no||m.invoice||m.reason||m.notes||'-', supplier:m.supplier||m.receiver||'', original:qty, issued, remaining:Math.max(0,qty-issued), cost};
+    });
+  }
+  function avgCost(id,it){
+    const lots=lotsFor(id);
+    const qty=lots.reduce((a,l)=>a+N(l.remaining),0);
+    const val=lots.reduce((a,l)=>a+N(l.remaining)*N(l.cost),0);
+    if(qty>0 && val>0) return {qty,avg:val/qty,value:val};
+    const q=N(it.quantity); const c=N(it.unit_cost||it.cost||it.price);
+    return {qty:q,avg:c,value:q*c};
+  }
+  function closeOld(){ document.querySelectorAll('.modal-backdrop.v234-product-modal,.modal-backdrop.v225-product-modal,.modal-backdrop.v226-product-modal').forEach(x=>x.remove()); }
+  function rowCells(cells){ return '<tr>'+cells.map(x=>`<td>${x}</td>`).join('')+'</tr>'; }
+  function openProductV234(id){
+    const it=itemBy(id); if(!it.id && !it.name) return;
+    closeOld();
+    const src=imgSrc(it);
+    const img=src?`<img src="${E(src)}" style="max-width:160px;max-height:160px;object-fit:contain;border:1px solid #d7e4df;border-radius:18px;background:#fff;padding:8px" onerror="this.outerHTML='<span class=&quot;inventory-image-empty&quot;>لا توجد صورة</span>'">`:`<span class="inventory-image-empty">لا توجد صورة</span>`;
+    const avg=avgCost(it.id,it);
+    const canSeeCost=!isWarehouse();
+    const lots=lotsFor(it.id);
+    const lotsRows=lots.map(l=> rowCells(canSeeCost?
+      [E(l.date||'-'),E(l.invoice||'-'),E(l.supplier||it.supplier||'-'),Q(l.original),Q(l.issued),Q(l.remaining),M(l.cost),M(N(l.remaining)*N(l.cost))]:
+      [E(l.date||'-'),E(l.invoice||'-'),E(l.supplier||it.supplier||'-'),Q(l.original),Q(l.issued),Q(l.remaining)]
+    )).join('') || rowCells([canSeeCost?'8':'6'].map(()=>'-'));
+    const movRows=movesOf(it.id).slice(-12).reverse().map(m=>rowCells([
+      E(String(m.movement_date||m.created_at||'').slice(0,10)),
+      E(m.movement_type||'-'),
+      Q(m.quantity),
+      E(m.project_name||'-'),
+      E(m.receiver||'-'),
+      E(m.reason||m.notes||'-')
+    ])).join('') || '<tr><td colspan="6">لا توجد حركات</td></tr>';
+    const costLine=canSeeCost?`<p>متوسط تكلفة الوحدة: <b>${M(avg.avg)}</b> | قيمة المتبقي: <b>${M(avg.value)}</b></p>`:'';
+    const html=`
+    <div class="modal-backdrop v234-product-modal" onclick="if(event.target===this)this.remove()">
+      <div class="modal-card" style="max-width:1120px">
+        <div class="modal-head"><h2>تفاصيل المنتج</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div>
+        <div class="grid two" style="padding:16px">
+          <div class="card soft-card"><h2>${E(it.name||'-')}</h2><p>كود المنتج: <b>${E(codeOf(it))}</b></p><p>المورد: <b>${E(it.supplier||'-')}</b> | الوحدة: <b>${E(it.unit||'-')}</b></p><p>المتوفر: <b>${Q(it.quantity)}</b></p>${costLine}</div>
+          <div class="card soft-card" style="text-align:center;display:flex;align-items:center;justify-content:center;min-height:185px">${img}</div>
+        </div>
+        ${canSeeCost?`<h3>دفعات الشراء وأسعارها الحقيقية</h3><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المورد</th><th>كمية الدفعة</th><th>المصروف منها</th><th>المتبقي</th><th>سعر الدفعة</th><th>قيمة المتبقي</th></tr></thead><tbody>${lotsRows}</tbody></table></div>`:`<h3>دفعات المنتج</h3><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المورد</th><th>كمية الدفعة</th><th>المصروف منها</th><th>المتبقي</th></tr></thead><tbody>${lotsRows}</tbody></table></div>`}
+        <h3>آخر الحركات</h3><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>الكمية</th><th>المشروع</th><th>المستلم</th><th>السبب</th></tr></thead><tbody>${movRows}</tbody></table></div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend',html);
+  }
+  window.inventoryOpenItemSmart=openProductV234;
+  window.v118ShowProductDetail=openProductV234;
+  window.openProductDetail=openProductV234;
+  function css(){
+    if(document.getElementById('tasneefV234ProductCss')) return;
+    const st=document.createElement('style'); st.id='tasneefV234ProductCss'; st.textContent=`
+    .v234-product-modal{position:fixed!important;inset:0!important;z-index:2147483640!important;background:rgba(6,32,26,.55)!important;display:flex!important;align-items:center!important;justify-content:center!important;padding:18px!important;direction:rtl!important;overflow:auto!important}
+    .v234-product-modal>.modal-card{width:min(1120px,96vw)!important;max-height:92vh!important;overflow:auto!important;background:#fff!important;border-radius:24px!important;box-shadow:0 30px 90px rgba(0,0,0,.28)!important;border:1px solid #d7e7e0!important}
+    .v234-product-modal .modal-head{position:sticky!important;top:0!important;z-index:5!important;display:flex!important;align-items:center!important;justify-content:space-between!important;background:linear-gradient(135deg,#064633,#0A7054)!important;color:#fff!important;padding:14px 18px!important;border-radius:24px 24px 0 0!important}
+    .v234-product-modal .modal-head h2{color:#fff!important;margin:0!important}.v234-product-modal .modal-head button{background:#fff!important;color:#064633!important;border-radius:12px!important}
+    .v234-product-modal h3{margin:16px 18px 8px!important;color:#064633!important}.v234-product-modal .table-wrap{margin:0 16px 16px!important;max-height:280px!important;overflow:auto!important}.v234-product-modal table{width:100%!important;border-collapse:collapse!important}.v234-product-modal th{background:#f0f7f4!important;color:#073f31!important}.v234-product-modal th,.v234-product-modal td{padding:9px!important;border-bottom:1px solid #e6eeee!important;text-align:center!important}`;
+    document.head.appendChild(st);
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(css,ev==='load'?600:100))); css();
+  document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V234');
+  console.log('Tasneef V234 role-aware product detail loaded');
+})();
