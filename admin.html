@@ -124,7 +124,7 @@
     <button class="nav" onclick="showPage('financeDashboard',this)">المصروفات والمخزون</button>
     <button class="nav" onclick="showPage('alerts',this)">التنبيهات</button>
     <button class="nav" onclick="showPage('assistant',this)">مساعد تصنيف</button>
-    <button class="nav" onclick="showPage('export',this)">التصدير</button>
+    <button class="nav" onclick="showPage('export',this)">التصدير والاستيراد</button>
     <button class="nav danger" onclick="logout()">تسجيل خروج</button>
   </aside>
   <main class="content">
@@ -724,9 +724,46 @@
       </div>
     </section>
 
-    <section id="export" class="page hidden"><div class="card"><h2>التصدير</h2><p>صدّر بيانات النظام الحالية بصيغة CSV.</p><div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div></div></section>
+    <section id="export" class="page hidden">
+      <div class="card meeting-export-card">
+        <h2>التصدير والاستيراد</h2>
+        <p class="muted">ملف Excel واحد مرتب للعرض في الاجتماع، مع تبويبات منفصلة لكل قسم داخل نفس الملف.</p>
+        <div class="grid two">
+          <div class="card soft-card">
+            <h3>تصدير ملف اجتماع شامل</h3>
+            <p>يحتوي على الملخص التنفيذي، المشاريع، المشرفين، العمال، السجلات اليومية، الأوقات الشهرية، التكتات، المخزون، المصروفات، تقارير العملاء، تقييمات العملاء والتنبيهات.</p>
+            <div class="filters">
+              <label>الشهر</label>
+              <input type="month" id="meetingExportMonth">
+              <label>المشرف</label>
+              <select id="meetingExportSupervisor"></select>
+              <label>المشروع</label>
+              <select id="meetingExportProject"></select>
+            </div>
+            <div class="actions">
+              <button onclick="exportMeetingExcelV221(this)">تنزيل ملف الاجتماع Excel</button>
+              <button class="light" onclick="previewMeetingExportV221()">معاينة الملخص</button>
+            </div>
+            <div id="meetingExportPreview" class="footer-note"></div>
+          </div>
+          <div class="card soft-card">
+            <h3>نموذج استيراد شامل</h3>
+            <p>ملف Excel واحد فارغ ومنظم لتجهيز البيانات قبل الرفع، يحتوي على تبويبات: المشاريع، المشرفين، العمال، المستخدمين، التكتات، السجلات اليومية، المخزون والمصروفات.</p>
+            <div class="actions">
+              <button class="light" onclick="downloadImportTemplateV221()">تنزيل نموذج الاستيراد</button>
+            </div>
+            <div class="footer-note">الاستيراد الفعلي يتم لاحقًا بعد إضافة فحص الأخطاء والمعاينة قبل الحفظ.</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>تصدير CSV سريع</h3>
+        <p class="muted">للاستخدام السريع فقط، أما ملف الاجتماع فهو الأفضل للعرض على الإدارة.</p>
+        <div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">التكتات</button></div>
+      </div>
+    </section>
   </main>
 </div>
-<script src="app.js?v=220"></script>
+<script src="app.js?v=221"></script>
 </body>
 </html>

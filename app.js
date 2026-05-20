@@ -14942,3 +14942,162 @@ function financePrintReport(kind){
   setTimeout(()=>{try{updateVersionV220(); window.renderWorkers&&window.renderWorkers();}catch(e){}},1800);
   console.log('Tasneef V220 workers grouped list loaded');
 })();
+
+/* ===== V221: Smart Export / Import Center - one meeting Excel workbook ===== */
+(function(){
+  if(window.__tasneefExportImportV221) return;
+  window.__tasneefExportImportV221 = true;
+  const byId = id => document.getElementById(id);
+  const S = v => String(v ?? '').trim();
+  const N = v => { const n=Number(String(v??0).replace(/,/g,'')); return Number.isFinite(n)?n:0; };
+  const dset = () => window.data || data || {};
+  const safe = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+  const labelDate = () => new Date().toLocaleString('ar-SA');
+  const todayStr = () => new Date().toISOString().slice(0,10);
+  function pName(id){ try{return projectName(id)}catch(e){return (dset().projects||[]).find(p=>String(p.id)===String(id))?.name||'-';} }
+  function sName(id){ try{return supervisorName(id)}catch(e){return (dset().users||[]).find(u=>String(u.id)===String(id))?.full_name||'-';} }
+  function wProjectId(w){ try{return workerProjectId(w)}catch(e){return w.project_id || w.assigned_project_id || '';} }
+  function wSupId(w){ try{return workerSupId(w)}catch(e){return w.supervisor_id || w.assigned_supervisor_id || '';} }
+  function opText(t){ try{return projectOperationText(t)}catch(e){return t==='full_time'?'دائم':(t==='as_needed'?'حسب الحاجة':'زيارة يومية');} }
+  function statusText(v){ v=String(v||'active'); return ['inactive','closed','disabled'].includes(v)?'متوقف':'نشط'; }
+  function mins(a,b){ try{return minutesBetween(a,b)}catch(e){ if(!a||!b) return 0; return Math.max(0,Math.round((new Date(b)-new Date(a))/60000)); } }
+  function fmtDate(v){ if(!v) return '-'; try{return new Date(v).toLocaleString('ar-SA')}catch(e){return S(v);} }
+  function inMonth(dateVal, month){ if(!month) return true; const s=S(dateVal); if(s.startsWith(month)) return true; if(!s) return false; try{return new Date(dateVal).toISOString().slice(0,7)===month}catch(e){return false;} }
+  function currentFilters(){ return {month: byId('meetingExportMonth')?.value || byId('monthlyMonth')?.value || todayStr().slice(0,7), supervisor: byId('meetingExportSupervisor')?.value || '', project: byId('meetingExportProject')?.value || ''}; }
+  function filterProjects(){ const {supervisor, project}=currentFilters(); return (dset().projects||[]).filter(p=>(!project||String(p.id)===String(project)) && (!supervisor||String(p.supervisor_id)===String(supervisor))); }
+  function allowedProjectIds(){ return new Set(filterProjects().map(p=>String(p.id))); }
+  async function ensureExportData(){
+    try{ if(typeof refreshAll==='function') await refreshAll(); }catch(e){}
+    try{ if(typeof financeLoadAll==='function') await financeLoadAll(false); else if(window.financeLoadAll) await window.financeLoadAll(false); }catch(e){ console.warn('finance load export', e.message); }
+    try{ if(window.loadPremiumReportsOnly) await window.loadPremiumReportsOnly(false); else if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(e){ console.warn('client reports load export', e.message); }
+  }
+  function hydrateExportCenterV221(){
+    const month=byId('meetingExportMonth'); if(month && !month.value) month.value=(byId('monthlyMonth')?.value || todayStr().slice(0,7));
+    const sup=byId('meetingExportSupervisor'); if(sup){ const cur=sup.value; sup.innerHTML='<option value="">كل المشرفين</option>'+(dset().supervisors||[]).map(u=>`<option value="${safe(u.id)}">${safe(u.full_name||u.username)}</option>`).join(''); sup.value=cur; }
+    const pro=byId('meetingExportProject'); if(pro){ const cur=pro.value; pro.innerHTML='<option value="">كل المشاريع</option>'+(dset().projects||[]).map(p=>`<option value="${safe(p.id)}">${safe(p.name)}</option>`).join(''); pro.value=cur; }
+  }
+  window.hydrateExportCenterV221 = hydrateExportCenterV221;
+
+  function filteredLogs(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().logs||[]).filter(l=>inMonth(l.log_date||l.check_in,f.month) && (!f.project || String(l.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(l.project_id)))); }
+  function filteredTickets(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().tickets||[]).filter(t=>inMonth(t.created_at||t.opened_at||t.date,f.month) && (!f.project || String(t.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(t.project_id)))); }
+  function filteredAttendance(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().attendance||[]).filter(a=>inMonth(a.attendance_date||a.date,f.month) && (!f.project || String(a.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(a.project_id||'')))); }
+  function filteredExpenses(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().financeExpenses||[]).filter(e=>inMonth(e.expense_date||e.created_at,f.month) && (!f.project || String(e.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(e.project_id||'')))); }
+  function filteredMovements(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().inventoryMovements||[]).filter(m=>inMonth(m.movement_date||m.created_at,f.month) && (!f.project || String(m.project_id)===String(f.project)) && (!f.supervisor || !m.project_id || pids.has(String(m.project_id)))); }
+  function filteredClientReports(){ const f=currentFilters(), pids=allowedProjectIds(); return (dset().clientReports||[]).filter(r=>inMonth(r.report_date||r.created_at,f.month) && (!f.project || String(r.project_id)===String(f.project)) && (!f.supervisor || pids.has(String(r.project_id||'')))); }
+  function filteredRatings(){ const f=currentFilters(), reports=new Set(filteredClientReports().map(r=>String(r.id))), pids=allowedProjectIds(); return (dset().clientServiceRatings||[]).filter(r=>inMonth(r.created_at||r.rating_date,f.month) && (!f.supervisor || !r.project_id || pids.has(String(r.project_id))) && (!f.project || String(r.project_id)===String(f.project) || reports.has(String(r.report_id)))); }
+
+  function sheetXml(name, rows, options={}){
+    const title=safe(options.title || name), subtitle=safe(options.subtitle || ''), headers=rows[0]||[];
+    const bodyRows=rows.slice(1);
+    const colCount=Math.max(1, headers.length);
+    let xml=`<Worksheet ss:Name="${safe(name).slice(0,31)}" ss:RightToLeft="1"><Table ss:ExpandedColumnCount="${colCount}" ss:ExpandedRowCount="${bodyRows.length+4}" x:FullColumns="1" x:FullRows="1">`;
+    for(let i=0;i<colCount;i++) xml+=`<Column ss:AutoFitWidth="0" ss:Width="120"/>`;
+    xml+=`<Row ss:Height="30"><Cell ss:MergeAcross="${Math.max(0,colCount-1)}" ss:StyleID="Title"><Data ss:Type="String">${title}</Data></Cell></Row>`;
+    xml+=`<Row><Cell ss:MergeAcross="${Math.max(0,colCount-1)}" ss:StyleID="SubTitle"><Data ss:Type="String">${subtitle}</Data></Cell></Row>`;
+    xml+=`<Row/>`;
+    xml+=`<Row>${headers.map(h=>`<Cell ss:StyleID="Header"><Data ss:Type="String">${safe(h)}</Data></Cell>`).join('')}</Row>`;
+    bodyRows.forEach((r,idx)=>{ xml+=`<Row>${headers.map((_,i)=>{ const v=r[i]; const isNum=typeof v==='number' && Number.isFinite(v); return `<Cell ss:StyleID="${idx%2?'DataAlt':'Data'}"><Data ss:Type="${isNum?'Number':'String'}">${safe(v)}</Data></Cell>`; }).join('')}</Row>`; });
+    xml+=`</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><DisplayRightToLeft/><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane><ActivePane>2</ActivePane></WorksheetOptions></Worksheet>`;
+    return xml;
+  }
+  function makeWorkbook(sheets){
+    const styles=`<Styles>
+      <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center" ss:Horizontal="Right" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10"/></Style>
+      <Style ss:ID="Title"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1F6B3A" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SubTitle"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10" ss:Color="#335544"/><Interior ss:Color="#EAF5ED" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2E7D4F" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/></Borders></Style>
+      <Style ss:ID="Data"><Alignment ss:Horizontal="Right" ss:Vertical="Center" ss:WrapText="1"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5EFE8"/></Borders></Style>
+      <Style ss:ID="DataAlt"><Alignment ss:Horizontal="Right" ss:Vertical="Center" ss:WrapText="1"/><Interior ss:Color="#F8FCF9" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5EFE8"/></Borders></Style>
+    </Styles>`;
+    return `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>`+
+      `<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">${styles}${sheets.join('')}</Workbook>`;
+  }
+  function downloadXmlWorkbook(filename, sheets){
+    const xml=makeWorkbook(sheets);
+    const blob=new Blob([xml],{type:'application/vnd.ms-excel;charset=utf-8;'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1200);
+  }
+  function executiveRows(){
+    const projects=filterProjects(), logs=filteredLogs(), tickets=filteredTickets(), exp=filteredExpenses(), items=dset().inventoryItems||[], reports=filteredClientReports(), ratings=filteredRatings();
+    const open=tickets.filter(t=>!['closed','done','مغلق'].includes(String(t.status||'').toLowerCase())).length;
+    const closed=tickets.length-open;
+    const totalMins=logs.reduce((a,l)=>a+N(l.duration_minutes||mins(l.check_in,l.check_out)),0);
+    const expTotal=exp.reduce((a,e)=>a+N(e.total||e.amount),0);
+    const stockValue=items.reduce((a,i)=>a+N(i.quantity)*N(i.unit_cost||i.cost||i.price),0);
+    return [['المؤشر','القيمة','ملاحظة'],['تاريخ التصدير',labelDate(),''],['الشهر',currentFilters().month||'كل الأشهر',''],['عدد المشاريع',projects.length,'حسب الفلتر الحالي'],['عدد المشرفين',(dset().supervisors||[]).length,''],['عدد العمال',(dset().workers||[]).length,'بدون تكرار في شاشة العمال'],['سجلات التشغيل',logs.length,''],['إجمالي دقائق التشغيل',Math.round(totalMins),''],['التكتات',tickets.length,`مفتوحة: ${open} / مغلقة: ${closed}`],['المصروفات',exp.length,expTotal],['أصناف المخزون',items.length,stockValue],['تقارير العملاء',reports.length,''],['تقييمات العملاء',ratings.length,'']];
+  }
+  function projectsRows(){ return [['اسم المشروع','المشرف الحالي','نوع التشغيل','الحالة','الدقائق اليومية','دقائق الجمعة','الموقع','ملاحظات'], ...filterProjects().map(p=>[p.name,sName(p.supervisor_id),opText(p.operation_type),statusText(p.status),N(p.required_daily_minutes||180),N(p.friday_minutes||90),p.location||'',p.notes||''])]; }
+  function supervisorsRows(){ const projects=filterProjects(), tickets=filteredTickets(); return [['المشرف','عدد المشاريع الحالية','عدد العمال','التكتات المفتوحة','التكتات المغلقة'], ...(dset().supervisors||[]).filter(s=>!currentFilters().supervisor||String(s.id)===String(currentFilters().supervisor)).map(s=>{ const pids=projects.filter(p=>String(p.supervisor_id)===String(s.id)).map(p=>String(p.id)); const workers=(dset().workers||[]).filter(w=>pids.includes(String(wProjectId(w)))||String(wSupId(w))===String(s.id)); const ts=tickets.filter(t=>pids.includes(String(t.project_id))); const open=ts.filter(t=>!['closed','done','مغلق'].includes(String(t.status||'').toLowerCase())).length; return [s.full_name||s.username,pids.length,workers.length,open,ts.length-open]; })]; }
+  function workersRows(){ const pids=allowedProjectIds(); const map=new Map(); (dset().workers||[]).forEach(w=>{ const pid=String(wProjectId(w)||''); if(currentFilters().project && pid!==String(currentFilters().project)) return; if(currentFilters().supervisor && !pids.has(pid) && String(wSupId(w))!==String(currentFilters().supervisor)) return; const key=S(w.name).toLowerCase()+'|'+S(w.phone); if(!map.has(key)) map.set(key,{name:w.name,phone:w.phone,supervisor:sName(wSupId(w)),projects:new Set(),status:w.status,notes:w.notes}); const rec=map.get(key); if(pid) rec.projects.add(pName(pid)); }); return [['اسم العامل','الجوال','المشرف','المشاريع','الحالة','ملاحظات'], ...[...map.values()].map(w=>[w.name,w.phone||'',w.supervisor,[...w.projects].join('، '),statusText(w.status),w.notes||''])]; }
+  function logsRows(){ return [['التاريخ','المشروع','المشرف الحالي','وقت الدخول','وقت الخروج','الدقائق','وقت الانتقال','حالة الوقت','ملاحظات'], ...filteredLogs().map(l=>[l.log_date||S(l.check_in).slice(0,10),pName(l.project_id),sName((dset().projects||[]).find(p=>String(p.id)===String(l.project_id))?.supervisor_id||l.supervisor_id),fmtDate(l.check_in),fmtDate(l.check_out),N(l.duration_minutes||mins(l.check_in,l.check_out)),N(l.travel_minutes),l.time_status||'',l.notes||''])]; }
+  function attendanceRows(){ return [['التاريخ','العامل','المشروع','المشرف الحالي','الحالة','ملاحظات'], ...filteredAttendance().map(a=>[a.attendance_date||a.date, (dset().workers||[]).find(w=>String(w.id)===String(a.worker_id))?.name||a.worker_name||'-', pName(a.project_id), sName((dset().projects||[]).find(p=>String(p.id)===String(a.project_id))?.supervisor_id||a.supervisor_id), a.status||'', a.notes||''])]; }
+  function monthlyRows(){
+    let rows=[['القسم','المشرف الحالي','المشروع','العمال','الدقائق','النسبة','مجموع دقائق المشرف','مجموع النسبة']];
+    try{ if(typeof buildMonthlyV219==='function'){ const res=buildMonthlyV219(); [...(res.daily||[]),(res.permanent||[])].forEach(r=>{ if(currentFilters().supervisor && String((dset().projects||[]).find(p=>p.name===r.projectName)?.supervisor_id||'')!==String(currentFilters().supervisor)) return; rows.push([res.daily?.includes(r)?'زيارة يومية':'مشروع دائم',r.supervisorName,r.projectName,r.workers||'',Math.round(N(r.actual)),r.percent?String(Math.round(N(r.percent)*10)/10)+'%':'',Math.round(N(r.supTotal||r.actual)),r.percent?'100%':'']); }); return rows; } }catch(e){}
+    const map={}; filteredLogs().forEach(l=>{ const p=(dset().projects||[]).find(x=>String(x.id)===String(l.project_id))||{}; const k=p.id||l.project_id; map[k]=map[k]||{project:p.name||pName(l.project_id),sup:sName(p.supervisor_id||l.supervisor_id),mins:0,type:p.operation_type==='full_time'?'مشروع دائم':'زيارة يومية'}; map[k].mins+=N(l.duration_minutes||mins(l.check_in,l.check_out)); }); Object.values(map).forEach(r=>rows.push([r.type,r.sup,r.project,'',Math.round(r.mins),'','',''])); return rows;
+  }
+  function ticketsRows(){ return [['رقم التكت','المشروع','المشرف الحالي','رفع بواسطة','العنوان','الحالة','الأولوية','تاريخ الفتح','تاريخ الإغلاق','ملاحظات'], ...filteredTickets().map(t=>{ const p=(dset().projects||[]).find(x=>String(x.id)===String(t.project_id))||{}; const creator=t.created_by_name||t.created_by||t.reported_by||t.requested_by||''; return [t.id,pName(t.project_id),sName(p.supervisor_id||t.supervisor_id),creator,t.title||t.subject||t.description||'',t.status||'',t.priority||'',fmtDate(t.created_at||t.opened_at),fmtDate(t.closed_at),t.notes||t.description||'']; })]; }
+  function inventoryRows(){ return [['الصنف','الكود','التصنيف','المورد','الوحدة','الكمية الحالية','الحد الأدنى','متوسط التكلفة','قيمة المتبقي'], ...(dset().inventoryItems||[]).map(i=>[i.name,i.product_code||i.serial_number||i.barcode||'',i.category||i.item_type||'',i.supplier||'',i.unit||'',N(i.quantity),N(i.min_quantity),N(i.unit_cost||i.cost||i.price),N(i.quantity)*N(i.unit_cost||i.cost||i.price)])]; }
+  function movementRows(){ return [['التاريخ','الصنف','نوع الحركة','الكمية','المشروع','المستلم','السبب','ملاحظات'], ...filteredMovements().map(m=>[m.movement_date||S(m.created_at).slice(0,10),m.item_name||((dset().inventoryItems||[]).find(i=>String(i.id)===String(m.item_id))?.name||''),m.movement_type,N(m.quantity),m.project_name||pName(m.project_id),m.receiver||'',m.reason||'',m.notes||''])]; }
+  function expensesRows(){ return [['التاريخ','المشروع','التصنيف','المورد','المبلغ','طريقة الدفع','ملاحظات'], ...filteredExpenses().map(e=>[e.expense_date||S(e.created_at).slice(0,10),e.project_name||pName(e.project_id),e.category||e.expense_type||'',e.supplier||'',N(e.total||e.amount),e.payment_method||'',e.notes||''])]; }
+  function clientReportsRows(){ return [['التاريخ','المشروع','الشهر','المشرف','عنوان التقرير','الحالة','الخدمات','التقييم'], ...filteredClientReports().map(r=>[r.report_date||S(r.created_at).slice(0,10),r.project_name||pName(r.project_id),S(r.report_date||r.created_at).slice(0,7),sName(r.supervisor_id),r.title||r.report_no||'',r.status||'',(dset().clientReportServices||[]).filter(s=>String(s.report_id)===String(r.id)).map(s=>s.service_name||s.service_type).filter(Boolean).join('، '), ''])]; }
+  function ratingsRows(){ return [['التاريخ','المشروع','الخدمة','التقييم','ملاحظة العميل','تحتاج متابعة','الحالة'], ...filteredRatings().map(r=>[fmtDate(r.created_at||r.rating_date),r.project_name||pName(r.project_id),r.service_name||r.service_type||'',r.rating||r.score||'',r.comment||r.notes||'',r.need_followup||r.needs_follow_up?'نعم':'لا',r.status||''])]; }
+  function alertsRows(){
+    const projectsNoSup=(dset().projects||[]).filter(p=>!p.supervisor_id).map(p=>['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف']);
+    const workersNoSup=(dset().workers||[]).filter(w=>!wSupId(w)).map(w=>['عامل بدون مشرف',w.name,'عادي','يحتاج ربط مشرف']);
+    const openLogs=(dset().logs||[]).filter(l=>l.check_in&&!l.check_out).map(l=>['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)]);
+    const openTickets=filteredTickets().filter(t=>!['closed','done','مغلق'].includes(String(t.status||'').toLowerCase())).map(t=>['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||'']);
+    return [['نوع التنبيه','المشروع/العنصر','الأهمية','الملاحظة'], ...projectsNoSup, ...workersNoSup, ...openLogs, ...openTickets];
+  }
+  function exportSheets(){ const sub=`شركة تصنيف لإدارة المرافق - تاريخ التصدير ${labelDate()} - الفلتر: ${currentFilters().month||'كل الأشهر'}`; return [
+      sheetXml('الملخص التنفيذي', executiveRows(), {title:'الملخص التنفيذي للاجتماع', subtitle:sub}),
+      sheetXml('المشاريع', projectsRows(), {title:'المشاريع', subtitle:sub}),
+      sheetXml('المشرفون', supervisorsRows(), {title:'المشرفون', subtitle:sub}),
+      sheetXml('العمال', workersRows(), {title:'العمال', subtitle:sub}),
+      sheetXml('السجلات اليومية', logsRows(), {title:'السجلات اليومية', subtitle:sub}),
+      sheetXml('الحضور والغياب', attendanceRows(), {title:'الحضور والغياب', subtitle:sub}),
+      sheetXml('الأوقات الشهرية', monthlyRows(), {title:'الأوقات الشهرية', subtitle:sub}),
+      sheetXml('التكتات', ticketsRows(), {title:'التكتات', subtitle:sub}),
+      sheetXml('المخزون', inventoryRows(), {title:'المخزون', subtitle:sub}),
+      sheetXml('حركة المخزون', movementRows(), {title:'حركة المخزون', subtitle:sub}),
+      sheetXml('المصروفات', expensesRows(), {title:'المصروفات', subtitle:sub}),
+      sheetXml('تقارير العملاء', clientReportsRows(), {title:'تقارير العملاء', subtitle:sub}),
+      sheetXml('تقييمات العملاء', ratingsRows(), {title:'تقييمات العملاء', subtitle:sub}),
+      sheetXml('التنبيهات', alertsRows(), {title:'التنبيهات', subtitle:sub})
+    ]; }
+  window.exportMeetingExcelV221 = async function(btn){
+    try{
+      if(btn) btn.disabled=true;
+      await ensureExportData(); hydrateExportCenterV221();
+      const f=currentFilters(); const name=`تقرير اجتماع تصنيف - ${f.month||todayStr().slice(0,7)}.xls`;
+      downloadXmlWorkbook(name, exportSheets());
+      if(typeof msg==='function') msg('تم تجهيز ملف Excel للاجتماع');
+    }catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||'تعذر تصدير ملف الاجتماع','err'); alert(e.message||'تعذر تصدير ملف الاجتماع'); }
+    finally{ if(btn) btn.disabled=false; }
+  };
+  window.previewMeetingExportV221 = function(){
+    hydrateExportCenterV221();
+    const box=byId('meetingExportPreview'); if(!box) return;
+    const p=filterProjects(), logs=filteredLogs(), tickets=filteredTickets(), exp=filteredExpenses();
+    box.innerHTML=`<b>معاينة سريعة:</b><br>المشاريع: ${p.length} | سجلات التشغيل: ${logs.length} | التكتات: ${tickets.length} | المصروفات: ${exp.length}<br>سيتم إنشاء ملف Excel واحد يحتوي على تبويبات منظمة لكل أقسام النظام.`;
+  };
+  window.downloadImportTemplateV221 = function(){
+    const sub='نموذج فارغ لتجهيز البيانات قبل الاستيراد - لا تغيّر أسماء الأعمدة';
+    const sheets=[
+      sheetXml('المشاريع', [['اسم المشروع','المشرف','نوع التشغيل','الدقائق اليومية','دقائق الجمعة','الموقع','الحالة','ملاحظات'],['مثال مشروع','اسم المشرف','زيارة يومية',180,90,'الرياض','نشط','']], {title:'نموذج استيراد المشاريع', subtitle:sub}),
+      sheetXml('المشرفون', [['الاسم الكامل','اسم المستخدم','كلمة المرور','الحالة'],['اسم المشرف','username','123456','نشط']], {title:'نموذج استيراد المشرفين', subtitle:sub}),
+      sheetXml('العمال', [['اسم العامل','الجوال','المشرف','المشروع','الراتب','الحالة','ملاحظات'],['اسم العامل','05xxxxxxxx','اسم المشرف','اسم المشروع',1500,'نشط','']], {title:'نموذج استيراد العمال', subtitle:sub}),
+      sheetXml('المستخدمون', [['الاسم الكامل','اسم المستخدم','كلمة المرور','الدور','الحالة'],['اسم المستخدم','username','123456','supervisor','نشط']], {title:'نموذج استيراد المستخدمين', subtitle:sub}),
+      sheetXml('التكتات', [['التاريخ','المشروع','العنوان','الوصف','الأولوية','رفع بواسطة','الحالة'],[todayStr(),'اسم المشروع','عنوان التكت','الوصف','عادي','اسم الرافع','مفتوح']], {title:'نموذج استيراد التكتات', subtitle:sub}),
+      sheetXml('السجلات اليومية', [['التاريخ','المشروع','المشرف','وقت الدخول','وقت الخروج','ملاحظات'],[todayStr(),'اسم المشروع','اسم المشرف','08:00','17:00','']], {title:'نموذج استيراد السجلات اليومية', subtitle:sub}),
+      sheetXml('المخزون', [['الصنف','الكود','التصنيف','المورد','الوحدة','الكمية','الحد الأدنى','سعر التكلفة'],['لمبة','L-001','كهرباء','اسم المورد','حبة',10,2,15]], {title:'نموذج استيراد المخزون', subtitle:sub}),
+      sheetXml('المصروفات', [['التاريخ','المشروع','التصنيف','المورد','المبلغ','طريقة الدفع','ملاحظات'],[todayStr(),'اسم المشروع','مصروف عام','اسم المورد',100,'نقدي','']], {title:'نموذج استيراد المصروفات', subtitle:sub})
+    ];
+    downloadXmlWorkbook('نموذج استيراد شامل - تصنيف.xls', sheets);
+  };
+  const oldShowPageV221 = window.showPage || (typeof showPage==='function'?showPage:null);
+  if(oldShowPageV221){
+    window.showPage = function(id,btn){ const r=oldShowPageV221(id,btn); if(id==='export'){ setTimeout(()=>{ try{ hydrateExportCenterV221(); previewMeetingExportV221(); }catch(e){} },120); } return r; };
+  }
+  setTimeout(()=>{ try{ hydrateExportCenterV221(); }catch(e){} },800);
+})();

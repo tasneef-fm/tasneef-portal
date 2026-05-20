@@ -129,3 +129,10 @@ td.row-actions{width:180px!important;max-width:none!important}
 
 /* V194 */
 .custody-hidden-v194{display:none!important}
+
+/* V221 Export / Import center */
+.meeting-export-card .soft-card{background:linear-gradient(180deg,#ffffff,#f7fbf8);border:1px solid #dbe9df;border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.04)}
+.meeting-export-card .filters{display:grid;grid-template-columns:90px 1fr;gap:10px 12px;align-items:center;margin:14px 0}
+.meeting-export-card .filters label{font-weight:700;color:#24513a}
+#meetingExportPreview{margin-top:12px;line-height:1.9;background:#f6faf7;border:1px dashed #bdd8c5;border-radius:14px;padding:12px;color:#244534}
+@media(max-width:800px){.meeting-export-card .filters{grid-template-columns:1fr}.meeting-export-card .filters label{margin-top:6px}}
