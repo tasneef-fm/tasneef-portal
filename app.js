@@ -1,4 +1,4 @@
-/* TASNEEF BUILD V229 - inventory schema safe + hide warehouse cost info - 2026-05-20 */
+/* TASNEEF BUILD V230 - inventory schema safe + hide warehouse cost info - 2026-05-20 */
 /* V154 Smart Loading Branding */
 (function(){
   if(window.__tasneefLoadingV154) return;
@@ -5638,6 +5638,7 @@ function financePrintReport(kind){
   const MAX_STAGE_PHOTOS_V133 = 9;
   const DAILY_TYPES_V133 = ['النظافة اليومية','إزالة النفايات','تنظيف الممرات','تنظيف المصاعد','تنظيف البيسمنت','تنظيف الأسطح','مكافحة الحشرات','غسيل خزانات','صيانة كهرباء','صيانة سباكة','شريحة مخصصة','أخرى'];
   let supClientServicesState = [];
+  window.supClientServicesState = supClientServicesState;
   function v133Esc(v){ return (typeof esc==='function') ? esc(v) : String(v??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
   function v133Msg(t,kind){ try{ msg(t,kind); }catch(_){ alert(t); } }
   function v133ProjectName(pid){ try{return projectName(pid)}catch(_){ const p=(data.projects||[]).find(x=>String(x.id)===String(pid)); return p?.name||''; } }
@@ -5668,7 +5669,7 @@ function financePrintReport(kind){
     try{
       fillSelect('supClientReportProject', data.projects||[], 'name', 'اختر المشروع');
       if($v133('supClientReportDate') && !$v133('supClientReportDate').value) $v133('supClientReportDate').value=today();
-      if(!supClientServicesState.length) supClientServicesState=[v133ServiceTemplate('النظافة اليومية')];
+      if(!supClientServicesState.length){ supClientServicesState=[v133ServiceTemplate('النظافة اليومية')]; window.supClientServicesState = supClientServicesState; }
       supClientRenderServices(); supClientRenderMyReports();
     }catch(e){ console.warn(e); }
   };
@@ -5680,6 +5681,7 @@ function financePrintReport(kind){
   };
   window.supClientReportReset = function(){
     supClientServicesState=[v133ServiceTemplate('النظافة اليومية')];
+    window.supClientServicesState = supClientServicesState;
     ['supClientReportTitle','supClientReportSummary'].forEach(id=>{ if($v133(id)) $v133(id).value=''; });
     if($v133('supClientReportDate')) $v133('supClientReportDate').value=today();
     supClientRenderServices();
@@ -5687,12 +5689,14 @@ function financePrintReport(kind){
   let supClientActiveSlideIndex = null;
   window.supClientAddService = function(){
     supClientServicesState.push(v133ServiceTemplate($v133('supClientReportServiceType')?.value||'النظافة اليومية'));
+    window.supClientServicesState = supClientServicesState;
     supClientRenderServices();
   };
   window.supClientRemoveService = function(i){
     if(!confirm('حذف هذه الشريحة؟')) return;
     supClientServicesState.splice(i,1);
-    if(!supClientServicesState.length) supClientServicesState=[v133ServiceTemplate('النظافة اليومية')];
+    window.supClientServicesState = supClientServicesState;
+    if(!supClientServicesState.length){ supClientServicesState=[v133ServiceTemplate('النظافة اليومية')]; window.supClientServicesState = supClientServicesState; }
     supClientCloseSlideModal();
     supClientRenderServices();
   };
@@ -13191,7 +13195,7 @@ function financePrintReport(kind){
     ensureMovementCostInputV208();
     removeDuplicateFinanceTabsV208();
     removeTotalConsumptionBlocksV208();
-    /* V229 disabled duplicate old purchase batch block */
+    /* V230 disabled duplicate old purchase batch block */
     patchPdfButtonsV208();
   }
   window.tasneefBootV208 = bootV208;
@@ -14096,7 +14100,7 @@ function financePrintReport(kind){
     try{
       if(btn) btn.disabled=true;
       const pid=$id('supClientReportProject')?.value; if(!pid) throw new Error('اختر المشروع');
-      const valid=(window.supClientServicesState||supClientServicesState||[]).filter(s=>{
+      const valid=((window.supClientServicesState||[])).filter(s=>{
         try{return (s.before_images?.length||0)+(s.during_images?.length||0)+(s.after_images?.length||0)>0;}catch(_){return false;}
       });
       if(!valid.length) throw new Error('أضف صورًا لخدمة واحدة على الأقل');
@@ -15658,7 +15662,7 @@ function financePrintReport(kind){
 })();
 
 
-/* ===== V229: Stable inventory lots + correct batch prices + faster reports =====
+/* ===== V230: Stable inventory lots + correct batch prices + faster reports =====
    الهدف:
    - جدول دفعات الشراء يعرض سعر الفاتورة الحقيقي لكل دفعة، وليس متوسط الصنف.
    - متوسط التكلفة يحسب من المتبقي الحقيقي بعد FIFO: قيمة المتبقي ÷ كمية المتبقي.
@@ -15667,7 +15671,7 @@ function financePrintReport(kind){
 */
 (function(){
   'use strict';
-  window.TASNEEF_BUILD='V229_INVENTORY_STABLE_FIFO';
+  window.TASNEEF_BUILD='V230_INVENTORY_STABLE_FIFO';
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
@@ -15790,7 +15794,7 @@ function financePrintReport(kind){
       if(wc.avg>0) upd.unit_cost=+wc.avg.toFixed(4);
       if(qtyOverride!==undefined) upd.quantity=N(qtyOverride);
       if(Object.keys(upd).length) await sb.from('inventory_items').update(upd).eq('id',itemId);
-    }catch(e){ console.warn('V229 update item warning',e); }
+    }catch(e){ console.warn('V230 update item warning',e); }
   }
   function supplierList(){
     const set=new Set();
@@ -15802,14 +15806,14 @@ function financePrintReport(kind){
   function ensureDatalist(id, values){ let dl=$(id); if(!dl){ dl=document.createElement('datalist'); dl.id=id; document.body.appendChild(dl); } dl.innerHTML=values.map(v=>`<option value="${E(v)}"></option>`).join(''); }
   function enhanceInvoiceForm(){
     try{
-      ensureDatalist('supplierOptionsV229', supplierList()); ensureDatalist('unitOptionsV229', UNITS);
-      ['batchSupplierV148','inventoryItemSupplier','financeExpenseSupplier'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','supplierOptionsV229'); });
-      ['batchUnitV148','inventoryItemUnit'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','unitOptionsV229'); });
+      ensureDatalist('supplierOptionsV230', supplierList()); ensureDatalist('unitOptionsV230', UNITS);
+      ['batchSupplierV148','inventoryItemSupplier','financeExpenseSupplier'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','supplierOptionsV230'); });
+      ['batchUnitV148','inventoryItemUnit'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','unitOptionsV230'); });
       const sup=$('batchSupplierV148'); if(sup){ sup.placeholder='اختر المورد أو اكتب موردًا جديدًا'; }
       const unit=$('batchUnitV148'); if(unit){ unit.placeholder='اختر الوحدة أو اكتب وحدة جديدة'; }
       const card=$('stockBatchCardV148');
-      if(card && !$('#batchHelperV229')){
-        const d=document.createElement('div'); d.id='batchHelperV229'; d.className='footer-note';
+      if(card && !$('#batchHelperV230')){
+        const d=document.createElement('div'); d.id='batchHelperV230'; d.className='footer-note';
         d.innerHTML=''; d.style.display='none';
         card.insertBefore(d, card.children[1]||null);
       }
@@ -15869,13 +15873,13 @@ function financePrintReport(kind){
           const rows=saved.map(l=>({batch_id:br.data.id,item_id:l.item_id,product_code:l.product_code,item_name:l.item_name,category:l.category,item_type:l.item_type,unit:l.unit,quantity:l.quantity,unit_price_before_vat:+N(l.unit_cost).toFixed(4),unit_vat:+N(l.unit_vat).toFixed(4),unit_price_with_vat:+N(l.unit_gross).toFixed(4),total_before_vat:+N(l.line_net).toFixed(4),total_vat:+N(l.line_vat).toFixed(4),total_with_vat:+N(l.line_gross).toFixed(4),movement_id:l.movement_id}));
           const li=await sb.from('inventory_batch_items').insert(rows); if(li.error) throw li.error;
         }
-      }catch(e){ console.warn('V229 optional batch table warning',e); }
+      }catch(e){ console.warn('V230 optional batch table warning',e); }
       msg2('تم حفظ الفاتورة بسعر كل دفعة وتحديث متوسط تكلفة الصنف','ok');
       if(typeof stockBatchPrintV148==='function') stockBatchPrintV148({invoice_no:invoiceNo,batch_date:date,supplier,vat_mode:mode,lines:saved,total_before_vat:netTotal,total_vat:vatTotal,total_with_vat:grossTotal});
       if(typeof stockBatchClearV148==='function') stockBatchClearV148();
       if(typeof financeLoadAll==='function') await financeLoadAll();
       try{ if(typeof stockBatchLoadV148==='function') await stockBatchLoadV148(true); }catch(e){}
-      setTimeout(bootV229,250);
+      setTimeout(bootV230,250);
     }catch(e){ msg2(e.message||String(e),'err'); }
     finally{ if(btn) btn.disabled=false; }
   };
@@ -15899,7 +15903,7 @@ function financePrintReport(kind){
       msg2(OUT_TYPES.has(type)?'تم حفظ الصرف بتكلفة FIFO من أقدم دفعة':'تم حفظ حركة المخزون','ok');
       if(typeof inventoryClearMovementForm==='function') inventoryClearMovementForm();
       if(typeof financeLoadAll==='function') await financeLoadAll();
-      setTimeout(bootV229,250);
+      setTimeout(bootV230,250);
     }catch(e){ msg2(e.message||String(e),'err'); }
     finally{ if(btn) btn.disabled=false; }
   };
@@ -15926,7 +15930,7 @@ function financePrintReport(kind){
         const rows=lots.map(l=>`<tr><td>${E(l.date||'-')}</td><td>${E(l.invoice||'-')}</td><td>${E(l.supplier||'-')}</td><td>${qty2(l.originalQty)}</td><td>${qty2(l.issued)}</td><td>${qty2(l.remaining)}</td><td>${money2(l.cost)}</td><td>${money2(N(l.remaining)*N(l.cost))}</td></tr>`).join('')||'<tr><td colspan="8">لا توجد دفعات إدخال</td></tr>';
         box.innerHTML=`<h3>تفاصيل ${E(item.name||'-')}</h3><div class="grid"><div class="metric"><small>المتوفر</small><b>${qty2(wc.qty||item.quantity)}</b></div></div><h3>دفعات الشراء وأسعارها الحقيقية</h3><table><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المورد</th><th>كمية الدفعة</th><th>المصروف منها</th><th>المتبقي</th><th>سعر الدفعة</th><th>قيمة المتبقي</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
-    }catch(e){ console.warn('V229 report detail warning',e); }
+    }catch(e){ console.warn('V230 report detail warning',e); }
   };
   function updateVisiblePrices(){
     try{
@@ -15934,25 +15938,25 @@ function financePrintReport(kind){
         const wc=weightedCurrent(it.id);
         if(wc.avg>0) it.unit_cost=+wc.avg.toFixed(4);
       });
-      document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V229');
+      document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V230');
       document.querySelectorAll('small').forEach(s=>{ if(S(s.textContent)==='سعر الحبة') s.textContent='متوسط تكلفة الوحدة'; });
     }catch(e){}
   }
   const oldRenderItems=window.inventoryRenderItems;
   window.inventoryRenderItems=function(){ if(oldRenderItems) oldRenderItems.apply(this,arguments); setTimeout(()=>{ enhanceInvoiceForm(); updateVisiblePrices(); },60); };
-  function bootV229(){ enhanceInvoiceForm(); updateVisiblePrices(); try{ if(typeof financeRenderReports==='function') financeRenderReports(); }catch(e){} }
-  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV229,ev==='load'?1100:350)));
-  setTimeout(bootV229,1500);
-  console.log('Tasneef V229 stable inventory FIFO lots loaded');
+  function bootV230(){ enhanceInvoiceForm(); updateVisiblePrices(); try{ if(typeof financeRenderReports==='function') financeRenderReports(); }catch(e){} }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV230,ev==='load'?1100:350)));
+  setTimeout(bootV230,1500);
+  console.log('Tasneef V230 stable inventory FIFO lots loaded');
 })();
 
-/* ===== Tasneef V229: fix product detail modal layout + stable attendance select ===== */
+/* ===== Tasneef V230: fix product detail modal layout + stable attendance select ===== */
 (function(){
-  const VERSION='V229';
+  const VERSION='V230';
   function injectCss(){
-    if(document.getElementById('tasneefV229Css')) return;
+    if(document.getElementById('tasneefV230Css')) return;
     const st=document.createElement('style');
-    st.id='tasneefV229Css';
+    st.id='tasneefV230Css';
     st.textContent=`
       .modal-backdrop.v225-product-modal,.modal-backdrop.v226-product-modal{
         position:fixed!important; inset:0!important; width:100vw!important; height:100vh!important;
@@ -16002,26 +16006,26 @@ function financePrintReport(kind){
   }
   window.inventoryOpenItemSmart=openFixedProduct;
   window.v118ShowProductDetail=openFixedProduct;
-  window.tasneefCloseProductDetailV229=removeProductModals;
+  window.tasneefCloseProductDetailV230=removeProductModals;
   function boot(){
     injectCss();
     document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent=VERSION);
     document.querySelectorAll('h1,h2,h3,p,small,span').forEach(el=>{
-      if((el.textContent||'').includes('V229')) el.textContent=el.textContent.replace(/V229/g,VERSION);
+      if((el.textContent||'').includes('V230')) el.textContent=el.textContent.replace(/V230/g,VERSION);
     });
     removeProductModals();
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:200)));
   setTimeout(boot,1200);
-  console.log('Tasneef V229 modal stability loaded');
+  console.log('Tasneef V230 modal stability loaded');
 })();
 
 
-/* ===== Tasneef V229: Inventory detail cleanup + complete meeting Excel reports ===== */
+/* ===== Tasneef V230: Inventory detail cleanup + complete meeting Excel reports ===== */
 (function(){
-  if(window.__tasneefV229ReportsPatch) return;
-  window.__tasneefV229ReportsPatch = true;
-  const VERSION='V229';
+  if(window.__tasneefV230ReportsPatch) return;
+  window.__tasneefV230ReportsPatch = true;
+  const VERSION='V230';
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
   const N=v=>{ const n=Number(String(v??0).replace(/,/g,'')); return Number.isFinite(n)?n:0; };
@@ -16107,7 +16111,7 @@ function financePrintReport(kind){
   function alertsRows(){ const rows=[['نوع التنبيه','العنصر','الأهمية','الملاحظة']]; A(D().projects).filter(p=>!p.supervisor_id).forEach(p=>rows.push(['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف'])); A(D().workers).filter(w=>!w.supervisor_id&&!w.assigned_supervisor_id).forEach(w=>rows.push(['عامل بدون مشرف',w.name||w.full_name,'عادي','يحتاج ربط مشرف'])); A(D().logs).filter(l=>l.check_in&&!l.check_out).forEach(l=>rows.push(['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)])); filteredTickets().filter(t=>!['closed','done','مغلق'].includes(S(t.status).toLowerCase())).forEach(t=>rows.push(['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||''])); return rows; }
   function usersRows(){ return [['الاسم','اسم المستخدم','الدور','الحالة','المشرف المرتبط','ملاحظات'], ...A(D().users).map(u=>[u.full_name||u.name,u.username||'',u.role||'',u.status||'',sName(u.supervisor_id||u.linked_supervisor_id),u.notes||''])]; }
   function suppliersRows(){ return [['المورد','الجوال','العنوان','الحالة','ملاحظات'], ...A(D().suppliers||D().inventorySuppliers).map(s=>[s.name||s.supplier_name,s.phone||s.mobile||'',s.address||'',s.status||'',s.notes||''])]; }
-  function exportSheetsV229(){ const f=currentExportFilters(); const sub=`شركة تصنيف لإدارة المرافق - تاريخ التصدير ${fmtDate(new Date())} - الشهر: ${f.month||'كل الأشهر'} - المشرف: ${f.supervisor?sName(f.supervisor):'كل المشرفين'} - المشروع: ${f.project?pName(f.project):'كل المشاريع'}`; return [
+  function exportSheetsV230(){ const f=currentExportFilters(); const sub=`شركة تصنيف لإدارة المرافق - تاريخ التصدير ${fmtDate(new Date())} - الشهر: ${f.month||'كل الأشهر'} - المشرف: ${f.supervisor?sName(f.supervisor):'كل المشرفين'} - المشروع: ${f.project?pName(f.project):'كل المشاريع'}`; return [
     sheetXml('الملخص التنفيذي',executiveRows(),{title:'الملخص التنفيذي للاجتماع',subtitle:sub}),
     sheetXml('المشاريع',projectsRows(),{title:'المشاريع - كل التفاصيل',subtitle:sub}),
     sheetXml('المستخدمون',usersRows(),{title:'المستخدمون والصلاحيات الأساسية',subtitle:sub}),
@@ -16127,10 +16131,10 @@ function financePrintReport(kind){
     sheetXml('التنبيهات',alertsRows(),{title:'التنبيهات',subtitle:sub})
   ]; }
   async function ensureExportData(){ try{ if(typeof refreshAll==='function') await refreshAll(); }catch(e){} try{ if(typeof financeLoadAll==='function') await financeLoadAll(false); }catch(e){} try{ if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(e){} }
-  window.exportMeetingExcelV229 = async function(btn){ try{ if(btn) btn.disabled=true; await ensureExportData(); const f=currentExportFilters(); downloadFile(`تقرير اجتماع تصنيف الشامل - ${f.month||today().slice(0,7)}.xls`, workbookXml(exportSheetsV229())); if(typeof msg==='function') msg('تم تنزيل ملف الاجتماع الشامل بكل تفاصيل التبويبات','ok'); } catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||'تعذر التصدير','err'); alert(e.message||'تعذر التصدير'); } finally{ if(btn) btn.disabled=false; } };
-  window.exportMeetingExcelV223 = window.exportMeetingExcelV229;
-  window.exportMeetingExcelV222 = window.exportMeetingExcelV229;
-  window.exportMeetingExcelV221 = window.exportMeetingExcelV229;
+  window.exportMeetingExcelV230 = async function(btn){ try{ if(btn) btn.disabled=true; await ensureExportData(); const f=currentExportFilters(); downloadFile(`تقرير اجتماع تصنيف الشامل - ${f.month||today().slice(0,7)}.xls`, workbookXml(exportSheetsV230())); if(typeof msg==='function') msg('تم تنزيل ملف الاجتماع الشامل بكل تفاصيل التبويبات','ok'); } catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||'تعذر التصدير','err'); alert(e.message||'تعذر التصدير'); } finally{ if(btn) btn.disabled=false; } };
+  window.exportMeetingExcelV223 = window.exportMeetingExcelV230;
+  window.exportMeetingExcelV222 = window.exportMeetingExcelV230;
+  window.exportMeetingExcelV221 = window.exportMeetingExcelV230;
   function cleanupDuplicateBatchBlocks(){ document.querySelectorAll('#purchaseBatchesV208').forEach(x=>x.remove()); }
   const oldOpen=window.inventoryOpenItemSmart || window.v118ShowProductDetail;
   if(typeof oldOpen==='function'){
@@ -16141,15 +16145,15 @@ function financePrintReport(kind){
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:250)));
   setInterval(cleanupDuplicateBatchBlocks,1600);
   setTimeout(boot,1200);
-  console.log('Tasneef V229 export complete + product detail cleanup loaded');
+  console.log('Tasneef V230 export complete + product detail cleanup loaded');
 })();
 
 
-/* ===== TASNEEF V229: attendance filter fix + inventory manager cleanup + speed guard ===== */
+/* ===== TASNEEF V230: attendance filter fix + inventory manager cleanup + speed guard ===== */
 (function(){
-  if(window.__tasneefV229FinalFix) return;
-  window.__tasneefV229FinalFix = true;
-  const VERSION='V229';
+  if(window.__tasneefV230FinalFix) return;
+  window.__tasneefV230FinalFix = true;
+  const VERSION='V230';
   const $id=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
@@ -16270,7 +16274,7 @@ function financePrintReport(kind){
       }
       if($id('supClientReportDate') && !$id('supClientReportDate').value) $id('supClientReportDate').value=today228();
       if(typeof oldSupClientReportInit228==='function') oldSupClientReportInit228.apply(this,arguments);
-    }catch(e){ console.warn('V229 supervisor daily report safe init',e); }
+    }catch(e){ console.warn('V230 supervisor daily report safe init',e); }
   };
   function boot228(){
     document.querySelectorAll('script[src*="app.js?v="]').forEach(()=>{});
@@ -16280,14 +16284,14 @@ function financePrintReport(kind){
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot228,ev==='load'?900:250)));
   setTimeout(boot228,1300);
-  console.log('Tasneef V229 final patch loaded');
+  console.log('Tasneef V230 final patch loaded');
 })();
 
 
-/* ===== TASNEEF V229: schema-safe inventory requests + hide warehouse manager cost summaries ===== */
+/* ===== TASNEEF V230: schema-safe inventory requests + hide warehouse manager cost summaries ===== */
 (function(){
-  if(window.__tasneefV229SchemaSafe) return;
-  window.__tasneefV229SchemaSafe = true;
+  if(window.__tasneefV230SchemaSafe) return;
+  window.__tasneefV230SchemaSafe = true;
   const S=v=>String(v??'').trim();
   function cleanCostText(){
     try{
@@ -16317,7 +16321,7 @@ function financePrintReport(kind){
   }
   try{
     const oldFrom = window.sb && window.sb.from ? window.sb.from.bind(window.sb) : null;
-    if(oldFrom && !window.sb.__tasneefV229FromPatched){
+    if(oldFrom && !window.sb.__tasneefV230FromPatched){
       window.sb.from = function(table){
         const q = oldFrom(table);
         if(String(table)==='inventory_requests'){
@@ -16330,7 +16334,7 @@ function financePrintReport(kind){
         }
         return q;
       };
-      window.sb.__tasneefV229FromPatched=true;
+      window.sb.__tasneefV230FromPatched=true;
     }
   }catch(e){}
   const oldInvOpen=window.inventoryOpenItemSmart || window.v118ShowProductDetail;
@@ -16344,9 +16348,9 @@ function financePrintReport(kind){
   }
   function boot(){
     cleanCostText();
-    document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V229');
+    document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V230');
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:250)));
   setTimeout(boot,1200);
-  console.log('Tasneef V229 schema safe inventory loaded');
+  console.log('Tasneef V230 schema safe inventory loaded');
 })();
