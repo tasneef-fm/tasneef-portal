@@ -12253,3 +12253,132 @@ function financePrintReport(kind){
   window.addEventListener('load',()=>setTimeout(repaint,1800));
   console.log('Tasneef V202 Final Upload Patch loaded');
 })();
+
+/* ===================== V204 USER ROLE/PERMISSIONS HARD FIX =====================
+   يعالج مشكلة: app_users_role_check عند الحفظ، خصوصًا عندما يكون الدور فارغًا
+   أو عندما لا تكون قاعدة البيانات محدثة للأدوار الجديدة.
+============================================================================= */
+(function(){
+  'use strict';
+  window.TASNEEF_BUILD = 'V204_ROLE_PERMISSIONS_HARD_FIX_2026_05_20';
+  const $ = (id)=>document.getElementById(id);
+  const S = (v)=>String(v ?? '').trim();
+  const toast = (t,kind)=>{ try{ (typeof msg==='function'?msg:alert)(t,kind); }catch(_){ alert(t); } };
+
+  function usersArray(){
+    try{
+      if(Array.isArray(window.data?.users)) return window.data.users;
+      if(Array.isArray(window.data?.appUsers)) return window.data.appUsers;
+      if(Array.isArray(window.users)) return window.users;
+    }catch(_){ }
+    return [];
+  }
+  function findEditingUser(){
+    const id = S($('userId')?.value);
+    if(!id) return null;
+    return usersArray().find(u=>S(u.id)===id) || null;
+  }
+  function normalizeRole(v, fallback){
+    const x = S(v || fallback);
+    const map = {
+      'مدير عام':'admin', 'مدير النظام':'admin', 'ادمن':'admin', 'admin':'admin',
+      'مشرف':'supervisor', 'supervisor':'supervisor',
+      'فني':'technician', 'technician':'technician',
+      'مدير مالي':'financial_manager', 'financial_manager':'financial_manager',
+      'مدير تشغيلي':'operations_manager', 'operations_manager':'operations_manager',
+      'مدير مخازن':'warehouse_manager', 'warehouse_manager':'warehouse_manager',
+      'general_manager':'general_manager'
+    };
+    return map[x] || x || 'supervisor';
+  }
+  function safeDbRole(role){
+    // عند عدم تشغيل SQL الجديد، أغلب قواعدك تقبل فقط admin/supervisor/technician.
+    // نحفظ المديرين كـ admin حتى لا يفشل الحفظ، والصلاحيات التفصيلية تبقى في permissions.
+    if(['admin','supervisor','technician'].includes(role)) return role;
+    if(/manager|admin|مدير/i.test(role)) return 'admin';
+    return 'supervisor';
+  }
+  function ensureRoleOptions(){
+    const sel = $('userRole'); if(!sel) return;
+    const opts = [
+      ['admin','مدير عام'],
+      ['financial_manager','مدير مالي'],
+      ['operations_manager','مدير تشغيلي'],
+      ['warehouse_manager','مدير مخازن'],
+      ['technician','فني'],
+      ['supervisor','مشرف']
+    ];
+    const existing = new Set(Array.from(sel.options).map(o=>o.value));
+    opts.forEach(([v,l])=>{ if(!existing.has(v)){ const o=document.createElement('option'); o.value=v; o.textContent=l; sel.appendChild(o); } });
+    if(!S(sel.value)){
+      const u=findEditingUser();
+      sel.value = normalizeRole(u?.role, 'supervisor');
+      if(!S(sel.value)) sel.value = safeDbRole(normalizeRole(u?.role,'supervisor'));
+    }
+  }
+  function collectPerms(){
+    const perms = {};
+    document.querySelectorAll('[data-perm]').forEach(el=>{ if(el.dataset?.perm) perms[el.dataset.perm] = !!el.checked; });
+    return perms;
+  }
+  async function writeUser(row, id){
+    if(!window.sb) throw new Error('Supabase غير متصل');
+    return id ? await sb.from('app_users').update(row).eq('id', id) : await sb.from('app_users').insert(row);
+  }
+
+  window.saveUser = async function(){
+    ensureRoleOptions();
+    const id = S($('userId')?.value);
+    const oldUser = findEditingUser();
+    const roleRaw = S($('userRole')?.value) || S(oldUser?.role) || 'supervisor';
+    const role = normalizeRole(roleRaw, 'supervisor');
+    const row = {
+      full_name: S($('userFullName')?.value),
+      username: S($('userUsername')?.value),
+      password: S($('userPassword')?.value) || S(oldUser?.password) || '123456',
+      role,
+      is_active: S($('userActive')?.value || 'true') === 'true',
+      permissions: collectPerms()
+    };
+    if(!row.full_name || !row.username) return toast('الاسم واسم المستخدم مطلوبان','err');
+
+    let attempts = [row];
+    // لو قاعدة البيانات لا تقبل الأدوار الجديدة أو عمود permissions غير موجود، نجرب بدون تعطيل الحفظ.
+    if(!['admin','supervisor','technician'].includes(row.role)) attempts.push({...row, role:safeDbRole(row.role)});
+    attempts.push((()=>{ const r={...row, role:safeDbRole(row.role)}; delete r.permissions; return r; })());
+    attempts.push((()=>{ const r={...row}; delete r.permissions; return r; })());
+
+    let lastErr = null, usedFallback = false;
+    for(const candidate of attempts){
+      const res = await writeUser(candidate, id);
+      if(!res.error){ usedFallback = candidate.role !== row.role || !('permissions' in candidate); lastErr=null; break; }
+      lastErr = res.error;
+      const msgTxt = String(res.error.message || '');
+      if(!/role_check|permissions|column|constraint/i.test(msgTxt)) break;
+    }
+    if(lastErr) return toast(lastErr.message || String(lastErr),'err');
+    toast(usedFallback ? 'تم الحفظ. ملاحظة: قاعدة البيانات تحتاج تحديث ملف SQL حتى تحفظ الأدوار الجديدة والصلاحيات كاملة.' : 'تم حفظ المستخدم والصلاحيات');
+    try{ if(typeof clearUserForm==='function') clearUserForm(); }catch(_){ }
+    try{ if(typeof refreshAll==='function') await refreshAll(); }catch(_){ }
+  };
+
+  const oldEdit = window.editUser;
+  if(typeof oldEdit === 'function'){
+    window.editUser = function(){
+      const r = oldEdit.apply(this, arguments);
+      setTimeout(ensureRoleOptions, 80);
+      return r;
+    };
+  }
+  const oldClear = window.clearUserForm;
+  if(typeof oldClear === 'function'){
+    window.clearUserForm = function(){
+      const r = oldClear.apply(this, arguments);
+      setTimeout(()=>{ ensureRoleOptions(); if($('userRole') && !S($('userRole').value)) $('userRole').value='supervisor'; }, 80);
+      return r;
+    };
+  }
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(ensureRoleOptions,300));
+  window.addEventListener('load',()=>setTimeout(ensureRoleOptions,900));
+  console.log('Tasneef V204 role/permissions hard fix loaded');
+})();

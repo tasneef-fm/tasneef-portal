@@ -1,18 +1,19 @@
-مهم قبل الرفع / قبل تجربة إدارة المستخدمين:
+Tasneef V204 - Upload Only
 
-سبب الخطأ:
-قاعدة البيانات في Supabase لا تسمح بالأدوار الجديدة مثل:
-financial_manager / operations_manager / warehouse_manager
-لذلك تظهر رسالة:
-violates check constraint app_users_role_check
+ارفع هذه الملفات فقط للموقع:
+- index.html
+- admin.html
+- supervisor.html
+- technician.html
+- client-report.html
+- app.js
+- style.css
+- tasneef_logo_print.png
+- tasneef_stamp.jpeg
+- sounds
 
-الحل:
-1) افتح Supabase.
-2) ادخل SQL Editor.
-3) افتح الملف:
-sql/schema_update_v203_app_users_role_fix.sql
-4) انسخ محتواه وشغله مرة واحدة.
-5) بعد ذلك ارفع ملفات الموقع.
-6) افتح المتصفح واضغط Ctrl + F5.
+مهم لقاعدة البيانات:
+شغل الملف التالي مرة واحدة في Supabase SQL Editor:
+sql/schema_update_v204_app_users_permissions_roles.sql
 
-ملفات الرفع للموقع هي كل الملفات الأساسية في هذا المجلد، أما مجلد sql لا يرفع للموقع، فقط يستخدم في Supabase.
+بعد الرفع اضغط Ctrl + F5.
