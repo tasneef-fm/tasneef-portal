@@ -1,4 +1,4 @@
-/* TASNEEF BUILD V226 - stable inventory FIFO batches/report fast - 2026-05-20 */
+/* TASNEEF BUILD V227 - stable inventory FIFO batches/report fast - 2026-05-20 */
 /* V154 Smart Loading Branding */
 (function(){
   if(window.__tasneefLoadingV154) return;
@@ -13191,7 +13191,7 @@ function financePrintReport(kind){
     ensureMovementCostInputV208();
     removeDuplicateFinanceTabsV208();
     removeTotalConsumptionBlocksV208();
-    appendPurchaseBatchesToProductModalV208();
+    /* V227 disabled duplicate old purchase batch block */
     patchPdfButtonsV208();
   }
   window.tasneefBootV208 = bootV208;
@@ -15658,7 +15658,7 @@ function financePrintReport(kind){
 })();
 
 
-/* ===== V226: Stable inventory lots + correct batch prices + faster reports =====
+/* ===== V227: Stable inventory lots + correct batch prices + faster reports =====
    الهدف:
    - جدول دفعات الشراء يعرض سعر الفاتورة الحقيقي لكل دفعة، وليس متوسط الصنف.
    - متوسط التكلفة يحسب من المتبقي الحقيقي بعد FIFO: قيمة المتبقي ÷ كمية المتبقي.
@@ -15667,7 +15667,7 @@ function financePrintReport(kind){
 */
 (function(){
   'use strict';
-  window.TASNEEF_BUILD='V226_INVENTORY_STABLE_FIFO';
+  window.TASNEEF_BUILD='V227_INVENTORY_STABLE_FIFO';
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
@@ -15790,7 +15790,7 @@ function financePrintReport(kind){
       if(wc.avg>0) upd.unit_cost=+wc.avg.toFixed(4);
       if(qtyOverride!==undefined) upd.quantity=N(qtyOverride);
       if(Object.keys(upd).length) await sb.from('inventory_items').update(upd).eq('id',itemId);
-    }catch(e){ console.warn('V226 update item warning',e); }
+    }catch(e){ console.warn('V227 update item warning',e); }
   }
   function supplierList(){
     const set=new Set();
@@ -15802,14 +15802,14 @@ function financePrintReport(kind){
   function ensureDatalist(id, values){ let dl=$(id); if(!dl){ dl=document.createElement('datalist'); dl.id=id; document.body.appendChild(dl); } dl.innerHTML=values.map(v=>`<option value="${E(v)}"></option>`).join(''); }
   function enhanceInvoiceForm(){
     try{
-      ensureDatalist('supplierOptionsV226', supplierList()); ensureDatalist('unitOptionsV226', UNITS);
-      ['batchSupplierV148','inventoryItemSupplier','financeExpenseSupplier'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','supplierOptionsV226'); });
-      ['batchUnitV148','inventoryItemUnit'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','unitOptionsV226'); });
+      ensureDatalist('supplierOptionsV227', supplierList()); ensureDatalist('unitOptionsV227', UNITS);
+      ['batchSupplierV148','inventoryItemSupplier','financeExpenseSupplier'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','supplierOptionsV227'); });
+      ['batchUnitV148','inventoryItemUnit'].forEach(id=>{ const el=$(id); if(el) el.setAttribute('list','unitOptionsV227'); });
       const sup=$('batchSupplierV148'); if(sup){ sup.placeholder='اختر المورد أو اكتب موردًا جديدًا'; }
       const unit=$('batchUnitV148'); if(unit){ unit.placeholder='اختر الوحدة أو اكتب وحدة جديدة'; }
       const card=$('stockBatchCardV148');
-      if(card && !$('#batchHelperV226')){
-        const d=document.createElement('div'); d.id='batchHelperV226'; d.className='footer-note';
+      if(card && !$('#batchHelperV227')){
+        const d=document.createElement('div'); d.id='batchHelperV227'; d.className='footer-note';
         d.innerHTML='سيتم حفظ سعر كل فاتورة كما هو، ويتم حساب متوسط تكلفة الصنف من الكمية المتبقية فقط. الصرف يعتمد FIFO من أقدم دفعة.';
         card.insertBefore(d, card.children[1]||null);
       }
@@ -15869,13 +15869,13 @@ function financePrintReport(kind){
           const rows=saved.map(l=>({batch_id:br.data.id,item_id:l.item_id,product_code:l.product_code,item_name:l.item_name,category:l.category,item_type:l.item_type,unit:l.unit,quantity:l.quantity,unit_price_before_vat:+N(l.unit_cost).toFixed(4),unit_vat:+N(l.unit_vat).toFixed(4),unit_price_with_vat:+N(l.unit_gross).toFixed(4),total_before_vat:+N(l.line_net).toFixed(4),total_vat:+N(l.line_vat).toFixed(4),total_with_vat:+N(l.line_gross).toFixed(4),movement_id:l.movement_id}));
           const li=await sb.from('inventory_batch_items').insert(rows); if(li.error) throw li.error;
         }
-      }catch(e){ console.warn('V226 optional batch table warning',e); }
+      }catch(e){ console.warn('V227 optional batch table warning',e); }
       msg2('تم حفظ الفاتورة بسعر كل دفعة وتحديث متوسط تكلفة الصنف','ok');
       if(typeof stockBatchPrintV148==='function') stockBatchPrintV148({invoice_no:invoiceNo,batch_date:date,supplier,vat_mode:mode,lines:saved,total_before_vat:netTotal,total_vat:vatTotal,total_with_vat:grossTotal});
       if(typeof stockBatchClearV148==='function') stockBatchClearV148();
       if(typeof financeLoadAll==='function') await financeLoadAll();
       try{ if(typeof stockBatchLoadV148==='function') await stockBatchLoadV148(true); }catch(e){}
-      setTimeout(bootV226,250);
+      setTimeout(bootV227,250);
     }catch(e){ msg2(e.message||String(e),'err'); }
     finally{ if(btn) btn.disabled=false; }
   };
@@ -15899,7 +15899,7 @@ function financePrintReport(kind){
       msg2(OUT_TYPES.has(type)?'تم حفظ الصرف بتكلفة FIFO من أقدم دفعة':'تم حفظ حركة المخزون','ok');
       if(typeof inventoryClearMovementForm==='function') inventoryClearMovementForm();
       if(typeof financeLoadAll==='function') await financeLoadAll();
-      setTimeout(bootV226,250);
+      setTimeout(bootV227,250);
     }catch(e){ msg2(e.message||String(e),'err'); }
     finally{ if(btn) btn.disabled=false; }
   };
@@ -15926,7 +15926,7 @@ function financePrintReport(kind){
         const rows=lots.map(l=>`<tr><td>${E(l.date||'-')}</td><td>${E(l.invoice||'-')}</td><td>${E(l.supplier||'-')}</td><td>${qty2(l.originalQty)}</td><td>${qty2(l.issued)}</td><td>${qty2(l.remaining)}</td><td>${money2(l.cost)}</td><td>${money2(N(l.remaining)*N(l.cost))}</td></tr>`).join('')||'<tr><td colspan="8">لا توجد دفعات إدخال</td></tr>';
         box.innerHTML=`<h3>تفاصيل ${E(item.name||'-')}</h3><div class="grid"><div class="metric"><small>المتوفر</small><b>${qty2(wc.qty||item.quantity)}</b></div><div class="metric"><small>متوسط تكلفة الوحدة</small><b>${money2(wc.avg||item.unit_cost)}</b></div><div class="metric"><small>قيمة المتبقي</small><b>${money2(wc.value||N(item.quantity)*N(item.unit_cost))}</b></div></div><h3>دفعات الشراء وأسعارها الحقيقية</h3><table><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المورد</th><th>كمية الدفعة</th><th>المصروف منها</th><th>المتبقي</th><th>سعر الدفعة</th><th>قيمة المتبقي</th></tr></thead><tbody>${rows}</tbody></table>`;
       }
-    }catch(e){ console.warn('V226 report detail warning',e); }
+    }catch(e){ console.warn('V227 report detail warning',e); }
   };
   function updateVisiblePrices(){
     try{
@@ -15934,25 +15934,25 @@ function financePrintReport(kind){
         const wc=weightedCurrent(it.id);
         if(wc.avg>0) it.unit_cost=+wc.avg.toFixed(4);
       });
-      document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V226');
+      document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V227');
       document.querySelectorAll('small').forEach(s=>{ if(S(s.textContent)==='سعر الحبة') s.textContent='متوسط تكلفة الوحدة'; });
     }catch(e){}
   }
   const oldRenderItems=window.inventoryRenderItems;
   window.inventoryRenderItems=function(){ if(oldRenderItems) oldRenderItems.apply(this,arguments); setTimeout(()=>{ enhanceInvoiceForm(); updateVisiblePrices(); },60); };
-  function bootV226(){ enhanceInvoiceForm(); updateVisiblePrices(); try{ if(typeof financeRenderReports==='function') financeRenderReports(); }catch(e){} }
-  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV226,ev==='load'?1100:350)));
-  setTimeout(bootV226,1500);
-  console.log('Tasneef V226 stable inventory FIFO lots loaded');
+  function bootV227(){ enhanceInvoiceForm(); updateVisiblePrices(); try{ if(typeof financeRenderReports==='function') financeRenderReports(); }catch(e){} }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV227,ev==='load'?1100:350)));
+  setTimeout(bootV227,1500);
+  console.log('Tasneef V227 stable inventory FIFO lots loaded');
 })();
 
-/* ===== Tasneef V226: fix product detail modal layout + stable attendance select ===== */
+/* ===== Tasneef V227: fix product detail modal layout + stable attendance select ===== */
 (function(){
-  const VERSION='V226';
+  const VERSION='V227';
   function injectCss(){
-    if(document.getElementById('tasneefV226Css')) return;
+    if(document.getElementById('tasneefV227Css')) return;
     const st=document.createElement('style');
-    st.id='tasneefV226Css';
+    st.id='tasneefV227Css';
     st.textContent=`
       .modal-backdrop.v225-product-modal,.modal-backdrop.v226-product-modal{
         position:fixed!important; inset:0!important; width:100vw!important; height:100vh!important;
@@ -16002,16 +16002,144 @@ function financePrintReport(kind){
   }
   window.inventoryOpenItemSmart=openFixedProduct;
   window.v118ShowProductDetail=openFixedProduct;
-  window.tasneefCloseProductDetailV226=removeProductModals;
+  window.tasneefCloseProductDetailV227=removeProductModals;
   function boot(){
     injectCss();
     document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent=VERSION);
     document.querySelectorAll('h1,h2,h3,p,small,span').forEach(el=>{
-      if((el.textContent||'').includes('V226')) el.textContent=el.textContent.replace(/V226/g,VERSION);
+      if((el.textContent||'').includes('V227')) el.textContent=el.textContent.replace(/V227/g,VERSION);
     });
     removeProductModals();
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:200)));
   setTimeout(boot,1200);
-  console.log('Tasneef V226 modal stability loaded');
+  console.log('Tasneef V227 modal stability loaded');
+})();
+
+
+/* ===== Tasneef V227: Inventory detail cleanup + complete meeting Excel reports ===== */
+(function(){
+  if(window.__tasneefV227ReportsPatch) return;
+  window.__tasneefV227ReportsPatch = true;
+  const VERSION='V227';
+  const A=v=>Array.isArray(v)?v:[];
+  const S=v=>String(v??'').trim();
+  const N=v=>{ const n=Number(String(v??0).replace(/,/g,'')); return Number.isFinite(n)?n:0; };
+  const D=()=>window.data || (typeof data!=='undefined'?data:{}) || {};
+  const E=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+  const today=()=>new Date().toISOString().slice(0,10);
+  const fmtDate=v=>{ if(!v) return '-'; try{ return new Date(v).toLocaleString('ar-SA'); }catch(e){ return S(v)||'-'; } };
+  const money=v=> (Math.round(N(v)*100)/100).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})+' ر.س';
+  const qty=v=> Math.round(N(v)*100)/100;
+  function byId(id){ return document.getElementById(id); }
+  function pName(id){ try{ if(typeof projectName==='function') return projectName(id); }catch(e){} const p=A(D().projects).find(x=>S(x.id)===S(id)); return p?.name || S(id||'-'); }
+  function sName(id){ try{ if(typeof supervisorName==='function') return supervisorName(id); }catch(e){} const u=A(D().supervisors).concat(A(D().users)).find(x=>S(x.id)===S(id)); return u?.full_name || u?.name || u?.username || S(id||'-'); }
+  function wName(id){ const w=A(D().workers).find(x=>S(x.id)===S(id)); return w?.name || w?.full_name || S(id||'-'); }
+  function itemName(id){ const i=A(D().inventoryItems).find(x=>S(x.id)===S(id)); return i?.name || S(id||'-'); }
+  function itemCode(i){ return i?.product_code || i?.serial_number || i?.barcode || i?.code || ''; }
+  function itemUnitCost(i){ return N(i?.unit_cost || i?.cost || i?.price); }
+  function currentExportFilters(){
+    const month=byId('meetingExportMonth')?.value || byId('monthlyMonth')?.value || today().slice(0,7);
+    const supervisor=byId('meetingExportSupervisor')?.value || '';
+    const project=byId('meetingExportProject')?.value || '';
+    return {month,supervisor,project};
+  }
+  function inMonth(v,month){ if(!month) return true; const s=S(v); if(s.startsWith(month)) return true; try{ return new Date(v).toISOString().slice(0,7)===month; }catch(e){ return false; } }
+  function projectMatches(pid){ const f=currentExportFilters(); if(f.project && S(pid)!==S(f.project)) return false; if(f.supervisor){ const p=A(D().projects).find(x=>S(x.id)===S(pid)); if(!p || S(p.supervisor_id)!==S(f.supervisor)) return false; } return true; }
+  function filteredProjects(){ const f=currentExportFilters(); return A(D().projects).filter(p=>(!f.project||S(p.id)===S(f.project)) && (!f.supervisor||S(p.supervisor_id)===S(f.supervisor))); }
+  function filteredLogs(){ const f=currentExportFilters(); return A(D().logs).filter(l=>inMonth(l.log_date||l.check_in||l.created_at,f.month) && projectMatches(l.project_id)); }
+  function filteredAttendance(){ const f=currentExportFilters(); return A(D().attendance).filter(a=>inMonth(a.attendance_date||a.date||a.created_at,f.month) && (!f.supervisor || S(a.supervisor_id || (A(D().workers).find(w=>S(w.id)===S(a.worker_id))||{}).supervisor_id)===S(f.supervisor))); }
+  function filteredTickets(){ const f=currentExportFilters(); return A(D().tickets).filter(t=>inMonth(t.created_at||t.opened_at||t.date,f.month) && projectMatches(t.project_id)); }
+  function filteredMovements(){ const f=currentExportFilters(); return A(D().inventoryMovements).filter(m=>inMonth(m.movement_date||m.created_at,f.month) && (!m.project_id || projectMatches(m.project_id))); }
+  function filteredExpenses(){ const f=currentExportFilters(); return A(D().financeExpenses).filter(e=>inMonth(e.expense_date||e.created_at,f.month) && (!e.project_id || projectMatches(e.project_id))); }
+  function filteredClientReports(){ const f=currentExportFilters(); return A(D().clientReports).filter(r=>inMonth(r.report_date||r.created_at,f.month) && (!r.project_id || projectMatches(r.project_id))); }
+  function filteredRatings(){ const f=currentExportFilters(); return A(D().clientServiceRatings).filter(r=>inMonth(r.rating_date||r.created_at,f.month) && (!r.project_id || projectMatches(r.project_id))); }
+  function xmlType(v){ return (typeof v==='number' && Number.isFinite(v))?'Number':'String'; }
+  function sheetXml(name, rows, opt={}){
+    const title=E(opt.title||name), sub=E(opt.subtitle||''), headers=rows[0]||['البيان'];
+    const body=rows.slice(1), cols=Math.max(1,headers.length), rowCount=body.length+4;
+    let xml=`<Worksheet ss:Name="${E(name).slice(0,31)}" ss:RightToLeft="1"><Table ss:ExpandedColumnCount="${cols}" ss:ExpandedRowCount="${rowCount}" x:FullColumns="1" x:FullRows="1">`;
+    for(let i=0;i<cols;i++) xml += `<Column ss:AutoFitWidth="0" ss:Width="135"/>`;
+    xml+=`<Row ss:Height="32"><Cell ss:MergeAcross="${Math.max(0,cols-1)}" ss:StyleID="Title"><Data ss:Type="String">${title}</Data></Cell></Row>`;
+    xml+=`<Row><Cell ss:MergeAcross="${Math.max(0,cols-1)}" ss:StyleID="SubTitle"><Data ss:Type="String">${sub}</Data></Cell></Row><Row/>`;
+    xml+=`<Row>${headers.map(h=>`<Cell ss:StyleID="Header"><Data ss:Type="String">${E(h)}</Data></Cell>`).join('')}</Row>`;
+    body.forEach((r,idx)=>{ xml+=`<Row>${headers.map((_,i)=>{ const v=r[i]??''; return `<Cell ss:StyleID="${idx%2?'DataAlt':'Data'}"><Data ss:Type="${xmlType(v)}">${E(v)}</Data></Cell>`; }).join('')}</Row>`; });
+    xml+=`</Table><WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel"><DisplayRightToLeft/><FreezePanes/><FrozenNoSplit/><SplitHorizontal>4</SplitHorizontal><TopRowBottomPane>4</TopRowBottomPane><ActivePane>2</ActivePane></WorksheetOptions></Worksheet>`;
+    return xml;
+  }
+  function workbookXml(sheets){
+    const styles=`<Styles>
+      <Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center" ss:Horizontal="Right" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10"/></Style>
+      <Style ss:ID="Title"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="16" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#064633" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="SubTitle"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Arial" ss:Size="10" ss:Color="#24473D"/><Interior ss:Color="#EAF5EF" ss:Pattern="Solid"/></Style>
+      <Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A7054" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#BBD7C4"/></Borders></Style>
+      <Style ss:ID="Data"><Alignment ss:Horizontal="Right" ss:Vertical="Center" ss:WrapText="1"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5EFE8"/></Borders></Style>
+      <Style ss:ID="DataAlt"><Alignment ss:Horizontal="Right" ss:Vertical="Center" ss:WrapText="1"/><Interior ss:Color="#F8FCF9" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5EFE8"/></Borders></Style>
+    </Styles>`;
+    return `<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:html="http://www.w3.org/TR/REC-html40">${styles}${sheets.join('')}</Workbook>`;
+  }
+  function downloadFile(name,content){ const blob=new Blob([content],{type:'application/vnd.ms-excel;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},600); }
+  function supWorkers(sid){ const seen=new Set(), out=[]; A(D().workers).forEach(w=>{ const key=S(w.name||w.full_name||w.id); if(sid && S(w.supervisor_id||w.assigned_supervisor_id)!==S(sid)) return; if(seen.has(key)) return; seen.add(key); out.push(w); }); return out; }
+  function fifoLotsForItem(itemId){
+    const ins=A(D().inventoryMovements).filter(m=>S(m.item_id)===S(itemId)&&S(m.movement_type)==='in').sort((a,b)=>String(a.movement_date||a.created_at||'').localeCompare(String(b.movement_date||b.created_at||'')));
+    const outs=A(D().inventoryMovements).filter(m=>S(m.item_id)===S(itemId)&&['out','consume'].includes(S(m.movement_type))).sort((a,b)=>String(a.movement_date||a.created_at||'').localeCompare(String(b.movement_date||b.created_at||'')));
+    const lots=ins.map(m=>({id:m.id,date:m.movement_date||String(m.created_at||'').slice(0,10),invoice:(m.reason||m.notes||'').replace(/^إدخال مخزون\s*-?\s*/,'')||'-',supplier:m.receiver||m.supplier||'-',original:N(m.quantity),issued:0,remaining:N(m.quantity),cost:N(m.unit_cost)}));
+    outs.forEach(o=>{ let need=N(o.quantity); for(const lot of lots){ if(need<=0) break; const take=Math.min(lot.remaining,need); lot.remaining-=take; lot.issued+=take; need-=take; } });
+    return lots;
+  }
+  function executiveRows(){
+    const projects=filteredProjects(), logs=filteredLogs(), tickets=filteredTickets(), moves=filteredMovements(), expenses=filteredExpenses(), reports=filteredClientReports();
+    return [['المؤشر','القيمة'],['الشهر',currentExportFilters().month||'كل الأشهر'],['المشاريع ضمن الفلتر',projects.length],['المشرفون',A(D().supervisors).length||A(D().users).filter(u=>S(u.role)==='supervisor').length],['العمال',A(D().workers).length],['السجلات اليومية',logs.length],['التكتات',tickets.length],['تكتات مفتوحة',tickets.filter(t=>!['closed','done','مغلق'].includes(S(t.status).toLowerCase())).length],['حركات المخزون',moves.length],['إجمالي المصروفات',expenses.reduce((s,e)=>s+N(e.total||e.amount),0)],['تقارير العملاء',reports.length]];
+  }
+  function projectsRows(){ return [['اسم المشروع','المشرف الحالي','نوع التشغيل','الدقائق اليومية','دقائق الجمعة','بداية العقد','نهاية العقد','الحالة','الموقع','ملاحظات'], ...filteredProjects().map(p=>[p.name,sName(p.supervisor_id),p.operation_type||p.type||'',N(p.daily_minutes||p.required_minutes||0),N(p.friday_minutes||0),p.contract_start||p.start_date||'',p.contract_end||p.end_date||'',p.status||'',p.location||'',p.notes||''])]; }
+  function supervisorsRows(){ return [['المشرف','اسم المستخدم','عدد المشاريع الحالية','عدد العمال','الحالة','ملاحظات'], ...A(D().supervisors).concat(A(D().users).filter(u=>S(u.role)==='supervisor')).filter((u,i,arr)=>arr.findIndex(x=>S(x.id)===S(u.id))===i).map(u=>[u.full_name||u.name||u.username,u.username||'',A(D().projects).filter(p=>S(p.supervisor_id)===S(u.id)).length,supWorkers(u.id).length,u.status||'نشط',u.notes||''])]; }
+  function workersRows(){ const f=currentExportFilters(); const seen=new Map(); A(D().workers).forEach(w=>{ const key=S(w.name||w.full_name||w.id); if(f.supervisor && S(w.supervisor_id||w.assigned_supervisor_id)!==S(f.supervisor)) return; if(!seen.has(key)) seen.set(key,{...w,projects:[]}); const r=seen.get(key); const pn=pName(w.project_id||w.assigned_project_id); if(pn && pn!=='-' && !r.projects.includes(pn)) r.projects.push(pn); }); return [['العامل','المشرف','المشاريع','الجوال','النوع','الراتب','الحالة','ملاحظات'], ...[...seen.values()].map(w=>[w.name||w.full_name,sName(w.supervisor_id||w.assigned_supervisor_id),w.projects.join('، '),w.phone||w.mobile||'',w.type||w.worker_type||'',N(w.salary),w.status||'نشط',w.notes||''])]; }
+  function logsRows(){ return [['التاريخ','المشروع','المشرف الحالي','العامل','دخول','خروج','الدقائق','الحالة','ملاحظات'], ...filteredLogs().map(l=>{ const p=A(D().projects).find(x=>S(x.id)===S(l.project_id))||{}; return [l.log_date||String(l.check_in||'').slice(0,10),pName(l.project_id),sName(p.supervisor_id||l.supervisor_id),wName(l.worker_id)||l.worker_name||'',l.check_in||'',l.check_out||'',N(l.duration_minutes),l.status||'',l.notes||'']; })]; }
+  function attendanceRows(){ return [['التاريخ','العامل','المشرف','الحالة','ملاحظة'], ...filteredAttendance().map(a=>[a.attendance_date||a.date||String(a.created_at||'').slice(0,10),wName(a.worker_id)||a.worker_name||'',sName(a.supervisor_id||a.supervisorId),a.status||'',a.notes||''])]; }
+  function monthlyRows(){ const map={}; filteredLogs().forEach(l=>{ const p=A(D().projects).find(x=>S(x.id)===S(l.project_id))||{}; const k=S(l.project_id); map[k]=map[k]||{project:pName(l.project_id),sup:sName(p.supervisor_id||l.supervisor_id),mins:0,logs:0,type:p.operation_type||p.type||''}; map[k].mins+=N(l.duration_minutes); map[k].logs++; }); return [['المشروع','المشرف الحالي','نوع التشغيل','عدد السجلات','مجموع الدقائق','النسبة/ملاحظة'], ...Object.values(map).map(r=>[r.project,r.sup,r.type,r.logs,Math.round(r.mins),'حسب سجلات الشهر'])]; }
+  function ticketsRows(){ return [['رقم التكت','المشروع','المشرف الحالي','رفع بواسطة','العنوان','الوصف','الحالة','الأولوية','تاريخ الفتح','تاريخ الإغلاق','طريقة الإغلاق','ملاحظات'], ...filteredTickets().map(t=>{ const p=A(D().projects).find(x=>S(x.id)===S(t.project_id))||{}; return [t.ticket_no||t.id,pName(t.project_id),sName(p.supervisor_id||t.supervisor_id),t.created_by_name||t.created_by||t.reported_by||'',t.title||t.subject||'',t.description||'',t.status||'',t.priority||'',fmtDate(t.created_at||t.opened_at),fmtDate(t.closed_at),t.close_method||t.resolution||'',t.notes||'']; })]; }
+  function inventoryRows(){ return [['الصنف','الكود','التصنيف','المورد','الوحدة','الكمية الحالية','الحد الأدنى','متوسط تكلفة الوحدة','قيمة المخزون','الحالة'], ...A(D().inventoryItems).map(i=>[i.name,itemCode(i),i.category||i.item_type||'',i.supplier||'',i.unit||'',qty(i.quantity),qty(i.min_quantity||i.reorder_level),itemUnitCost(i),N(i.quantity)*itemUnitCost(i),N(i.quantity)<=N(i.min_quantity||i.reorder_level)?'منخفض':'متوفر'])]; }
+  function movementRows(){ return [['التاريخ','الصنف','الكود','نوع الحركة','الكمية','تكلفة الوحدة المسجلة','المشروع','المستلم/المورد','السبب','ملاحظات'], ...filteredMovements().map(m=>[m.movement_date||String(m.created_at||'').slice(0,10),m.item_name||itemName(m.item_id),m.product_code||m.barcode||'',m.movement_type,qty(m.quantity),N(m.unit_cost),m.project_name||pName(m.project_id),m.receiver||'',m.reason||'',m.notes||''])]; }
+  function fifoRows(){ const rows=[['الصنف','كود الصنف','تاريخ الدفعة','الفاتورة','المورد','كمية الدفعة','المصروف من الدفعة','المتبقي','سعر الدفعة','قيمة المتبقي']]; A(D().inventoryItems).forEach(i=>fifoLotsForItem(i.id).forEach(l=>rows.push([i.name,itemCode(i),l.date,l.invoice,l.supplier,qty(l.original),qty(l.issued),qty(l.remaining),N(l.cost),N(l.remaining)*N(l.cost)]))); return rows; }
+  function expensesRows(){ return [['التاريخ','المشروع','التصنيف','المورد','المبلغ','طريقة الدفع','مركز التكلفة','ملاحظات'], ...filteredExpenses().map(e=>[e.expense_date||String(e.created_at||'').slice(0,10),e.project_name||pName(e.project_id),e.category||e.expense_type||'',e.supplier||'',N(e.total||e.amount),e.payment_method||'',e.cost_center||'',e.notes||''])]; }
+  function clientReportsRows(){ const services=A(D().clientReportServices); return [['التاريخ','رقم التقرير','المشروع','الشهر','المشرف','العنوان','الحالة','الخدمات','النص/الملخص','ملاحظات'], ...filteredClientReports().map(r=>[r.report_date||String(r.created_at||'').slice(0,10),r.report_no||r.id,r.project_name||pName(r.project_id),String(r.report_date||r.created_at||'').slice(0,7),sName(r.supervisor_id),r.title||'',r.status||'',services.filter(s=>S(s.report_id)===S(r.id)).map(s=>s.service_name||s.service_type).filter(Boolean).join('، '),r.summary||r.description||r.report_text||'',r.notes||''])]; }
+  function ratingsRows(){ return [['التاريخ','المشروع','الخدمة','التقرير المرتبط','التقييم','ملاحظة العميل','تحتاج متابعة','الحالة'], ...filteredRatings().map(r=>[fmtDate(r.rating_date||r.created_at),r.project_name||pName(r.project_id),r.service_name||r.service_type||'',r.report_id||'',r.rating||r.score||'',r.comment||r.notes||'',r.need_followup||r.needs_follow_up?'نعم':'لا',r.status||''])]; }
+  function alertsRows(){ const rows=[['نوع التنبيه','العنصر','الأهمية','الملاحظة']]; A(D().projects).filter(p=>!p.supervisor_id).forEach(p=>rows.push(['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف'])); A(D().workers).filter(w=>!w.supervisor_id&&!w.assigned_supervisor_id).forEach(w=>rows.push(['عامل بدون مشرف',w.name||w.full_name,'عادي','يحتاج ربط مشرف'])); A(D().logs).filter(l=>l.check_in&&!l.check_out).forEach(l=>rows.push(['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)])); filteredTickets().filter(t=>!['closed','done','مغلق'].includes(S(t.status).toLowerCase())).forEach(t=>rows.push(['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||''])); return rows; }
+  function usersRows(){ return [['الاسم','اسم المستخدم','الدور','الحالة','المشرف المرتبط','ملاحظات'], ...A(D().users).map(u=>[u.full_name||u.name,u.username||'',u.role||'',u.status||'',sName(u.supervisor_id||u.linked_supervisor_id),u.notes||''])]; }
+  function suppliersRows(){ return [['المورد','الجوال','العنوان','الحالة','ملاحظات'], ...A(D().suppliers||D().inventorySuppliers).map(s=>[s.name||s.supplier_name,s.phone||s.mobile||'',s.address||'',s.status||'',s.notes||''])]; }
+  function exportSheetsV227(){ const f=currentExportFilters(); const sub=`شركة تصنيف لإدارة المرافق - تاريخ التصدير ${fmtDate(new Date())} - الشهر: ${f.month||'كل الأشهر'} - المشرف: ${f.supervisor?sName(f.supervisor):'كل المشرفين'} - المشروع: ${f.project?pName(f.project):'كل المشاريع'}`; return [
+    sheetXml('الملخص التنفيذي',executiveRows(),{title:'الملخص التنفيذي للاجتماع',subtitle:sub}),
+    sheetXml('المشاريع',projectsRows(),{title:'المشاريع - كل التفاصيل',subtitle:sub}),
+    sheetXml('المستخدمون',usersRows(),{title:'المستخدمون والصلاحيات الأساسية',subtitle:sub}),
+    sheetXml('المشرفون',supervisorsRows(),{title:'المشرفون',subtitle:sub}),
+    sheetXml('العمال',workersRows(),{title:'العمال بدون تكرار',subtitle:sub}),
+    sheetXml('السجلات اليومية',logsRows(),{title:'السجلات اليومية',subtitle:sub}),
+    sheetXml('الحضور والغياب',attendanceRows(),{title:'الحضور والغياب',subtitle:sub}),
+    sheetXml('الأوقات الشهرية',monthlyRows(),{title:'الأوقات الشهرية',subtitle:sub}),
+    sheetXml('التكتات',ticketsRows(),{title:'التكتات',subtitle:sub}),
+    sheetXml('المخزون',inventoryRows(),{title:'المخزون',subtitle:sub}),
+    sheetXml('حركة المخزون',movementRows(),{title:'حركة المخزون',subtitle:sub}),
+    sheetXml('دفعات FIFO',fifoRows(),{title:'دفعات الشراء وأسعارها الحقيقية FIFO',subtitle:sub}),
+    sheetXml('الموردون',suppliersRows(),{title:'الموردون',subtitle:sub}),
+    sheetXml('المصروفات',expensesRows(),{title:'المصروفات',subtitle:sub}),
+    sheetXml('تقارير العملاء',clientReportsRows(),{title:'تقارير العملاء',subtitle:sub}),
+    sheetXml('تقييمات العملاء',ratingsRows(),{title:'تقييمات العملاء',subtitle:sub}),
+    sheetXml('التنبيهات',alertsRows(),{title:'التنبيهات',subtitle:sub})
+  ]; }
+  async function ensureExportData(){ try{ if(typeof refreshAll==='function') await refreshAll(); }catch(e){} try{ if(typeof financeLoadAll==='function') await financeLoadAll(false); }catch(e){} try{ if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(e){} }
+  window.exportMeetingExcelV227 = async function(btn){ try{ if(btn) btn.disabled=true; await ensureExportData(); const f=currentExportFilters(); downloadFile(`تقرير اجتماع تصنيف الشامل - ${f.month||today().slice(0,7)}.xls`, workbookXml(exportSheetsV227())); if(typeof msg==='function') msg('تم تنزيل ملف الاجتماع الشامل بكل تفاصيل التبويبات','ok'); } catch(e){ console.error(e); if(typeof msg==='function') msg(e.message||'تعذر التصدير','err'); alert(e.message||'تعذر التصدير'); } finally{ if(btn) btn.disabled=false; } };
+  window.exportMeetingExcelV223 = window.exportMeetingExcelV227;
+  window.exportMeetingExcelV222 = window.exportMeetingExcelV227;
+  window.exportMeetingExcelV221 = window.exportMeetingExcelV227;
+  function cleanupDuplicateBatchBlocks(){ document.querySelectorAll('#purchaseBatchesV208').forEach(x=>x.remove()); }
+  const oldOpen=window.inventoryOpenItemSmart || window.v118ShowProductDetail;
+  if(typeof oldOpen==='function'){
+    window.inventoryOpenItemSmart=function(id){ const r=oldOpen(id); setTimeout(cleanupDuplicateBatchBlocks,80); setTimeout(cleanupDuplicateBatchBlocks,500); return r; };
+    window.v118ShowProductDetail=window.inventoryOpenItemSmart;
+  }
+  function boot(){ cleanupDuplicateBatchBlocks(); document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent=VERSION); document.querySelectorAll('script[src*="app.js?v="]').forEach(()=>{}); }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:250)));
+  setInterval(cleanupDuplicateBatchBlocks,1600);
+  setTimeout(boot,1200);
+  console.log('Tasneef V227 export complete + product detail cleanup loaded');
 })();
