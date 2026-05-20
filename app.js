@@ -16755,3 +16755,149 @@ function financePrintReport(kind){
   window.addEventListener('load',()=>setTimeout(boot,1000)); setTimeout(boot,1600);
   console.log('Tasneef V232 project/supervisor settlement loaded');
 })();
+
+
+/* ===== TASNEEF V233: settlement filters supervisor -> projects ===== */
+(function(){
+  const byId=id=>document.getElementById(id);
+  const A=v=>Array.isArray(v)?v:[];
+  const D=()=> (typeof data!=='undefined'?data:(window.data||{}));
+  const N=v=>Number(v||0)||0;
+  const T=()=>new Date().toISOString().slice(0,10);
+  const E=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const Q=v=>{ const n=N(v); return Number.isInteger(n)?String(n):n.toFixed(2); };
+  const U=()=> (typeof session==='function' ? (session()||{}) : (window.currentUser||{}));
+  const msgSafe=(t,k)=> typeof window.msg==='function' ? window.msg(t,k) : alert(t);
+  const SB=()=> window.sb || window.supabaseClient || window.supabase;
+  function item(id){ return A(D().inventoryItems).find(i=>String(i.id)===String(id)) || {}; }
+  function pName(id){ try{return (typeof projectName==='function'?projectName(id):'')||A(D().projects).find(p=>String(p.id)===String(id))?.name||'';}catch(e){return '';} }
+  function sName(id){ try{return (typeof supervisorName==='function'?supervisorName(id):'')||A(D().supervisors).find(s=>String(s.id)===String(id))?.full_name||A(D().supervisors).find(s=>String(s.id)===String(id))?.name||'';}catch(e){return '';} }
+  function code(it){ try{return (typeof v118ProductCode==='function'?v118ProductCode(it):'') || it.product_code || it.serial_number || ('INV-'+(it.id||''));}catch(e){return it.product_code||it.serial_number||'';} }
+  function barcode(it){ return it.supplier_barcode || it.barcode || it.supplier_code || ''; }
+  function supervisorIdOfProject(pid){ return A(D().projects).find(p=>String(p.id)===String(pid))?.supervisor_id || ''; }
+  function parseLines(r){
+    let raw=r?.request_items || r?.items || r?.request_lines || [];
+    if(typeof raw==='string'){ try{ raw=JSON.parse(raw); }catch(e){ raw=[]; } }
+    if(!Array.isArray(raw)) raw=[];
+    if(!raw.length && r?.item_id) raw=[{item_id:r.item_id,item_name:r.item_name,quantity:r.quantity,unit_cost:r.unit_cost}];
+    return raw.map(l=>{ const it=item(l.item_id); let allocations=l.settlement_allocations||l.allocations||[]; if(typeof allocations==='string'){try{allocations=JSON.parse(allocations)}catch(e){allocations=[]}} if(!Array.isArray(allocations)) allocations=[]; return {
+      ...l,item_id:l.item_id||l.id,item_name:l.item_name||l.name||it.name||'',quantity:N(l.quantity),unit:l.unit||it.unit||'',unit_cost:N(l.unit_cost||l.unit_price||it.unit_cost||0),product_code:l.product_code||code(it),barcode:l.barcode||barcode(it),consumed_qty:l.consumed_qty===''||l.consumed_qty==null?null:N(l.consumed_qty),returned_qty:N(l.returned_qty),settlement_allocations:allocations,settlement_note:l.settlement_note||''
+    }}).filter(l=>l.item_id && l.quantity>0);
+  }
+  function returnQty(requestId,itemId){ return A(D().inventoryMovements).filter(m=>String(m.request_id||'')===String(requestId||'') && String(m.item_id||'')===String(itemId||'') && /return|مرتجع/.test(String(m.movement_type||''))).reduce((a,m)=>a+N(m.quantity),0); }
+  function supervisorOptions(selected){
+    const opts=['<option value="">اختر المشرف</option>'];
+    A(D().supervisors).forEach(s=>opts.push(`<option value="${E(s.id)}" ${String(s.id)===String(selected)?'selected':''}>${E(s.full_name||s.name||'')}</option>`));
+    return opts.join('');
+  }
+  function projectOptionsBySupervisor(selected, sid){
+    const opts=['<option value="">اختر المشروع</option>'];
+    let projects=A(D().projects);
+    if(sid) projects=projects.filter(p=>String(p.supervisor_id||'')===String(sid));
+    projects.forEach(p=>opts.push(`<option value="${E(p.id)}" ${String(p.id)===String(selected)?'selected':''}>${E(p.name||'')}</option>`));
+    return opts.join('');
+  }
+  function allocationsForLine(l,r){
+    const a=A(l.settlement_allocations).filter(x=>N(x.consumed_qty||x.qty)>0 || x.project_id || x.supervisor_id || x.receiver_name || x.name);
+    if(a.length) return a.map(x=>{ let sid=x.supervisor_id||supervisorIdOfProject(x.project_id)||r.supervisor_id||''; return {project_id:x.project_id||r.project_id||'',project_name:x.project_name||pName(x.project_id)||r.project_name||pName(r.project_id)||'',supervisor_id:sid,supervisor_name:x.supervisor_name||sName(sid)||r.supervisor_name||sName(r.supervisor_id)||'',receiver_name:x.receiver_name||x.name||'',consumed_qty:N(x.consumed_qty||x.qty),note:x.note||''}; });
+    const oldConsumed=l.consumed_qty==null?Math.max(0,N(l.quantity)-Math.max(N(l.returned_qty),returnQty(r.id,l.item_id))):N(l.consumed_qty);
+    return [{project_id:r.project_id||'',project_name:r.project_name||pName(r.project_id)||'',supervisor_id:r.supervisor_id||supervisorIdOfProject(r.project_id)||'',supervisor_name:r.supervisor_name||sName(r.supervisor_id)||'',receiver_name:r.supervisor_name||sName(r.supervisor_id)||'',consumed_qty:oldConsumed,note:l.settlement_note||''}];
+  }
+  function ensureStyle(){
+    let st=byId('v233SettlementStyle'); if(st) return;
+    st=document.createElement('style'); st.id='v233SettlementStyle'; st.textContent=`
+      .v233-backdrop{position:fixed;inset:0;background:rgba(0,38,31,.58);z-index:10070;display:grid;place-items:center;padding:18px;backdrop-filter:blur(4px)}
+      .v233-modal{width:min(1180px,96vw);max-height:92vh;overflow:auto;background:#fff;border-radius:24px;border:1px solid #cfe2dc;box-shadow:0 28px 70px rgba(0,0,0,.3);direction:rtl;color:#10231d}
+      .v233-head{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;gap:10px;align-items:center;background:linear-gradient(135deg,#0A4033,#0e6a54);color:#fff;padding:16px 20px}.v233-head h2{margin:0;color:white}.v233-head p{margin:4px 0 0;color:#eaf6f1}
+      .v233-body{padding:18px}.v233-summary{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin-bottom:14px}.v233-summary div{background:#f6faf8;border:1px solid #dbeae5;border-radius:14px;padding:10px}.v233-summary small{display:block;color:#6b7b75}
+      .v233-note{background:#fff8e6;border:1px solid #f2d58b;color:#5b4300;border-radius:12px;padding:10px;margin-bottom:12px}.v233-item{border:1px solid #dbeae5;border-radius:16px;margin:12px 0;overflow:hidden;background:#fbfefd}.v233-item-head{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#f0f7f4;padding:10px 12px}.v233-item-head b{font-size:15px}
+      .v233-table-wrap{overflow-x:auto}.v233-item table{width:100%;border-collapse:collapse;min-width:860px}.v233-item th{background:#0A4033;color:#fff}.v233-item td,.v233-item th{border:1px solid #d8e6e1;padding:8px;text-align:center;vertical-align:middle}.v233-item input,.v233-item select{width:100%;height:42px;border:1px solid #cfded8;border-radius:10px;padding:8px;background:#fff}.v233-project,.v233-supervisor{min-width:160px}.v233-receiver{min-width:170px}.v233-consumed{max-width:120px}.v233-return{font-weight:800;color:#0A4033}.v233-actions{position:sticky;bottom:0;background:#fff;border-top:1px solid #e1ece8;padding:12px 18px;display:flex;gap:8px;justify-content:flex-start}.v233-actions button,.v233-head button,.v233-add{border:0;border-radius:12px;padding:10px 14px;background:#0A4033;color:#fff;cursor:pointer}.v233-actions .light,.v233-head .light,.v233-item .light{background:#eef6f3;color:#0A4033}.v233-del{background:#c92d2d!important;color:#fff!important}.v233-warn{color:#b23b00;font-weight:700}`;
+    document.head.appendChild(st);
+  }
+  function allocationRowHtml(itemIdx,alloc){
+    let sid=alloc.supervisor_id||supervisorIdOfProject(alloc.project_id)||'';
+    return `<tr class="v233-alloc-row" data-item="${itemIdx}">
+      <td><select class="v233-supervisor" onchange="inventorySettlementV233SupervisorChanged(this,${itemIdx})">${supervisorOptions(sid)}</select></td>
+      <td><select class="v233-project" onchange="inventorySettlementV233ProjectChanged(this,${itemIdx})">${projectOptionsBySupervisor(alloc.project_id,sid)}</select></td>
+      <td><input class="v233-receiver" placeholder="اسم المستلم / العامل / الموقع" value="${E(alloc.receiver_name||'')}"></td>
+      <td><input class="v233-consumed" type="number" step="0.01" min="0" value="${Q(alloc.consumed_qty)}" oninput="inventorySettlementV233Recalc(${itemIdx})"></td>
+      <td><input class="v233-note-input" placeholder="ملاحظة الاستخدام" value="${E(alloc.note||'')}"></td>
+      <td><button type="button" class="v233-del" onclick="inventorySettlementV233RemoveRow(this,${itemIdx})">حذف</button></td>
+    </tr>`;
+  }
+  window.inventoryOpenSettlementModal=function(id){
+    ensureStyle();
+    const r=A(D().inventoryRequests).find(x=>String(x.id)===String(id)); if(!r) return msgSafe('الطلب غير موجود','err');
+    const lines=parseLines(r); if(!lines.length) return msgSafe('لا توجد أصناف للتسوية','err');
+    byId('v231SettlementBackdrop')?.remove(); byId('v232SettlementBackdrop')?.remove(); byId('v233SettlementBackdrop')?.remove();
+    const blocks=lines.map((l,idx)=>{ const issued=N(l.quantity); const allocs=allocationsForLine(l,r); const rows=allocs.map(a=>allocationRowHtml(idx,a)).join(''); const total=allocs.reduce((s,a)=>s+N(a.consumed_qty),0); const returned=Math.max(0,issued-total); return `<section class="v233-item" data-idx="${idx}" data-issued="${issued}"><div class="v233-item-head"><div><b>${E(l.product_code||'')} ${E(l.item_name)}</b><br><small>المصروف: <b>${Q(issued)}</b> ${E(l.unit||'')}</small></div><div>المرتجع تلقائيًا: <span class="v233-return" data-return="${idx}">${Q(returned)}</span></div><button type="button" class="v233-add" onclick="inventorySettlementV233AddRow(${idx})">+ إضافة توزيع</button></div><div class="v233-table-wrap"><table><thead><tr><th>المشرف</th><th>المشروع</th><th>الاسم / الموقع</th><th>المستهلك</th><th>ملاحظة</th><th>إجراء</th></tr></thead><tbody>${rows}</tbody></table></div><div class="v233-warn" data-warn="${idx}" style="padding:8px 12px;display:none"></div></section>`; }).join('');
+    const div=document.createElement('div'); div.id='v233SettlementBackdrop'; div.className='v233-backdrop'; div.innerHTML=`<div class="v233-modal"><div class="v233-head"><div><h2>تسوية صرف اليوم</h2><p>اختر المشرف أولًا، ثم تظهر مشاريعه فقط. يمكنك توزيع الصنف على أكثر من مشروع.</p></div><button class="light" onclick="document.getElementById('v233SettlementBackdrop')?.remove()">إغلاق</button></div><div class="v233-body"><div class="v233-summary"><div><small>رقم الطلب</small><b>REQ-${E(r.id)}</b></div><div><small>المشروع الأساسي</small><b>${E(r.project_name||pName(r.project_id)||'-')}</b></div><div><small>الطالب</small><b>${E(r.supervisor_name||sName(r.supervisor_id)||'-')}</b></div><div><small>الحالة</small><b>${E(window.inventoryRequestStatusText?window.inventoryRequestStatusText(r.status):(r.status||'-'))}</b></div></div><div class="v233-note">القاعدة: اختر المشرف ← تظهر مشاريعه فقط. مجموع المستهلك على المشاريع + المرتجع التلقائي = المصروف.</div>${blocks}</div><div class="v233-actions"><button onclick="inventorySaveSettlement('${E(r.id)}',this)">اعتماد التسوية</button><button class="light" onclick="document.getElementById('v233SettlementBackdrop')?.remove()">إلغاء</button></div></div>`;
+    document.body.appendChild(div); lines.forEach((_,idx)=>window.inventorySettlementV233Recalc(idx));
+  };
+  window.inventorySettlementV233SupervisorChanged=function(sel,idx){
+    const row=sel.closest('tr'); if(!row) return;
+    const sid=sel.value||''; const projectSel=row.querySelector('.v233-project');
+    const old=projectSel?.value||''; if(projectSel){ projectSel.innerHTML=projectOptionsBySupervisor('',sid); if(old && A(D().projects).some(p=>String(p.id)===String(old)&&(!sid||String(p.supervisor_id||'')===String(sid)))) projectSel.value=old; }
+    window.inventorySettlementV233Recalc(idx);
+  };
+  window.inventorySettlementV233ProjectChanged=function(sel,idx){
+    const row=sel.closest('tr'); if(!row) return;
+    const pid=sel.value||''; const sid=supervisorIdOfProject(pid); const sup=row.querySelector('.v233-supervisor');
+    if(pid && sid && sup && String(sup.value||'')!==String(sid)){ sup.value=sid; sel.innerHTML=projectOptionsBySupervisor(pid,sid); sel.value=pid; }
+    window.inventorySettlementV233Recalc(idx);
+  };
+  window.inventorySettlementV233AddRow=function(idx){
+    const sec=document.querySelector(`.v233-item[data-idx="${idx}"]`); if(!sec) return;
+    sec.querySelector('tbody')?.insertAdjacentHTML('beforeend',allocationRowHtml(idx,{project_id:'',supervisor_id:'',receiver_name:'',consumed_qty:0,note:''}));
+    window.inventorySettlementV233Recalc(idx);
+  };
+  window.inventorySettlementV233RemoveRow=function(btn,idx){ btn.closest('tr')?.remove(); window.inventorySettlementV233Recalc(idx); };
+  window.inventorySettlementV233Recalc=function(idx){
+    const sec=document.querySelector(`.v233-item[data-idx="${idx}"]`); if(!sec) return;
+    const issued=N(sec.dataset.issued); const sum=[...sec.querySelectorAll('.v233-consumed')].reduce((a,i)=>a+N(i.value),0); const ret=issued-sum;
+    const retEl=sec.querySelector(`[data-return="${idx}"]`); if(retEl) retEl.textContent=Q(Math.max(0,ret));
+    const warn=sec.querySelector(`[data-warn="${idx}"]`); if(warn){ if(ret<-.001){ warn.style.display='block'; warn.textContent='المستهلك أكبر من المصروف. خفّض الكميات.'; } else { warn.style.display='none'; warn.textContent=''; } }
+  };
+  async function updateItemQty(itemId,newQty){ const s=SB(); return s.from('inventory_items').update({quantity:newQty}).eq('id',itemId); }
+  window.inventorySaveSettlement=async function(id,btn){
+    const s=SB();
+    try{
+      if(btn) btn.disabled=true;
+      const req=A(D().inventoryRequests).find(x=>String(x.id)===String(id)); if(!req) throw new Error('الطلب غير موجود');
+      const lines=parseLines(req); const sections=[...document.querySelectorAll('#v233SettlementBackdrop .v233-item')];
+      const newLines=[]; const returnMovements=[]; let totalConsumed=0,totalReturned=0;
+      for(const sec of sections){
+        const idx=Number(sec.dataset.idx); const l=lines[idx]; if(!l) continue;
+        const issued=N(l.quantity); const allocations=[];
+        [...sec.querySelectorAll('.v233-alloc-row')].forEach(row=>{
+          const sid=row.querySelector('.v233-supervisor')?.value || '';
+          const pid=row.querySelector('.v233-project')?.value || '';
+          const consumed=N(row.querySelector('.v233-consumed')?.value);
+          if(consumed<=0) return;
+          const receiver=row.querySelector('.v233-receiver')?.value||'';
+          const note=row.querySelector('.v233-note-input')?.value||'';
+          allocations.push({project_id:pid,project_name:pName(pid),supervisor_id:sid||supervisorIdOfProject(pid),supervisor_name:sName(sid||supervisorIdOfProject(pid)),receiver_name:receiver,consumed_qty:consumed,note});
+        });
+        const consumed=allocations.reduce((a,x)=>a+N(x.consumed_qty),0); const returned=Math.max(0,issued-consumed);
+        if(consumed-issued>0.001) throw new Error('مجموع المستهلك أكبر من المصروف للصنف: '+l.item_name);
+        newLines.push({...l,consumed_qty:consumed,returned_qty:returned,settlement_allocations:allocations,settlement_cost_center_id:'',settlement_cost_center_name:'',settlement_note:allocations.map(a=>[a.project_name,a.supervisor_name,a.receiver_name,a.note].filter(Boolean).join(' / ')).join(' | ')});
+        totalConsumed+=consumed; totalReturned+=returned;
+        const oldRet=Math.max(N(l.returned_qty),returnQty(req.id,l.item_id)); const extraRet=Math.max(0,returned-oldRet);
+        if(extraRet>0) returnMovements.push({line:l,qty:extraRet,note:'مرتجع تلقائي بعد توزيع التسوية'});
+      }
+      for(const x of returnMovements){
+        const it=item(x.line.item_id);
+        const mv={item_id:Number(x.line.item_id),item_name:x.line.item_name,movement_type:'return',quantity:x.qty,movement_date:T(),project_id:null,project_name:'مرتجع للمخزون',receiver:req.supervisor_name||sName(req.supervisor_id),reason:'مرتجع بعد تسوية أمر REQ-'+req.id,notes:x.note||req.reason||'',request_id:Number(req.id),product_code:x.line.product_code||code(it),barcode:x.line.barcode||barcode(it),unit_cost:N(x.line.unit_cost||it.unit_cost)};
+        const ins=await s.from('inventory_movements').insert(mv); if(ins.error) throw ins.error;
+        const upd=await updateItemQty(x.line.item_id,N(it.quantity)+x.qty); if(upd.error) throw upd.error;
+      }
+      const log=Array.isArray(req.approval_log)?req.approval_log:[]; const u=U(); log.push({step:'settlement',role:'تسوية الصرف حسب المشرف والمشروع',by:u.full_name||u.username||'النظام',at:new Date().toISOString(),consumed:totalConsumed,returned:totalReturned});
+      const upd=await s.from('inventory_requests').update({status:'approved',current_step:'done',request_items:newLines,items:newLines,approval_log:log,return_items:newLines.filter(x=>N(x.returned_qty)>0).map(x=>({item_id:x.item_id,item_name:x.item_name,quantity:N(x.returned_qty)})),has_return:totalReturned>0,return_updated_at:new Date().toISOString()}).eq('id',id);
+      if(upd.error) throw upd.error;
+      byId('v233SettlementBackdrop')?.remove(); msgSafe('تم اعتماد التسوية: المستهلك '+Q(totalConsumed)+' والمرتجع '+Q(totalReturned));
+      if(typeof financeLoadAll==='function') await financeLoadAll();
+    }catch(e){ msgSafe(e.message||String(e),'err'); }
+    finally{ if(btn) btn.disabled=false; }
+  };
+  console.log('Tasneef V233 settlement filters loaded');
+})();
