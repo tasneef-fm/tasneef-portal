@@ -14282,10 +14282,10 @@ function financePrintReport(kind){
   console.log('Tasneef V215 client reports project filter fix loaded');
 })();
 
-/* ===== V216: Fix client reports empty table + robust monthly grouping/filter + update UI version ===== */
+/* ===== V217: Fix client reports empty table + robust monthly grouping/filter + update UI version ===== */
 (function(){
-  if(window.__tasneefV216ClientReportsVisible) return;
-  window.__tasneefV216ClientReportsVisible = true;
+  if(window.__tasneefV217ClientReportsVisible) return;
+  window.__tasneefV217ClientReportsVisible = true;
   const $ = (id)=>document.getElementById(id);
   const S = (v)=>String(v??'').trim();
   const E = (v)=>S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -14340,7 +14340,7 @@ function financePrintReport(kind){
   function updateClientReportsTitle(){
     document.querySelectorAll('#clientReports h2,#clientReports h3').forEach(h=>{
       const t=S(h.textContent);
-      if(t.includes('بوابة تقارير العملاء') || t.includes('تقارير العملاء - V213')) h.textContent='تقارير العملاء - V216';
+      if(t.includes('بوابة تقارير العملاء') || t.includes('تقارير العملاء - V213')) h.textContent='تقارير العملاء - V217';
     });
   }
   function groupReports(list){
@@ -14424,5 +14424,266 @@ function financePrintReport(kind){
   if(typeof oldShow==='function') window.showPage=function(page,btn){ const r=oldShow.apply(this,arguments); if(page==='clientReports') setTimeout(()=>{try{renderPremiumReports();}catch(e){console.warn(e)}},200); return r; };
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{try{renderPremiumReports();}catch(e){}},ev==='load'?1300:500)));
   setTimeout(()=>{try{renderPremiumReports();}catch(e){}},2200);
-  console.log('Tasneef V216 client reports table visibility fix loaded');
+  console.log('Tasneef V217 client reports table visibility fix loaded');
+})();
+
+/* ===== V217: Reports depend on CURRENT project supervisor only =====
+   - Ticket PDF/report grouping and supervisor filter use project.supervisor_id now.
+   - "رفع بواسطة" remains visible as information only.
+   - Keeps client/project official names unchanged for customer-facing reports.
+*/
+(function(){
+  'use strict';
+  if(window.__tasneefV217CurrentSupervisorReports) return;
+  window.__tasneefV217CurrentSupervisorReports = true;
+  window.TASNEEF_BUILD = 'V217_CURRENT_PROJECT_SUPERVISOR_REPORTS_2026_05_20';
+  const S=v=>String(v??'').trim();
+  const A=v=>Array.isArray(v)?v:[];
+  const $=id=>document.getElementById(id);
+  const E=v=>S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const say=(t,type)=>{ try{ if(typeof msg==='function') msg(t,type); else alert(t); }catch(_){ alert(t); } };
+  const todayIso=()=>new Date().toISOString().slice(0,10);
+  const dateOnly=v=>S(v).slice(0,10)||'-';
+  const ticketNo=t=>S(t?.ticket_number)||('T-'+S(t?.id||0).padStart(4,'0'));
+  const statusText=s=>S(s)==='closed'?'مغلق':(S(s)==='processing'?'تحت المعالجة':'مفتوح');
+  const priorityText=p=>S(p)==='urgent'?'عاجل':(S(p)==='high'?'مهم':(S(p)==='low'?'منخفض':'عادي'));
+  function findProjectById(id){ return A(window.data?.projects).find(p=>S(p.id)===S(id)); }
+  function userName(id){
+    const u=A(window.data?.users||window.data?.appUsers).find(x=>S(x.id)===S(id)||S(x.username)===S(id));
+    return u?S(u.full_name||u.name||u.username):(S(id)||'-');
+  }
+  function projectOfficialName(pid){
+    const p=findProjectById(pid);
+    if(p) return S(p.official_name||p.client_name||p.display_name||p.name)||'-';
+    try{ if(typeof projectName==='function') return S(projectName(pid))||'-'; }catch(_){ }
+    return '-';
+  }
+  function supervisorNameSafe(id){
+    try{ if(typeof supervisorName==='function') return S(supervisorName(id))||'-'; }catch(_){ }
+    return userName(id);
+  }
+  function currentSupervisorIdForTicket(t){
+    const p=findProjectById(t?.project_id);
+    return S(p?.supervisor_id || t?.current_supervisor_id || t?.project_supervisor_id || t?.supervisor_id || '');
+  }
+  function currentSupervisorNameForTicket(t){
+    const sid=currentSupervisorIdForTicket(t);
+    return sid ? supervisorNameSafe(sid) : 'بدون مشرف حالي';
+  }
+  function raisedBy(t){
+    return S(t?.created_by_name||t?.created_by_full_name||t?.raised_by_name||t?.created_user_name||t?.creator_name||t?.created_by_username) || userName(t?.created_by||t?.raised_by||t?.user_id||t?.created_user_id||t?.created_by_id);
+  }
+  function selectedVal(ids){ for(const id of ids){ const v=S($(id)?.value); if(v) return v; } return ''; }
+  function listByCurrentFiltersV217(){
+    let list=A(window.data?.tickets).slice();
+    const status=selectedVal(['ticketFilterStatus','supTicketFilterStatus','ticketStatusFilter','ticketsStatusFilter']);
+    const project=selectedVal(['ticketFilterProject','supTicketFilterProject','ticketsProjectFilter']);
+    const supervisor=selectedVal(['ticketFilterSupervisor','supTicketFilterSupervisor','ticketsSupervisorFilter']);
+    const from=selectedVal(['ticketFilterFrom','supTicketFilterFrom','ticketsFromFilter']);
+    const to=selectedVal(['ticketFilterTo','supTicketFilterTo','ticketsToFilter']);
+    const search=S($('ticketSearch')?.value||$('supTicketSearch')?.value||$('ticketsSearch')?.value||'').toLowerCase();
+    if(status) list=list.filter(t=>S(t.status||'open')===status);
+    if(project) list=list.filter(t=>S(t.project_id)===project);
+    // المهم: فلتر المشرف يعتمد على المشرف الحالي للمشروع، وليس مشرف السجل القديم.
+    if(supervisor) list=list.filter(t=>S(currentSupervisorIdForTicket(t))===S(supervisor));
+    if(from) list=list.filter(t=>dateOnly(t.created_at)>=from);
+    if(to) list=list.filter(t=>dateOnly(t.created_at)<=to);
+    if(search){
+      list=list.filter(t=>[
+        ticketNo(t), t.title, t.description, projectOfficialName(t.project_id),
+        currentSupervisorNameForTicket(t), raisedBy(t), statusText(t.status), priorityText(t.priority)
+      ].join(' ').toLowerCase().includes(search));
+    }
+    return list.sort((a,b)=> currentSupervisorNameForTicket(a).localeCompare(currentSupervisorNameForTicket(b),'ar') || projectOfficialName(a.project_id).localeCompare(projectOfficialName(b.project_id),'ar') || (Date.parse(b.created_at||'')||0)-(Date.parse(a.created_at||'')||0));
+  }
+  function filtersLabelV217(){
+    const parts=[];
+    const status=selectedVal(['ticketFilterStatus','supTicketFilterStatus','ticketStatusFilter','ticketsStatusFilter']);
+    const project=selectedVal(['ticketFilterProject','supTicketFilterProject','ticketsProjectFilter']);
+    const supervisor=selectedVal(['ticketFilterSupervisor','supTicketFilterSupervisor','ticketsSupervisorFilter']);
+    const from=selectedVal(['ticketFilterFrom','supTicketFilterFrom','ticketsFromFilter']);
+    const to=selectedVal(['ticketFilterTo','supTicketFilterTo','ticketsToFilter']);
+    if(status) parts.push('الحالة: '+statusText(status));
+    if(project) parts.push('المشروع: '+projectOfficialName(project));
+    if(supervisor) parts.push('المشرف الحالي: '+supervisorNameSafe(supervisor));
+    if(from) parts.push('من: '+from);
+    if(to) parts.push('إلى: '+to);
+    return parts.length?parts.join(' | '):'جميع التكتات حسب الفلاتر الحالية';
+  }
+  function groupByCurrentSupervisor(list){
+    const map=new Map();
+    list.forEach(t=>{
+      const key=currentSupervisorIdForTicket(t)||'none';
+      if(!map.has(key)) map.set(key,{name:currentSupervisorNameForTicket(t),rows:[]});
+      map.get(key).rows.push(t);
+    });
+    return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  }
+  function reportStyle(){ return `<style>
+    @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;background:#f4f7f6;color:#153d32;font-family:Tahoma,Arial,sans-serif;direction:rtl;-webkit-print-color-adjust:exact;print-color-adjust:exact}.v217-report{background:#fff;width:1320px;max-width:100%;margin:0 auto;padding:22px;color:#153d32}.v217-head{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0b5b49;padding-bottom:14px;margin-bottom:14px}.v217-brand{display:flex;align-items:center;gap:12px}.v217-brand img{width:72px;height:72px;border:1px solid #d7e6e1;border-radius:16px;object-fit:contain;padding:7px;background:#fff}.v217-brand h1{margin:0 0 5px;color:#0b5b49;font-size:28px}.v217-brand p{margin:3px 0;color:#647970;font-size:13px}.v217-company{font-weight:900;color:#0b5b49;font-size:18px;text-align:left}.v217-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0 16px}.v217-kpis div{border:1px solid #cfe2da;background:#f3faf7;border-radius:14px;padding:10px}.v217-kpis small{display:block;color:#657972;margin-bottom:5px}.v217-kpis b{font-size:22px;color:#062f27}.v217-section{break-inside:avoid;page-break-inside:avoid;border:1px solid #cadbd4;border-radius:13px;overflow:hidden;margin:14px 0}.v217-section-title{background:#0b5b49;color:#fff;padding:10px 13px;font-weight:900;display:flex;justify-content:space-between;font-size:16px}.v217-table{width:100%;border-collapse:collapse;font-size:11px}.v217-table th,.v217-table td{border:1px solid #d6e2df;padding:7px;text-align:right;vertical-align:top}.v217-table th{background:#eaf2f6;color:#143d32}.v217-table tr:nth-child(even) td{background:#f7fafb}.v217-desc{white-space:pre-wrap;line-height:1.45;max-width:330px}.v217-pill{background:#eaf7f1;border:1px solid #cbe3d7;border-radius:999px;padding:3px 8px;font-weight:800;display:inline-block}.v217-empty{border:1px dashed #cbded6;border-radius:13px;padding:26px;text-align:center;color:#647970;background:#fff}.v217-footer{text-align:center;border-top:1px solid #d6e2df;margin-top:16px;padding-top:9px;color:#73847e;font-size:12px}@media print{html,body{background:#fff}.v217-report{width:auto;padding:0}.v217-section{page-break-inside:avoid}}
+  </style>`; }
+  function reportBody(list,title){
+    const groups=groupByCurrentSupervisor(list);
+    const sections=groups.map(g=>`<section class="v217-section"><div class="v217-section-title"><span>المشرف الحالي: ${E(g.name)}</span><span>${g.rows.length} تكت</span></div><table class="v217-table"><thead><tr><th>#</th><th>رقم التكت</th><th>المشروع</th><th>العنوان / الوصف</th><th>الحالة</th><th>الأولوية</th><th>رفع بواسطة</th><th>استلام / إغلاق</th><th>التاريخ</th></tr></thead><tbody>${g.rows.map((t,i)=>`<tr><td>${i+1}</td><td><b>${E(ticketNo(t))}</b></td><td>${E(projectOfficialName(t.project_id))}</td><td class="v217-desc"><b>${E(t.title||'-')}</b><br>${E(t.description||'-')}</td><td><span class="v217-pill">${E(statusText(t.status))}</span></td><td>${E(priorityText(t.priority))}</td><td>${E(raisedBy(t))}</td><td>استلم: ${E(t.claimed_by_name||userName(t.claimed_by)||'-')}<br>أغلق: ${E(t.closed_by_name||userName(t.closed_by)||'-')}${t.closure_note?`<br>الحل: ${E(t.closure_note)}`:''}</td><td>${E(dateOnly(t.created_at))}</td></tr>`).join('')}</tbody></table></section>`).join('') || '<div class="v217-empty">لا توجد تكتات مطابقة للفلاتر الحالية</div>';
+    return `<div class="v217-report" dir="rtl"><div class="v217-head"><div class="v217-brand"><img src="tasneef_logo_print.png" onerror="this.style.display='none'"><div><h1>${E(title)}</h1><p>${E(filtersLabelV217())}</p><p>تاريخ التصدير: ${E(new Date().toLocaleString('ar-SA'))}</p></div></div><div class="v217-company">شركة تصنيف لإدارة المرافق</div></div><div class="v217-kpis"><div><small>إجمالي التكتات</small><b>${list.length}</b></div><div><small>مفتوح</small><b>${list.filter(t=>S(t.status||'open')==='open').length}</b></div><div><small>تحت المعالجة</small><b>${list.filter(t=>S(t.status)==='processing').length}</b></div><div><small>مغلق</small><b>${list.filter(t=>S(t.status)==='closed').length}</b></div></div>${sections}<div class="v217-footer">يعتمد ترتيب التقرير على المشرف الحالي للمشروع، مع إظهار من رفع التكت داخل التفاصيل.</div></div>`;
+  }
+  function fullHtml(list,title){ return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(title)}</title>${reportStyle()}</head><body>${reportBody(list,title)}</body></html>`; }
+  function ensureModal(){
+    let modal=document.getElementById('ticketPdfSmartModalV217'); if(modal) return modal;
+    const style=document.createElement('style'); style.id='ticketPdfSmartModalCssV217'; style.textContent=`#ticketPdfSmartModalV217{position:fixed;inset:0;background:rgba(0,0,0,.48);z-index:999999;display:flex;align-items:center;justify-content:center;padding:18px;direction:rtl}#ticketPdfSmartModalV217.hidden{display:none}.v217-modal-box{width:min(1180px,98vw);height:min(860px,94vh);background:#fff;border-radius:22px;box-shadow:0 24px 80px rgba(0,0,0,.25);overflow:hidden;display:flex;flex-direction:column}.v217-modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;background:#0b5b49;color:#fff}.v217-modal-head h3{margin:0;font-size:20px}.v217-modal-head p{margin:4px 0 0;opacity:.9}.v217-modal-actions{display:flex;gap:8px;flex-wrap:wrap}.v217-modal-actions button{border:0;border-radius:12px;padding:10px 13px;font-weight:900;cursor:pointer}.v217-modal-actions .primary{background:#fff;color:#0b5b49}.v217-modal-actions .gold{background:#d5a72e;color:#fff}.v217-modal-actions .danger{background:#b3261e;color:#fff}#v217PreviewFrame{border:0;width:100%;flex:1;background:#fff}`; document.head.appendChild(style);
+    modal=document.createElement('div'); modal.id='ticketPdfSmartModalV217'; modal.className='hidden'; modal.innerHTML=`<div class="v217-modal-box"><div class="v217-modal-head"><div><h3>تقرير التكتات PDF</h3><p>المشرف المعروض هو المشرف الحالي للمشروع</p></div><div class="v217-modal-actions"><button class="primary" id="v217PrintBtn">طباعة / حفظ PDF</button><button class="gold" id="v217DownloadBtn">تنزيل PDF</button><button class="danger" id="v217CloseBtn">إغلاق</button></div></div><iframe id="v217PreviewFrame"></iframe></div>`; document.body.appendChild(modal);
+    document.getElementById('v217CloseBtn').onclick=()=>modal.classList.add('hidden');
+    modal.addEventListener('click',e=>{ if(e.target===modal) modal.classList.add('hidden'); });
+    return modal;
+  }
+  function openSmartTicketPdfWindowV217(list,title){
+    const modal=ensureModal(); const frame=document.getElementById('v217PreviewFrame'); const html=fullHtml(list,title);
+    modal.classList.remove('hidden'); frame.srcdoc=html;
+    document.getElementById('v217PrintBtn').onclick=()=>{ try{ frame.contentWindow.focus(); frame.contentWindow.print(); }catch(e){ say('تعذر فتح الطباعة','err'); } };
+    document.getElementById('v217DownloadBtn').onclick=async()=>{
+      try{ await downloadPdfFromHtmlV217(html,`تقرير-التكتات-حسب-المشرف-الحالي-${todayIso()}.pdf`); say('تم تنزيل ملف PDF في التنزيلات'); }
+      catch(e){ console.warn('V217 direct PDF failed',e); say('تعذر التنزيل المباشر. استخدم زر طباعة / حفظ PDF من نفس النافذة.','err'); }
+    };
+  }
+  function loadHtml2Pdf(){ return new Promise((resolve,reject)=>{
+    if(window.html2pdf) return resolve(window.html2pdf);
+    const old=document.querySelector('script[data-tasneef-html2pdf-v217="1"],script[data-tasneef-html2pdf-v211="1"],script[data-tasneef-html2pdf="1"]');
+    if(old){ old.addEventListener('load',()=>resolve(window.html2pdf),{once:true}); old.addEventListener('error',reject,{once:true}); if(window.html2pdf) resolve(window.html2pdf); return; }
+    const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'; s.async=true; s.dataset.tasneefHtml2pdfV217='1'; s.onload=()=>window.html2pdf?resolve(window.html2pdf):reject(new Error('تعذر تحميل مكتبة PDF')); s.onerror=reject; document.head.appendChild(s);
+  }); }
+  async function downloadPdfFromHtmlV217(html,filename){
+    const html2pdf=await loadHtml2Pdf();
+    const wrap=document.createElement('div'); wrap.style.position='fixed'; wrap.style.right='-99999px'; wrap.style.top='0'; wrap.style.background='#fff'; wrap.innerHTML=html.replace(/<!doctype html>[\s\S]*?<body>/i,'').replace(/<\/body>[\s\S]*?<\/html>/i,''); document.body.appendChild(wrap);
+    try{ await html2pdf().set({margin:4,filename,html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'landscape'},pagebreak:{mode:['avoid-all','css','legacy']}}).from(wrap).save(); }
+    finally{ wrap.remove(); }
+  }
+  window.ticketsDownloadPdfV217=function(){ openSmartTicketPdfWindowV217(listByCurrentFiltersV217(),'تقرير التكتات حسب المشرف الحالي'); };
+  window.ticketDownloadPdfV217=function(id){ const t=A(window.data?.tickets).find(x=>S(x.id)===S(id)); if(!t) return say('التكت غير موجود','err'); openSmartTicketPdfWindowV217([t],`تقرير التكت ${ticketNo(t)}`); };
+  // Override older PDF entry points.
+  window.ticketsDownloadPdfV211=window.ticketsDownloadPdfV217; window.ticketsDownloadPdfV210=window.ticketsDownloadPdfV217; window.ticketsDownloadPdfV209=window.ticketsDownloadPdfV217; window.ticketsDownloadPdfV208=window.ticketsDownloadPdfV217; window.ticketsDownloadPdfV207=window.ticketsDownloadPdfV217; window.ticketsDownloadPdfV206=window.ticketsDownloadPdfV217;
+  window.ticketDownloadPdfV211=window.ticketDownloadPdfV217; window.ticketDownloadPdfV210=window.ticketDownloadPdfV217; window.ticketDownloadPdfV209=window.ticketDownloadPdfV217; window.ticketDownloadPdfV208=window.ticketDownloadPdfV217; window.ticketDownloadPdfV207=window.ticketDownloadPdfV217; window.ticketDownloadPdfV206=window.ticketDownloadPdfV217;
+  function patchButtons(){
+    document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207,.ticket-pdf-v208,[data-ticket-pdf]').forEach(b=>{ b.textContent='تنزيل PDF'; b.onclick=window.ticketsDownloadPdfV217; });
+    document.querySelectorAll('button').forEach(b=>{ const txt=S(b.textContent); if(/تنزيل PDF|تصدير PDF/.test(txt) && (b.closest('#ticketsPage')||b.closest('#supervisorTicketsPage')||/ticket/i.test(S(b.closest('[id]')?.id)))) b.onclick=window.ticketsDownloadPdfV217; });
+  }
+  function updateVersionLabels(){ document.querySelectorAll('h1,h2,h3,.version,.app-version').forEach(el=>{ if(S(el.textContent).includes('V217')) el.textContent=el.textContent.replace('V217','V217'); }); }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{patchButtons(); updateVersionLabels();},ev==='load'?1600:500)));
+  setTimeout(()=>{patchButtons(); updateVersionLabels();},1000); setInterval(patchButtons,3000);
+  console.log('Tasneef V217 current project supervisor report logic loaded');
+})();
+
+/* ===== V218: Monthly reports use CURRENT project supervisor + de-duplicate workers ===== */
+(function(){
+  'use strict';
+  function S(v){ return String(v ?? '').trim(); }
+  function N(v){ return Number(v || 0); }
+  function normArabicNameV218(name){
+    return S(name)
+      .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')
+      .replace(/[\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
+  }
+  function projectByIdV218(projectId){
+    return (window.data?.projects || []).find(p => S(p.id) === S(projectId));
+  }
+  function currentSupervisorIdForProjectV218(projectId, fallbackSupervisorId){
+    const p = projectByIdV218(projectId);
+    return p?.supervisor_id || fallbackSupervisorId || '';
+  }
+  function uniqueWorkersForProjectTextV218(projectId){
+    const map = new Map();
+    (window.data?.workers || []).forEach(w => {
+      const status = S(w.status || 'active').toLowerCase();
+      if(status === 'deleted' || status === 'inactive') return;
+      const pid = (typeof workerProjectId === 'function') ? workerProjectId(w) : (w.project_id || w.assigned_project_id || '');
+      if(S(pid) !== S(projectId)) return;
+      const key = normArabicNameV218(w.name);
+      if(key && !map.has(key)) map.set(key, S(w.name));
+    });
+    return [...map.values()].sort((a,b)=>a.localeCompare(b,'ar')).join('، ') || '-';
+  }
+  function monthlyRowsV218(){
+    const month = document.getElementById('monthlyMonth')?.value || (typeof today === 'function' ? today().slice(0,7) : new Date().toISOString().slice(0,7));
+    const selectedSupervisor = document.getElementById('monthlySupervisor')?.value || '';
+    const logs = (window.data?.logs || []).filter(l => {
+      const d = l.log_date || S(l.check_in).slice(0,10);
+      if(!d || d.slice(0,7) !== month) return false;
+      const currentSid = currentSupervisorIdForProjectV218(l.project_id, l.supervisor_id);
+      return !selectedSupervisor || S(currentSid) === S(selectedSupervisor);
+    });
+    const map = new Map();
+    logs.forEach(l => {
+      const currentSid = currentSupervisorIdForProjectV218(l.project_id, l.supervisor_id);
+      const projectId = l.project_id || '';
+      const key = S(currentSid) + '_' + S(projectId);
+      if(!map.has(key)) map.set(key,{s:currentSid,p:projectId,c:0,a:0,r:0,t:0});
+      const row = map.get(key);
+      row.c++;
+      row.a += N((typeof logActualMinutes === 'function') ? logActualMinutes(l) : (l.duration_minutes || (typeof minutesBetween === 'function' ? minutesBetween(l.check_in,l.check_out) : 0)));
+      row.r += N((typeof logRequiredMinutes === 'function') ? logRequiredMinutes(l) : l.required_minutes);
+      row.t += N(l.travel_minutes);
+    });
+    const vals = [...map.values()];
+    const supervisorTotals = {};
+    vals.forEach(r => { const sid = S(r.s); supervisorTotals[sid] = (supervisorTotals[sid] || 0) + N(r.a); });
+    return vals.map(r => {
+      const supTotal = supervisorTotals[S(r.s)] || 0;
+      const workPercent = supTotal ? (r.a / supTotal * 100) : 0;
+      const commitmentPercent = r.r ? (r.a / r.r * 100) : 0;
+      const diff = r.a - r.r;
+      const st = (typeof monthlyStatusFromDiffV60 === 'function') ? monthlyStatusFromDiffV60(diff,r.r) : {text:(diff<0?'ناقص وقت':diff>0?'زيادة وقت':'ضمن الوقت'),cls:(diff<0?'bad':diff>0?'warn':'ok')};
+      const ccls = (typeof monthlyCommitmentClassV60 === 'function') ? monthlyCommitmentClassV60(commitmentPercent,r.r) : st.cls;
+      return {...r,supTotal,workers:uniqueWorkersForProjectTextV218(r.p),workPercent,commitmentPercent,ccls,diff,st:st.text,cls:st.cls};
+    }).sort((a,b)=>{
+      const s = (typeof supervisorName === 'function' ? supervisorName(a.s) : S(a.s)).localeCompare((typeof supervisorName === 'function' ? supervisorName(b.s) : S(b.s)),'ar');
+      return s || (typeof projectName === 'function' ? projectName(a.p) : S(a.p)).localeCompare((typeof projectName === 'function' ? projectName(b.p) : S(b.p)),'ar');
+    });
+  }
+  window.monthlyRowsV60 = monthlyRowsV218;
+  window.monthlyReportRowsV58 = monthlyRowsV218;
+  window.monthlyBaseRowsV59 = monthlyRowsV218;
+
+  window.renderMonthly = function(){
+    const body = document.getElementById('monthlyBody');
+    if(!body) return;
+    const table = body.closest('table');
+    if(table && table.tHead) table.tHead.innerHTML = '<tr><th>المشرف الحالي</th><th>المشروع</th><th>أسماء العمال</th><th>الساعات المطلوبة</th><th>الساعات الفعلية</th><th>وقت الانتقال</th><th>نسبة العمل</th><th>نسبة الالتزام</th><th>حالة الأداء</th></tr>';
+    const vals = monthlyRowsV218();
+    body.innerHTML = vals.map(r=>`<tr><td>${esc(supervisorName(r.s))}</td><td>${esc(projectName(r.p))}</td><td>${esc(r.workers)}</td><td>${minsToText(r.r)}</td><td>${minsToText(r.a)}</td><td>${r.t} دقيقة</td><td><span class="badge green">${percentText(r.workPercent)}</span></td><td><span class="badge ${r.ccls}">${percentText(r.commitmentPercent)}</span></td><td><span class="badge ${r.cls}">${r.st}</span></td></tr>`).join('') || '<tr><td colspan="9">لا توجد بيانات</td></tr>';
+    const total = vals.reduce((a,r)=>a+N(r.a),0), required = vals.reduce((a,r)=>a+N(r.r),0), travel = vals.reduce((a,r)=>a+N(r.t),0);
+    const commitment = required ? total/required*100 : 0;
+    const diff = total-required;
+    const st = (typeof monthlyStatusFromDiffV60 === 'function') ? monthlyStatusFromDiffV60(diff,required) : {text:'-',cls:'neutral'};
+    const summary = document.getElementById('monthlySummary');
+    if(summary) summary.innerHTML = `<div class="kpi"><small>الساعات المطلوبة</small><b>${minsToText(required)}</b></div><div class="kpi"><small>الساعات الفعلية</small><b>${minsToText(total)}</b></div><div class="kpi"><small>فرق الوقت</small><b>${monthlyDiffTextV57(diff)}</b></div><div class="kpi"><small>وقت الانتقال</small><b>${travel} دقيقة</b></div><div class="kpi"><small>نسبة الالتزام</small><b>${percentText(commitment)}</b></div><div class="kpi"><small>حالة الأداء</small><b><span class="badge ${st.cls}">${st.text}</span></b></div>`;
+  };
+  window.exportMonthlyCSV = function(){
+    const rows = [...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent.trim()));
+    const csv = ['المشرف الحالي,المشروع,أسماء العمال,الساعات المطلوبة,الساعات الفعلية,وقت الانتقال,نسبة العمل,نسبة الالتزام,حالة الأداء',...rows.map(r=>r.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(','))].join('\n');
+    download('monthly-current-supervisor.csv',csv);
+  };
+  window.printMonthlyReportV57 = function(){
+    const rows = monthlyRowsV218();
+    if(!rows.length){ msg('لا توجد بيانات في الأوقات الشهرية للطباعة','err'); return; }
+    const month = document.getElementById('monthlyMonth')?.value || (typeof today === 'function' ? today().slice(0,7) : '');
+    const sup = document.getElementById('monthlySupervisor')?.value ? supervisorName(document.getElementById('monthlySupervisor').value) : 'الكل';
+    let actualTotal=0, requiredTotal=0, over=0, under=0;
+    rows.forEach(r=>{ actualTotal+=N(r.a); requiredTotal+=N(r.r); if(r.st==='زيادة وقت') over++; else if(r.st==='ناقص وقت') under++; });
+    const commitmentTotal = requiredTotal ? actualTotal/requiredTotal*100 : 0;
+    const groups = new Map();
+    rows.forEach(r=>{ const sid=S(r.s); if(!groups.has(sid)) groups.set(sid,[]); groups.get(sid).push(r); });
+    const groupCards = [...groups.entries()].map(([sid,items])=>{
+      const sActual=items.reduce((a,r)=>a+N(r.a),0), sReq=items.reduce((a,r)=>a+N(r.r),0), sPct=sReq?sActual/sReq*100:0;
+      const cards=items.map(r=>`<div class="project-card"><h3>${reportEscV52(projectName(r.p))}</h3><div class="sup-name">المشرف الحالي: ${reportEscV52(supervisorName(sid))}</div><div class="workers-list">${reportEscV52(r.workers||'-').split('،').map(x=>`<div>${x.trim()}</div>`).join('')}</div><div class="time-pill">${reportEscV52(minsToText(r.a))}</div></div>`).join('');
+      return `<section class="sup-section"><div class="sup-title"><span>${reportEscV52(supervisorName(sid))}</span><b>${reportEscV52(percentText(sPct))}</b></div><div class="cards-grid">${cards}</div></section>`;
+    }).join('');
+    const detailRows = rows.map(r=>`<tr><td>${reportEscV52(supervisorName(r.s))}</td><td>${reportEscV52(projectName(r.p))}</td><td>${reportEscV52(r.workers||'-')}</td><td>${reportEscV52(minsToText(r.a))}</td><td>${reportEscV52(minsToText(r.r))}</td><td>${reportEscV52(monthlyDiffTextV57(r.diff))}</td><td>${reportEscV52(percentText(r.workPercent))}</td><td>${reportEscV52(percentText(r.commitmentPercent))}</td><td>${reportEscV52(r.st)}</td></tr>`).join('');
+    const html = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;color:#153d32;background:#fff;font-size:11px}.page{min-height:100vh;padding:14px;border:2px solid #0b5b49;background:#fff}.top{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0b5b49;padding-bottom:10px;margin-bottom:10px}.brand{display:flex;align-items:center;gap:10px}.logo{width:54px;height:54px;border:2px solid #c7a24d;border-radius:50%;display:grid;place-items:center;font-weight:900;color:#0b5b49}.brand h2{margin:0;color:#0b5b49}.title{text-align:left}.title h1{margin:0;color:#0b5b49;font-size:26px}.muted{color:#68766e}.meta{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.box{border:1px solid #d9e6e1;border-radius:13px;padding:9px;text-align:center;background:#f8fbfa}.box b{display:block;color:#60756c}.box strong{font-size:16px;color:#0b5b49}.section-title{margin:12px 0 8px;text-align:center}.section-title span{background:#0b5b49;color:#fff;border-radius:999px;padding:7px 38px;font-weight:900}.sup-section{break-inside:avoid;margin:10px 0}.sup-title{display:flex;justify-content:space-between;background:#0b5b49;color:#fff;border-radius:10px 10px 0 0;padding:8px 12px;font-weight:900}.cards-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border:1px solid #d9e6e1;border-top:0;padding:10px}.project-card{border:2px solid #333;border-radius:12px;background:#fff;overflow:hidden;text-align:center;break-inside:avoid}.project-card h3{margin:0;padding:9px;background:#454545;color:#fff;font-size:15px}.sup-name{padding:8px;border-bottom:1px solid #ddd;font-weight:900}.workers-list{padding:8px;line-height:1.9;min-height:58px}.workers-list div{border-bottom:1px dashed #e1e7e4}.time-pill{display:inline-block;background:#f2f2f2;border-radius:999px;padding:7px 22px;font-size:16px;font-weight:900;margin:8px}.details{width:100%;border-collapse:collapse;margin-top:10px}.details th{background:#0b5b49;color:#fff;padding:7px}.details td{border:1px solid #dfe8e4;padding:6px;text-align:center}.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:10px}.kpi{border:1px solid #d9e6e1;border-radius:12px;padding:9px;text-align:center;background:#f8fbfa}.kpi strong{display:block;font-size:16px;color:#0b5b49}.footer{text-align:center;margin-top:10px;color:#68766e}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{border-radius:0}.project-card,.sup-section,.kpi{break-inside:avoid}}</style></head><body><div class="page"><div class="top"><div class="brand"><div class="logo">تصنيف</div><div><h2>شركة تصنيف</h2><div class="muted">إدارة المرافق والتشغيل</div></div></div><div class="title"><h1>تقرير الأوقات الشهرية</h1><div class="muted">يعتمد التصنيف على المشرف الحالي للمشروع</div></div></div><div class="meta"><div class="box"><b>الشهر</b><strong>${reportEscV52(monthLabelV57(month))}</strong></div><div class="box"><b>المشرف</b><strong>${reportEscV52(sup)}</strong></div><div class="box"><b>عدد المشاريع</b><strong>${rows.length}</strong></div><div class="box"><b>نسبة الالتزام</b><strong>${reportEscV52(percentText(commitmentTotal))}</strong></div></div><div class="section-title"><span>ملخص المشرفين والمشاريع</span></div>${groupCards}<div class="section-title"><span>تفاصيل الأوقات الشهرية</span></div><table class="details"><thead><tr><th>المشرف الحالي</th><th>المشروع</th><th>أسماء العمال</th><th>الوقت الفعلي</th><th>الوقت المطلوب</th><th>الفرق</th><th>نسبة العمل</th><th>نسبة الالتزام</th><th>حالة الوقت</th></tr></thead><tbody>${detailRows}</tbody></table><div class="kpis"><div class="kpi"><strong>${reportEscV52(minsToText(actualTotal))}</strong><span>إجمالي الفعلي</span></div><div class="kpi"><strong>${reportEscV52(minsToText(requiredTotal))}</strong><span>إجمالي المطلوب</span></div><div class="kpi"><strong>${reportEscV52(monthlyDiffTextV57(actualTotal-requiredTotal))}</strong><span>فرق الوقت</span></div><div class="kpi"><strong>${over}</strong><span>زيادة وقت</span></div><div class="kpi"><strong>${under}</strong><span>ناقص وقت</span></div></div><div class="footer">هذا التقرير مولد آليًا من نظام تصنيف</div><script>window.onload=function(){setTimeout(function(){window.print()},450)}<\/script></div></body></html>`;
+    const w = window.open('','_blank');
+    if(!w){ msg('المتصفح منع فتح نافذة التقرير. اسمح بالنوافذ المنبثقة','err'); return; }
+    w.document.open(); w.document.write(html); w.document.close();
+  };
+  function refreshIfMonthly(){ try{ if(document.getElementById('monthly') && !document.getElementById('monthly').classList.contains('hidden')) window.renderMonthly(); }catch(e){} }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(refreshIfMonthly, ev==='load'?1400:400)));
+  setTimeout(refreshIfMonthly,1200);
+  console.log('Tasneef V218 monthly current-supervisor grouping loaded');
 })();
