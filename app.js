@@ -16995,3 +16995,125 @@ function financePrintReport(kind){
   document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V234');
   console.log('Tasneef V234 role-aware product detail loaded');
 })();
+
+/* ===== TASNEEF V235: stable export buttons, robust ticket PDF print window, role-separated inventory costs, weighted product card cost ===== */
+(function(){
+  if(window.__tasneefV235FinalFixes) return;
+  window.__tasneefV235FinalFixes = true;
+  const $=id=>document.getElementById(id);
+  const A=v=>Array.isArray(v)?v:[];
+  const D=()=>window.data||{};
+  const S=v=>String(v??'').trim();
+  const N=v=>Number(v||0)||0;
+  const E=v=>S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const Q=v=>{ const n=N(v); return Number.isInteger(n)?String(n):n.toFixed(2); };
+  const M=v=>`${N(v).toFixed(2)} ر.س`;
+  const U=()=>{ try{return typeof session==='function'?(session()||{}):(window.currentUser||{});}catch(e){return window.currentUser||{};} };
+  const role=()=>S(U().role).toLowerCase();
+  const isWarehouse=()=>['warehouse_manager','warehouse manager','warehouse-manager','warehouse','inventory_manager','inventory manager','store_manager','stock_manager','مدير المخزون','مدير مخزون','مدير المخزن','مدير مخزن','مدير المستودع','مسؤول المخزون'].includes(role());
+  const canSeeCost=()=>!isWarehouse();
+  const pName=id=>{ try{return typeof projectName==='function'?projectName(id):(A(D().projects).find(p=>S(p.id)===S(id))?.name||'-');}catch(e){return A(D().projects).find(p=>S(p.id)===S(id))?.name||'-';} };
+  const sName=id=>{ try{return typeof supervisorName==='function'?supervisorName(id):(A(D().supervisors).concat(A(D().users)).find(u=>S(u.id)===S(id))?.full_name||'-');}catch(e){return '-';} };
+  const itemCode=it=>{ try{return (typeof v118ProductCode==='function'?v118ProductCode(it):'')||it.product_code||it.serial_number||it.barcode||('INV-'+(it.id||''));}catch(e){return it.product_code||it.serial_number||it.barcode||'';} };
+  const itemImg=it=>S(it.image_url||it.product_image||it.product_image_url||it.image||it.photo_url||it.img||'');
+  const movesOf=id=>A(D().inventoryMovements).filter(m=>S(m.item_id)===S(id));
+  function lotsFor(id){
+    const ins=movesOf(id).filter(m=>{ const t=S(m.movement_type).toLowerCase(); return ['in','add','purchase','invoice_add','إدخال','شراء'].includes(t) || /إدخال|شراء/.test(S(m.reason||m.notes||m.movement_type)); });
+    const outs=movesOf(id).filter(m=>{ const t=S(m.movement_type).toLowerCase(); return ['out','issue','consume','consumption','صرف','استهلاك','استهلاك مباشر'].includes(t); });
+    let remainingOut=outs.reduce((a,m)=>a+N(m.quantity),0);
+    return ins.map(m=>{
+      const qty=N(m.quantity), issued=Math.min(qty,remainingOut); remainingOut=Math.max(0,remainingOut-issued);
+      const cost=N(m.unit_cost||m.unit_price||m.price||m.cost);
+      return {date:S(m.movement_date||m.created_at).slice(0,10), invoice:m.invoice_no||m.invoice||m.reason||m.notes||'-', supplier:m.supplier||m.receiver||'', original:qty, issued, remaining:Math.max(0,qty-issued), cost};
+    });
+  }
+  function avgCost(id,it){
+    const lots=lotsFor(id); const qty=lots.reduce((a,l)=>a+N(l.remaining),0); const val=lots.reduce((a,l)=>a+N(l.remaining)*N(l.cost),0);
+    if(qty>0 && val>0) return {qty,avg:val/qty,value:val,lots};
+    const q=N(it.quantity), c=N(it.unit_cost||it.cost||it.price); return {qty:q,avg:c,value:q*c,lots};
+  }
+
+  // Fix export/import buttons that referenced missing V229/V223 handlers.
+  function fixExportAliases(){
+    if(window.exportMeetingExcelV232){
+      window.exportMeetingExcelV235=window.exportMeetingExcelV232;
+      window.exportMeetingExcelV234=window.exportMeetingExcelV232;
+      window.exportMeetingExcelV233=window.exportMeetingExcelV232;
+      window.exportMeetingExcelV229=window.exportMeetingExcelV232;
+    }else if(window.exportMeetingExcelV222){
+      window.exportMeetingExcelV235=window.exportMeetingExcelV222;
+      window.exportMeetingExcelV229=window.exportMeetingExcelV222;
+    }
+    if(window.downloadImportTemplateV222){
+      window.downloadImportTemplateV235=window.downloadImportTemplateV222;
+      window.downloadImportTemplateV234=window.downloadImportTemplateV222;
+      window.downloadImportTemplateV223=window.downloadImportTemplateV222;
+    }
+    document.querySelectorAll('button[onclick*="exportMeetingExcelV229"],button[onclick*="exportMeetingExcelV234"],button[onclick*="exportMeetingExcelV235"]').forEach(b=>{ b.onclick=function(){ return (window.exportMeetingExcelV235||window.exportMeetingExcelV232||window.exportMeetingExcelV222)?.(this); }; });
+    document.querySelectorAll('button[onclick*="downloadImportTemplateV223"],button[onclick*="downloadImportTemplateV234"],button[onclick*="downloadImportTemplateV235"]').forEach(b=>{ b.onclick=function(){ return (window.downloadImportTemplateV235||window.downloadImportTemplateV222)?.(this); }; });
+    document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent='V235');
+  }
+
+  function ticketNo(t){ try{return typeof ticketNo==='function'?ticketNo(t):(t.ticket_no||('T-'+t.id));}catch(e){return t.ticket_no||('T-'+(t.id||''));} }
+  function stText(st){ const x=S(st||'open'); return x==='closed'?'مغلق':(x==='processing'?'تحت المعالجة':'مفتوح'); }
+  function prText(p){ const x=S(p||'normal'); return x==='urgent'?'عاجل':(x==='high'?'مهم':'عادي'); }
+  function fmtDate(v){ return S(v).slice(0,10)||'-'; }
+  function raisedBy(t){ return t.created_by_name||t.requester_name||t.created_by_full_name||t.supervisor_name||sName(t.supervisor_id)||'-'; }
+  function filteredTicketsV235(){
+    let list=A(D().tickets).slice();
+    const admin=$('ticketsBody'), sup=$('supTicketsBody');
+    if(admin){ const st=$('ticketFilterStatus')?.value||'', q=S($('ticketSearch')?.value).toLowerCase(); if(st) list=list.filter(t=>S(t.status||'open')===st); if(q) list=list.filter(t=>[ticketNo(t),t.title,t.description,pName(t.project_id),sName(t.supervisor_id),stText(t.status),prText(t.priority),raisedBy(t),t.claimed_by_name,t.closed_by_name,t.closure_note].join(' ').toLowerCase().includes(q)); }
+    if(sup){ const st=$('supTicketFilterStatus')?.value||'', pid=$('supTicketFilterProject')?.value||'', q=S($('supTicketSearch')?.value).toLowerCase(); if(pid) list=list.filter(t=>S(t.project_id)===S(pid)); if(st) list=list.filter(t=>S(t.status||'open')===st); if(q) list=list.filter(t=>[ticketNo(t),t.title,t.description,pName(t.project_id),stText(t.status),prText(t.priority),raisedBy(t),t.claimed_by_name,t.closed_by_name,t.closure_note].join(' ').toLowerCase().includes(q)); }
+    return list;
+  }
+  function ticketsReportHtml(list,title){
+    const groups=new Map();
+    list.forEach(t=>{ const key=S(t.supervisor_id||'none'), name=sName(t.supervisor_id)||'بدون مشرف'; if(!groups.has(key)) groups.set(key,{name,rows:[]}); groups.get(key).rows.push(t); });
+    const sections=[...groups.values()].map(g=>`<section class="sec"><div class="sec-h"><b>المشرف: ${E(g.name)}</b><span>عدد التكتات: ${g.rows.length}</span></div><table><thead><tr><th>#</th><th>رقم التكت</th><th>المشروع</th><th>العنوان والوصف</th><th>الحالة</th><th>الأولوية</th><th>رفع بواسطة</th><th>استلام / إغلاق</th><th>التاريخ</th></tr></thead><tbody>${g.rows.map((t,i)=>`<tr><td>${i+1}</td><td><b>${E(ticketNo(t))}</b></td><td>${E(pName(t.project_id))}</td><td><b>${E(t.title||'-')}</b><br><span class="desc">${E(t.description||'-')}</span></td><td>${E(stText(t.status))}</td><td>${E(prText(t.priority))}</td><td>${E(raisedBy(t))}</td><td>استلم: ${E(t.claimed_by_name||'-')}<br>أغلق: ${E(t.closed_by_name||'-')}${t.closure_note?`<br>الحل: ${E(t.closure_note)}`:''}</td><td>${E(fmtDate(t.created_at))}</td></tr>`).join('')}</tbody></table></section>`).join('');
+    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(title)}</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Tahoma,Arial,sans-serif;margin:0;background:#fff;color:#123b2f;direction:rtl}.wrap{padding:20px}.actions{position:fixed;left:12px;top:12px;display:flex;gap:8px;z-index:10}.actions button{border:0;border-radius:10px;padding:10px 14px;font-weight:800;cursor:pointer}.print{background:#0b5b49;color:#fff}.close{background:#eef6f3;color:#0b5b49}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0b5b49;padding-bottom:12px;margin-bottom:14px}.head h1{margin:0;color:#0b5b49}.brand{font-weight:900}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.kpis div{border:1px solid #d8e7e0;background:#f4faf7;border-radius:13px;padding:10px}.kpis b{font-size:22px}.sec{page-break-inside:avoid;border:1px solid #d5e2dc;border-radius:14px;overflow:hidden;margin:16px 0}.sec-h{background:#0b5b49;color:#fff;padding:10px 12px;display:flex;justify-content:space-between}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#eef6f3;color:#0b5b49}th,td{border:1px solid #dce7e2;padding:8px;text-align:right;vertical-align:top}.desc{white-space:pre-wrap;color:#334}@media print{.actions{display:none}.wrap{padding:0}}</style></head><body><div class="actions"><button class="print" onclick="window.print()">طباعة / حفظ PDF</button><button class="close" onclick="window.close()">إغلاق</button></div><div class="wrap"><div class="head"><div><h1>${E(title)}</h1><small>حسب الفلاتر الحالية — ${E(new Date().toLocaleString('ar-SA'))}</small></div><div class="brand">شركة تصنيف لإدارة المرافق</div></div><div class="kpis"><div><small>إجمالي</small><br><b>${list.length}</b></div><div><small>مفتوحة</small><br><b>${list.filter(t=>S(t.status||'open')==='open').length}</b></div><div><small>تحت المعالجة</small><br><b>${list.filter(t=>S(t.status)==='processing').length}</b></div><div><small>مغلقة</small><br><b>${list.filter(t=>S(t.status)==='closed').length}</b></div></div>${sections||'<div class="sec"><div class="sec-h">لا توجد تكتات</div></div>'}</div></body></html>`;
+  }
+  function openTicketPrint(list,title){
+    const w=window.open('','_blank');
+    if(!w) return (typeof msg==='function'?msg('المتصفح منع فتح نافذة التقرير. فعّل النوافذ المنبثقة.','err'):alert('المتصفح منع فتح نافذة التقرير'));
+    w.document.open(); w.document.write(ticketsReportHtml(list,title)); w.document.close();
+  }
+  window.ticketsDownloadPdfV235=function(){ const list=filteredTicketsV235(); if(!list.length) return (typeof msg==='function'?msg('لا توجد تكتات حسب الفلاتر الحالية','err'):alert('لا توجد تكتات')); openTicketPrint(list,'تقرير التكتات حسب المشرف'); };
+  window.ticketDownloadPdfV235=function(id){ const t=A(D().tickets).find(x=>S(x.id)===S(id)); if(!t) return (typeof msg==='function'?msg('التكت غير موجود','err'):alert('التكت غير موجود')); openTicketPrint([t],'تقرير تكت واحد'); };
+  ['ticketsDownloadPdfV206','ticketsDownloadPdfV207','ticketsDownloadPdfV208','ticketsDownloadPdfV209','ticketsDownloadPdfV210'].forEach(k=>window[k]=window.ticketsDownloadPdfV235);
+  ['ticketDownloadPdfV206','ticketDownloadPdfV207','ticketDownloadPdfV208','ticketDownloadPdfV209','ticketDownloadPdfV210'].forEach(k=>window[k]=window.ticketDownloadPdfV235);
+  function fixTicketButtons(){ document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207,.ticket-pdf-v208,[data-ticket-pdf]').forEach(b=>{ b.textContent='تصدير PDF'; b.onclick=window.ticketsDownloadPdfV235; }); }
+
+  function renderInventoryItemsV235(){
+    const body=$('inventoryItemsBody'); if(!body) return;
+    const search=S($('financeSearch')?.value || $('inventorySearch')?.value).toLowerCase();
+    let rows=A(D().inventoryItems).slice();
+    if(search) rows=rows.filter(it=>[it.name,itemCode(it),it.supplier,it.category,it.unit,it.notes].map(S).join(' ').toLowerCase().includes(search));
+    if(!rows.length){ body.innerHTML='<tr><td colspan="20">لا توجد أصناف</td></tr>'; return; }
+    body.innerHTML=`<tr class="v180-catalog-row"><td colspan="20"><div class="v180-catalog-grid">${rows.map(it=>{
+      const av=avgCost(it.id,it); const low=N(it.quantity)<=N(it.min_quantity||it.reorder_level||0); const imgS=itemImg(it); const img=imgS?`<img src="${E(imgS)}" alt="${E(it.name)}" onerror="this.outerHTML='<span>لا صورة</span>'">`:'<span>لا صورة</span>';
+      const priceBlock=canSeeCost()?`<div><small>متوسط تكلفة الوحدة</small><b>${M(av.avg)}</b></div><div><small>قيمة المتبقي</small><b>${M(av.value)}</b></div>`:'';
+      return `<article class="v180-catalog-card"><div class="v180-item-head"><div class="v180-img">${img}</div><div class="v180-title"><h3>${E(it.name||'-')}</h3><small>كود المنتج: ${E(itemCode(it)||'-')}</small><br><small>المورد: ${E(it.supplier||'-')}</small></div><span class="${low?'v180-low':'v180-ok'}">${low?'منخفض':'متوفر'}</span></div><div class="v180-stats"><div><small>الكمية</small><b>${Q(it.quantity)} ${E(it.unit||'')}</b></div><div><small>حد الطلب</small><b>${Q(it.min_quantity||it.reorder_level||0)}</b></div>${priceBlock}</div><div class="row-actions v180-actions"><button type="button" onclick="inventoryOpenItemSmart&&inventoryOpenItemSmart('${E(it.id)}')">عرض المنتج</button><button type="button" class="light" onclick="inventoryEditItem&&inventoryEditItem('${E(it.id)}')">تعديل</button><button type="button" class="danger" onclick="financeDelete&&financeDelete('inventory_items','${E(it.id)}',true)">حذف</button></div></article>`;
+    }).join('')}</div></td></tr>`;
+  }
+
+  function openProductV235(id){
+    const it=A(D().inventoryItems).find(i=>S(i.id)===S(id)); if(!it) return;
+    document.querySelectorAll('.modal-backdrop.v234-product-modal,.modal-backdrop.v235-product-modal').forEach(x=>x.remove());
+    const av=avgCost(it.id,it); const imgS=itemImg(it); const img=imgS?`<img src="${E(imgS)}" style="max-width:170px;max-height:170px;object-fit:contain;border:1px solid #d7e4df;border-radius:18px;background:#fff;padding:8px" onerror="this.outerHTML='<span class=&quot;inventory-image-empty&quot;>لا توجد صورة</span>'">`:'<span class="inventory-image-empty">لا توجد صورة</span>';
+    const lots=av.lots||lotsFor(it.id); const costVisible=canSeeCost();
+    const lotsRows=lots.map(l=>`<tr><td>${E(l.date||'-')}</td><td>${E(l.invoice||'-')}</td><td>${E(l.supplier||it.supplier||'-')}</td><td>${Q(l.original)}</td><td>${Q(l.issued)}</td><td>${Q(l.remaining)}</td>${costVisible?`<td>${M(l.cost)}</td><td>${M(N(l.remaining)*N(l.cost))}</td>`:''}</tr>`).join('') || `<tr><td colspan="${costVisible?8:6}">لا توجد دفعات</td></tr>`;
+    const movRows=movesOf(it.id).slice(-12).reverse().map(m=>`<tr><td>${E(S(m.movement_date||m.created_at).slice(0,10))}</td><td>${E(m.movement_type||'-')}</td><td>${Q(m.quantity)}</td><td>${E(m.project_name||pName(m.project_id)||'-')}</td><td>${E(m.receiver||m.receiver_name||'-')}</td><td>${E(m.reason||m.notes||'-')}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد حركات</td></tr>';
+    const costLine=costVisible?`<p>متوسط تكلفة الوحدة: <b>${M(av.avg)}</b> | قيمة المتبقي: <b>${M(av.value)}</b></p>`:'';
+    document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop v234-product-modal v235-product-modal" onclick="if(event.target===this)this.remove()"><div class="modal-card" style="max-width:1120px"><div class="modal-head"><h2>تفاصيل المنتج</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div class="grid two" style="padding:16px"><div class="card soft-card"><h2>${E(it.name||'-')}</h2><p>كود المنتج: <b>${E(itemCode(it))}</b></p><p>المورد: <b>${E(it.supplier||'-')}</b> | الوحدة: <b>${E(it.unit||'-')}</b></p><p>المتوفر: <b>${Q(it.quantity)}</b></p>${costLine}</div><div class="card soft-card" style="text-align:center;display:flex;align-items:center;justify-content:center;min-height:185px">${img}</div></div>${costVisible?`<h3>دفعات الشراء وأسعارها الحقيقية</h3>`:`<h3>دفعات المنتج</h3>`}<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الفاتورة</th><th>المورد</th><th>كمية الدفعة</th><th>المصروف منها</th><th>المتبقي</th>${costVisible?'<th>سعر الدفعة</th><th>قيمة المتبقي</th>':''}</tr></thead><tbody>${lotsRows}</tbody></table></div><h3>آخر الحركات</h3><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>الكمية</th><th>المشروع</th><th>المستلم</th><th>السبب</th></tr></thead><tbody>${movRows}</tbody></table></div></div></div>`);
+  }
+  window.inventoryOpenItemSmart=openProductV235;
+  window.v118ShowProductDetail=openProductV235;
+  window.openProductDetail=openProductV235;
+  window.inventoryRenderItems=renderInventoryItemsV235;
+
+  function boot(){ fixExportAliases(); fixTicketButtons(); try{ if($('inventoryItemsBody')) renderInventoryItemsV235(); }catch(e){console.warn(e);} }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:300)));
+  setInterval(()=>{ try{ fixExportAliases(); fixTicketButtons(); }catch(e){} },2500);
+  setTimeout(boot,1200);
+  console.log('Tasneef V235 final fixes loaded');
+})();
