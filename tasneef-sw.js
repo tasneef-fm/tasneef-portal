@@ -8,7 +8,7 @@ const APP_SHELL = [
   './technician.html',
   './client-report.html',
   './style.css',
-  './app.js?v=240',
+  './app.js?v=241',
   './tasneef_logo_print.png',
   './tasneef_stamp.jpeg',
   './sounds/checkin.wav',
