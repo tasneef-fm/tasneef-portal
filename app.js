@@ -1,4 +1,4 @@
-/* TASNEEF BUILD V271 - stable version - 2026-05-31 */
+/* TASNEEF BUILD V274 - stable admin data recovery - 2026-05-31 */
 /* V154 Smart Loading Branding */
 (function(){
   if(window.__tasneefLoadingV154) return;
@@ -120,7 +120,7 @@
 (function(){
   if(window.__tasneefLiteNetworkV239) return;
   window.__tasneefLiteNetworkV239 = true;
-  window.TASNEEF_BUILD = 'V251_SUPERVISOR_LIVE_DATA_2026_05_31';
+  window.TASNEEF_BUILD = 'V274_STABLE_ADMIN_DATA_RECOVERY_2026_05_31';
 
   function addLiteStyle(){
     if(document.getElementById('tasneefLiteStyleV239')) return;
@@ -157,7 +157,7 @@
   if('serviceWorker' in navigator && !window.__tasneefSWRegV239){
     window.__tasneefSWRegV239 = true;
     window.addEventListener('load',()=>{
-      navigator.serviceWorker.register('tasneef-sw.js?v=251').catch(()=>{});
+      navigator.serviceWorker.register('tasneef-sw.js?v=274').catch(()=>{});
     });
   }
 
@@ -172,8 +172,9 @@
     }
     function cacheKey(url){ return CACHE_PREFIX+currentUserKey()+':'+String(url); }
     function canCache(url, init){
-      const method=String(init?.method || 'GET').toUpperCase();
-      return method==='GET' && /supabase\.co\/rest\/v1\//i.test(String(url));
+      // V274: disabled localStorage caching for Supabase tables.
+      // The old cache could return stale/empty arrays and make admin dashboard show 0.
+      return false;
     }
     function responseFromCache(key){
       try{
@@ -222,6 +223,18 @@ const SUPABASE_ANON_KEY = "sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // V167: expose Supabase client for late-loaded fixes and feature wrappers.
 window.sb = sb;
+// V274: remove stale Supabase cache entries that previously caused all dashboard counts to show 0.
+(function tasneefClearStaleDataCacheV274(){
+  try{
+    const prefixes = ['tasneef_sb_cache_v239:', 'tasneef_sb_cache_', 'tasneef_cache'];
+    const remove=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i)||'';
+      if(prefixes.some(p=>k.indexOf(p)===0 || k.includes(p))) remove.push(k);
+    }
+    remove.forEach(k=>localStorage.removeItem(k));
+  }catch(e){}
+})();
 const $ = id => document.getElementById(id);
 const today = () => { const d=new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
 const nowTime = () => new Date().toTimeString().slice(0,5);
@@ -283,14 +296,28 @@ async function loadAll(){
   let contractServices = await sb.from('contract_services').select('*').order('id', { ascending: false });
 
   for(const r of [users,projects,workers,attendance,logs,tickets,contractServices]) if(r.error) console.warn(r.error.message);
-  data.users = users.data || [];
+  const nextUsers = users.data || [];
+  const nextProjects = projects.data || [];
+  const nextWorkers = workers.data || [];
+  const nextAttendance = attendance.data || [];
+  const nextLogs = logs.data || [];
+  const nextTickets = tickets.data || [];
+  const majorError = [users,projects,workers,logs,tickets].some(r=>r.error);
+  const majorEmpty = !nextUsers.length && !nextProjects.length && !nextWorkers.length && !nextLogs.length && !nextTickets.length;
+  if(majorError || majorEmpty){
+    console.warn('V274 loadAll blocked empty/error overwrite', {majorError, majorEmpty, errors:[users.error,projects.error,workers.error,logs.error,tickets.error].filter(Boolean).map(e=>e.message)});
+    if(typeof msg === 'function') msg('لم يتم تحميل البيانات من القاعدة. اضغط تحديث البيانات أو تأكد من الاتصال.', 'err');
+    // Do not replace current data with zeros when Supabase returns empty due a temporary failure.
+    return;
+  }
+  data.users = nextUsers;
   data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
   data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
-  data.projects = projects.data || [];
-  data.workers = workers.data || [];
-  data.attendance = attendance.data || [];
-  data.logs = logs.data || [];
-  data.tickets = tickets.data || [];
+  data.projects = nextProjects;
+  data.workers = nextWorkers;
+  data.attendance = nextAttendance;
+  data.logs = nextLogs;
+  data.tickets = nextTickets;
   data.contractServices = contractServices.data || [];
   data.contractServicesError = contractServices.error ? contractServices.error.message : '';
 }
@@ -20803,103 +20830,4 @@ setInterval(()=>{ try{ if(document.getElementById('logsBody')) renderTimeLogs();
   window.addEventListener('load',()=>setTimeout(renderTicketsV271,900));
   setTimeout(renderTicketsV271,1200);
   console.log('Tasneef V271 loaded: stable tickets with one WhatsApp button');
-})();
-
-/* ===== V273: Stable data load + clean supervisor tickets final ===== */
-(function(){
-  const VERSION='v273';
-  const byId = (id)=>document.getElementById(id);
-  const arr = (v)=>Array.isArray(v)?v:[];
-  const str = (v)=>String(v==null?'':v).trim();
-  const escHtml = (v)=>str(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  function store(){ try{ window.data = data; return data; }catch(_){ window.data = window.data || {}; return window.data; } }
-  function curUser(){ try{return typeof session==='function'?session():null;}catch(_){return null;} }
-  function tStatus(t){
-    const raw=str(t&&t.status||'open').toLowerCase();
-    if(t && (t.closed_at || t.closed_by || t.closed_by_name || ['closed','close','done','completed','resolved','finish','finished','مغلق','مقفل','مقفلة','منجز','تم الاغلاق','تم الإغلاق'].includes(raw))) return 'closed';
-    if(t && (t.claimed_at || t.claimed_by || ['processing','in_progress','progress','claimed','under_process','قيد التنفيذ','قيد المعالجة','تحت المعالجة'].includes(raw))) return 'processing';
-    return 'open';
-  }
-  function stLabel(t){ const s=tStatus(t); return s==='closed'?'مغلق':(s==='processing'?'تحت المعالجة':'مفتوح'); }
-  function stClass(t){ const s=tStatus(t); return s==='closed'?'done':(s==='processing'?'doing':'open'); }
-  function prLabel(p){ p=str(p||'normal'); return p==='urgent'?'عاجل':(p==='high'?'مهم':(p==='low'?'منخفض':'عادي')); }
-  function ticketNo(t){ return t&&t.ticket_number || ('T-' + String(t&&t.id||0).padStart(4,'0')); }
-  function projectObj(id){ const d=store(); return arr(d.projects).find(p=>str(p.id)===str(id)); }
-  function projectLabel(id){ try{ if(typeof projectName==='function'){ const n=projectName(id); if(n&&n!=='-') return n; } }catch(_){} return projectObj(id)?.name || '-'; }
-  function supervisorLabel(id){ try{ if(typeof supervisorName==='function'){ const n=supervisorName(id); if(n&&n!=='-') return n; } }catch(_){} const d=store(); return arr(d.users).find(u=>str(u.id)===str(id))?.full_name || '-'; }
-  function fmt(v){ try{ return v?new Date(v).toLocaleString('ar-SA'):'-'; }catch(_){ return str(v||'-'); } }
-  function minutesOpen(t){ try{ const a=new Date(t.created_at||t.opened_at||Date.now()).getTime(); const end=(tStatus(t)==='closed' && t.closed_at)?t.closed_at:Date.now(); const b=new Date(end).getTime(); return Math.max(0,Math.round((b-a)/60000)); }catch(_){ return 0; } }
-  function dur(t){ const m=minutesOpen(t), h=Math.floor(m/60), mm=m%60; return h ? `${h}:${String(mm).padStart(2,'0')}` : `${mm}د`; }
-  function supervisorProjectIds(){
-    const u=curUser(); const d=store();
-    if(!u || u.role!=='supervisor') return new Set(arr(d.projects).map(p=>str(p.id)).filter(Boolean));
-    const ids=arr(d.projects).filter(p=>str(p.supervisor_id)===str(u.id)).map(p=>str(p.id)).filter(Boolean);
-    return new Set(ids);
-  }
-  function ticketBelongs(mode,t){
-    const u=curUser();
-    if(mode!=='supervisor' || !u || u.role!=='supervisor') return true;
-    const pids=supervisorProjectIds();
-    // لا نعتمد على created_by وحده حتى لا تختلط مشاريع مشرف آخر.
-    return str(t.supervisor_id)===str(u.id) || pids.has(str(t.project_id));
-  }
-  function filtered(mode){
-    const d=store(); let list=arr(d.tickets).filter(t=>ticketBelongs(mode,t));
-    const st = mode==='supervisor' ? str(byId('supTicketFilterStatus')?.value) : mode==='technician' ? str(byId('techTicketFilterStatus')?.value) : str(byId('ticketFilterStatus')?.value);
-    const pid = mode==='supervisor' ? str(byId('supTicketFilterProject')?.value) : str(byId('ticketFilterProjectV197')?.value || byId('ticketFilterProject')?.value);
-    const q = (mode==='supervisor' ? str(byId('supTicketSearch')?.value) : mode==='technician' ? str(byId('techTicketSearch')?.value) : str(byId('ticketSearch')?.value)).toLowerCase();
-    if(st) list=list.filter(t=>tStatus(t)===st);
-    if(pid) list=list.filter(t=>str(t.project_id)===pid);
-    if(q) list=list.filter(t=>[ticketNo(t),t.title,t.description,projectLabel(t.project_id),supervisorLabel(t.supervisor_id),stLabel(t),prLabel(t.priority),t.claimed_by_name,t.closed_by_name,t.closure_note].join(' ').toLowerCase().includes(q));
-    return list.sort((a,b)=>String(b.created_at||b.id||'').localeCompare(String(a.created_at||a.id||'')));
-  }
-  function summary(list){
-    const open=list.filter(t=>tStatus(t)==='open').length;
-    const proc=list.filter(t=>tStatus(t)==='processing').length;
-    const closed=list.filter(t=>tStatus(t)==='closed').length;
-    const urgent=list.filter(t=>['urgent','high'].includes(str(t.priority))).length;
-    return `<div class="smart-ticket-kpi"><b>${list.length}</b><span>إجمالي التكتات</span></div><div class="smart-ticket-kpi red"><b>${open}</b><span>مفتوحة</span></div><div class="smart-ticket-kpi amber"><b>${proc}</b><span>تحت المعالجة</span></div><div class="smart-ticket-kpi green"><b>${closed}</b><span>مغلقة</span></div><div class="smart-ticket-kpi dark"><b>${urgent}</b><span>عاجلة / مهمة</span></div>`;
-  }
-  function waText(t){ return [tStatus(t)==='closed'?'✅ تم إغلاق التكت':'📌 تكت / بلاغ','شركة تصنيف لإدارة المرافق','',`رقم التكت: ${ticketNo(t)}`,`المشروع: ${projectLabel(t.project_id)}`,`المشرف: ${supervisorLabel(t.supervisor_id)}`,`الحالة: ${stLabel(t)}`,`الأولوية: ${prLabel(t.priority)}`,`العنوان: ${t.title||'-'}`,`التفاصيل: ${t.description||'-'}`,t.claimed_by_name?`تم الاستلام بواسطة: ${t.claimed_by_name}`:'',t.closed_by_name?`تم الإغلاق بواسطة: ${t.closed_by_name}`:'',t.closure_note?`طريقة الإغلاق: ${t.closure_note}`:'',`التاريخ: ${fmt(t.created_at)}`].filter(Boolean).join('\n'); }
-  async function copyText(text){ try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); return true; } }catch(_){} try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.top='-2000px'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); ta.remove(); return true; }catch(_){ return false; } }
-  window.sendTicketWhatsAppV273 = async function(id){ const t=arr(store().tickets).find(x=>str(x.id)===str(id)); if(!t){ if(typeof msg==='function') msg('التكت غير موجود، اضغط تحديث البيانات','err'); return; } const text=waText(t); await copyText(text); window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank'); if(typeof msg==='function') msg('تم نسخ رسالة التكت وفتح واتساب'); };
-  window.sendTicketWhatsApp = window.sendTicketWhatsAppV273;
-  function btn(label, cls, js){ return `<button type="button" class="${cls||''}" onclick="${js}">${label}</button>`; }
-  function card(t,mode){
-    const id=Number(t.id)||0, status=tStatus(t), closed=status==='closed';
-    const actions=[];
-    if(typeof window.ticketDownloadPdfV206==='function') actions.push(btn('PDF','light',`ticketDownloadPdfV206(${id})`));
-    if(mode!=='technician') actions.push(btn('تعديل','light',`editTicket(${id})`));
-    if(closed) actions.push(btn('إعادة فتح','light',`setTicketStatus(${id},'open')`));
-    else { if(status!=='processing') actions.push(btn('استلام','light',`claimTicket(${id})`)); actions.push(btn('إغلاق','',`closeTicket(${id})`)); }
-    actions.push(btn('واتساب','ticket-wa-v273',`sendTicketWhatsAppV273(${id})`));
-    if(mode==='admin') actions.push(btn('حذف','danger',`deleteRow('tickets',${id})`));
-    return `<article class="smart-ticket-card ${stClass(t)}"><div class="smart-ticket-top"><div><strong>${escHtml(ticketNo(t))}</strong><small>${escHtml(fmt(t.created_at))}</small></div><span class="smart-ticket-status ${stClass(t)}">${escHtml(stLabel(t))}</span></div><h3>${escHtml(t.title||'-')}</h3><div class="smart-ticket-meta"><span>المشروع: <b>${escHtml(projectLabel(t.project_id))}</b></span><span>المشرف: <b>${escHtml(supervisorLabel(t.supervisor_id))}</b></span><span>الأولوية: <b>${escHtml(prLabel(t.priority))}</b></span><span>مدة الفتح: <b>${escHtml(dur(t))}</b></span></div><p>${escHtml(t.description||'لا يوجد وصف')}</p><div class="smart-ticket-mini"><span>استلم: ${escHtml(t.claimed_by_name||'-')}</span><span>أغلق: ${escHtml(t.closed_by_name||'-')}</span></div>${t.closure_note?`<div class="smart-ticket-note">الحل: ${escHtml(t.closure_note)}</div>`:''}<div class="smart-ticket-actions">${actions.join('')}</div></article>`;
-  }
-  window.__ticketPageV273 = window.__ticketPageV273 || {admin:1,supervisor:1,technician:1};
-  const pageSize=12;
-  function pager(mode,total){ const pages=Math.max(1,Math.ceil(total/pageSize)); let page=Math.min(Math.max(1,Number(window.__ticketPageV273[mode]||1)),pages); window.__ticketPageV273[mode]=page; const from=total?((page-1)*pageSize+1):0, to=Math.min(page*pageSize,total); return `<div class="ticket-pagination-v273"><span>عرض ${from} - ${to} من ${total}</span><button class="light" ${page<=1?'disabled':''} onclick="setTicketPageV273('${mode}',${page-1})">السابق</button><button class="light" ${page>=pages?'disabled':''} onclick="setTicketPageV273('${mode}',${page+1})">التالي</button></div>`; }
-  window.setTicketPageV273=function(mode,page){ window.__ticketPageV273[mode]=Math.max(1,Number(page)||1); renderTicketsV273(); };
-  function renderOne(bodyId,summaryId,mode){ const body=byId(bodyId); if(!body) return; const list=filtered(mode); const page=window.__ticketPageV273[mode]||1; const start=(page-1)*pageSize; const view=list.slice(start,start+pageSize); const sum=byId(summaryId); if(sum) sum.innerHTML=summary(list); body.classList.add('smart-ticket-grid'); body.innerHTML=(view.length?view.map(t=>card(t,mode)).join(''):'<div class="empty-smart-ticket">لا توجد تكتات مطابقة للبحث الحالي</div>')+pager(mode,list.length); }
-  function renderTicketsV273(){ store(); renderOne('ticketsBody','ticketsSmartSummary','admin'); renderOne('supTicketsBody','supTicketsSmartSummary','supervisor'); renderOne('techTicketsBody','techTicketsSmartSummary','technician'); }
-  window.renderTickets = renderTicketsV273;
-  window.renderTicketsV273 = renderTicketsV273;
-  // تحديث مرجع window.data بعد كل تحميل، بدون تغيير منطق التحميل الأصلي.
-  const oldLoadAll=window.loadAll;
-  if(typeof oldLoadAll==='function' && !oldLoadAll.__v273Wrapped){ const wrapped=async function(){ const r=await oldLoadAll.apply(this,arguments); store(); return r; }; wrapped.__v273Wrapped=true; window.loadAll=wrapped; }
-  const oldRefresh=window.refreshAll;
-  if(typeof oldRefresh==='function' && !oldRefresh.__v273Wrapped){ const wrapped=async function(){ const r=await oldRefresh.apply(this,arguments); store(); try{ renderTicketsV273(); }catch(_){} return r; }; wrapped.__v273Wrapped=true; window.refreshAll=wrapped; }
-  const oldInitSup=window.initSupervisor;
-  window.initSupervisor=async function(){ if(typeof oldInitSup==='function') await oldInitSup.apply(this,arguments); store(); const u=curUser(); if(u&&u.role==='supervisor'){
-      const projects=arr(store().projects).filter(p=>str(p.supervisor_id)===str(u.id));
-      if(byId('supTicketFilterProject') && typeof fillSelect==='function') fillSelect('supTicketFilterProject',projects,'name','كل المشاريع');
-    }
-    renderTicketsV273();
-  };
-  ['ticketFilterStatus','ticketFilterProjectV197','ticketFilterProject','ticketSearch','supTicketFilterStatus','supTicketFilterProject','supTicketSearch','techTicketFilterStatus','techTicketSearch'].forEach(id=>{ const el=byId(id); if(!el||el.__v273Bound) return; el.__v273Bound=true; const mode=id.startsWith('sup')?'supervisor':(id.startsWith('tech')?'technician':'admin'); el.addEventListener(el.tagName==='INPUT'?'input':'change',()=>{ window.__ticketPageV273[mode]=1; renderTicketsV273(); }); });
-  if(!byId('ticketV273Css')){ const st=document.createElement('style'); st.id='ticketV273Css'; st.textContent='.ticket-wa-v273{background:#128C7E!important;color:#fff!important;border:0!important;border-radius:10px!important;padding:8px 12px!important;font-weight:900!important}.ticket-pagination-v273{grid-column:1/-1;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;margin:14px 0}.ticket-pagination-v273 span{color:#61716a;font-size:12px}.smart-ticket-card.done{opacity:.96}.smart-ticket-card.done:before{background:#138a4b!important}.smart-ticket-card.doing:before{background:#d69e2e!important}.smart-ticket-card.open:before{background:#b83232!important}'; document.head.appendChild(st); }
-  store();
-  setTimeout(renderTicketsV273,700);
-  window.addEventListener('load',()=>setTimeout(renderTicketsV273,1000));
-  console.log('Tasneef '+VERSION+' stable supervisor ticket scope loaded');
 })();
