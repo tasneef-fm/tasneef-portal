@@ -66,6 +66,14 @@
 @media(max-width:900px){.export-hero-v222{flex-direction:column;align-items:flex-start}.export-nav-v223,.export-filter-grid-v222{grid-template-columns:1fr}.export-slide-v222{min-height:auto}}
 
 </style>
+<script>
+(function(){
+  try{
+    if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister();});}); }
+    if('caches' in window){ caches.keys().then(function(keys){ keys.forEach(function(k){ if(/tasneef/i.test(k)) caches.delete(k); }); }); }
+  }catch(e){}
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style id="smart-ui-framework-v129">
@@ -846,6 +854,6 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=274"></script>
+<script src="app.js?v=275"></script>
 </body>
 </html>
