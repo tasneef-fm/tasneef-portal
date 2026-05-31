@@ -129,6 +129,7 @@
     <button class="nav" onclick="showPage('attendance',this)">الحضور والغياب</button>
     <button class="nav" onclick="showPage('monthly',this)">الأوقات الشهرية</button>
     <button class="nav" onclick="showPage('tickets',this)">التكتات</button>
+    <button class="nav" onclick="showPage('orders',this)">الأوردرات</button>
     <button class="nav" onclick="showPage('clientReports',this)">تقارير العملاء</button>
     <button class="nav" onclick="showPage('clientRatings',this)">تقييمات العملاء</button>
     <button class="nav" onclick="showPage('financeDashboard',this)">المصروفات والمخزون</button>
@@ -433,6 +434,66 @@
       </div>
     </section>
 
+
+
+
+
+    <section id="orders" class="page hidden">
+      <div class="card section-head">
+        <div>
+          <h2>قسم الأوردرات</h2>
+          <p>إدارة أوردرات الصيانة الخارجية بنفس آلية ملف الإكسل، مع رقم نظام تلقائي ورقم مستقل للأوردر في القروب.</p>
+        </div>
+        <div class="actions">
+          <button onclick="clearOrderFormV233()">+ أوردر جديد</button>
+          <button class="light" onclick="exportOrdersCSVV233()">تصدير CSV</button>
+        </div>
+      </div>
+
+      <div class="kpis orders-kpis-v233">
+        <div class="kpi"><small>إجمالي الأوردرات</small><b id="ordersTotalKpiV233">0</b></div>
+        <div class="kpi"><small>تم التنفيذ</small><b id="ordersDoneKpiV233">0</b></div>
+        <div class="kpi"><small>آجل / غير مسدد</small><b id="ordersDueKpiV233">0</b></div>
+        <div class="kpi"><small>صافي الربح</small><b id="ordersProfitKpiV233">0</b></div>
+      </div>
+
+      <div class="card orders-summary-v233">
+        <h2>ملخص مالي وتنفيذي</h2>
+        <div id="ordersSummaryV233" class="summary-grid"></div>
+      </div>
+
+      <div class="grid two orders-layout-v233">
+        <div class="card orders-form-card-v233">
+          <h2 id="orderFormTitleV233">إضافة أوردر</h2>
+          <input type="hidden" id="orderEditIndexV233">
+          <div class="split"><div><label>رقم الطلب / النظام</label><input id="orderNoV233" readonly placeholder="تلقائي عند الحفظ"></div><div><label>رقم الطلب بالجروب</label><input id="orderGroupNoV233"></div></div>
+          <div id="orderFormFieldsV233" class="orders-form-grid-v233"></div>
+          <div class="actions">
+            <button onclick="saveOrderV233()">حفظ الأوردر</button>
+            <button class="light" onclick="clearOrderFormV233()">جديد</button>
+            <button class="danger" onclick="deleteCurrentOrderV233()">حذف المحدد</button>
+          </div>
+          <div class="footer-note">رقم النظام يتم توليده تلقائيًا ولا يتكرر. رقم القروب يكتب يدويًا من قروب الأوردرات.</div>
+        </div>
+
+        <div class="card orders-list-card-v233">
+          <div class="table-head"><h2>سجل الأوردرات من الإكسل</h2><button class="light" onclick="renderOrdersV233()">تحديث</button></div>
+          <div class="filters orders-filters-v233">
+            <input id="orderSearchV233" oninput="renderOrdersV233()" placeholder="بحث برقم النظام، رقم القروب، المشروع، العميل، الجوال، التفاصيل">
+            <select id="orderProjectFilterV233" onchange="renderOrdersV233()"><option value="">كل المشاريع</option></select>
+            <select id="orderExecutorFilterV233" onchange="renderOrdersV233()"><option value="">كل المنفذين</option></select>
+            <select id="orderSenderFilterV233" onchange="renderOrdersV233()"><option value="">كل مرسلي الطلب</option></select>
+            <select id="orderStatusFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات التنفيذ</option></select>
+            <select id="orderPaymentFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات السداد</option></select>
+            <select id="orderBillingFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات الفوترة</option></select>
+            <input id="orderFromDateV233" type="date" onchange="renderOrdersV233()" title="من تاريخ الطلب">
+            <input id="orderToDateV233" type="date" onchange="renderOrdersV233()" title="إلى تاريخ الطلب">
+            <button class="light" onclick="resetOrdersFiltersV233()">إعادة تعيين</button>
+          </div>
+          <div class="table-wrap orders-table-wrap-v233"><table><thead id="ordersHeadV233"></thead><tbody id="ordersBodyV233"></tbody></table></div>
+        </div>
+      </div>
+    </section>
 
 
     <section id="clientReports" class="page hidden">
@@ -795,6 +856,7 @@
     </section>
   </main>
 </div>
-<script src="app.js?v=230"></script>
+<script src="orders_seed.js?v=233"></script>
+<script src="app.js?v=233"></script>
 </body>
 </html>

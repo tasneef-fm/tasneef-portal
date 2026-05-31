@@ -16742,3 +16742,312 @@ function financePrintReport(kind){
   setTimeout(()=>{ try{ updateDashboardV232(); }catch(_){} }, 1500);
   console.log('Tasneef V232 today logs fix loaded');
 })();
+
+
+/* ===== V233: Orders section from Excel - رقم تلقائي + رقم القروب + كامل بيانات الإكسل ===== */
+(function(){
+  if(window.__tasneefOrdersV233) return;
+  window.__tasneefOrdersV233 = true;
+
+  const STORAGE_KEY = 'tasneef_orders_v233';
+  const seed = window.TASNEEF_ORDERS_SEED || {headers:[],orders:[],lists:{}};
+  const visibleHeaders = (seed.headers || []).filter(h => !String(h||'').startsWith('__excel_col_'));
+  const hiddenHeaders = (seed.headers || []).filter(h => String(h||'').startsWith('__excel_col_'));
+  const allHeaders = [...visibleHeaders, ...hiddenHeaders, '__excel_row'];
+  const editableHeaders = visibleHeaders.filter(h => h !== 'رقم الطلب');
+
+  function $(id){ return document.getElementById(id); }
+  function esc2(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+  function n2(v){ const x=Number(String(v ?? 0).replace(/,/g,'').trim()); return Number.isFinite(x) ? x : 0; }
+  function money2(v){ return n2(v).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})+' ر.س'; }
+  function localToday(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
+  function cloneRows(rows){ return JSON.parse(JSON.stringify(rows || [])); }
+
+  function normalizeDateForInput(v){
+    if(!v && v!==0) return '';
+    if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
+    let s=String(v).trim();
+    if(!s || s==='0') return '';
+    let m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if(m) return `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+    m=s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+    return '';
+  }
+  function displayDate(v){
+    const iso=normalizeDateForInput(v);
+    if(!iso) return v ?? '';
+    const [y,m,d]=iso.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  function dateForFilter(v){ return normalizeDateForInput(v); }
+  function optionValues(header){
+    const fromList = (seed.lists && seed.lists[header]) ? seed.lists[header] : [];
+    const fromRows = getOrders().map(r => r[header]).filter(v => v!==null && v!==undefined && String(v).trim()!=='');
+    return [...new Set([...fromList, ...fromRows].map(v=>String(v).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+  }
+  function getOrders(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if(Array.isArray(saved) && saved.length) return saved;
+    }catch(e){}
+    return cloneRows(seed.orders || []);
+  }
+  function setOrders(rows){ localStorage.setItem(STORAGE_KEY, JSON.stringify(rows || [])); }
+  function maxOrderNumber(rows){
+    let max=0;
+    (rows||[]).forEach(r=>{
+      const s=String(r['رقم الطلب']||'');
+      const nums=s.match(/\d+/g);
+      if(nums && nums.length){ const x=Number(nums[nums.length-1]); if(Number.isFinite(x)) max=Math.max(max,x); }
+    });
+    return max;
+  }
+  function nextOrderNo(rows){
+    const n=maxOrderNumber(rows)+1;
+    return 'ORD'+String(n).padStart(4,'0');
+  }
+  function recalc(row){
+    const inc=n2(row['السعر (شامل الضريبة)']);
+    const cost=n2(row['التكلفة']);
+    if(inc || cost){
+      const before=+(inc/1.15).toFixed(2);
+      const vat=+(inc-before).toFixed(2);
+      row['السعر قبل الضريبة']=before;
+      row['الضريبة 15%']=vat;
+      row['الربح']=+(before-cost).toFixed(2);
+    }
+    return row;
+  }
+  function inputType(header){
+    if(header.includes('تاريخ')) return 'date';
+    if(header.includes('وقت')) return 'time';
+    if(['السعر (شامل الضريبة)','الضريبة 15%','السعر قبل الضريبة','التكلفة','الربح','رقم الطلب بالجروب','رقم العميل'].includes(header)) return 'number';
+    return 'text';
+  }
+  function isTextarea(header){ return ['التفاصيل','ملاحظات','كيفية التنفيذ'].includes(header); }
+  function isDropdown(header){ return ['المشروع','نوع العقار','المنفذ','مرسل الطلب','تخص','حالة التنفيذ','تقرير','حالة السداد','فوترة بالسيستم'].includes(header); }
+  function fieldId(header){ return 'orderFieldV233_'+btoa(unescape(encodeURIComponent(header))).replace(/=+$/,'').replace(/[^a-zA-Z0-9]/g,'_'); }
+
+  function ensureStyle(){
+    if(document.getElementById('ordersStyleV233')) return;
+    const st=document.createElement('style'); st.id='ordersStyleV233';
+    st.textContent=`
+      .orders-layout-v233{grid-template-columns:430px 1fr!important;align-items:start}.orders-kpis-v233 .kpi b{font-size:24px}.orders-form-card-v233{position:sticky;top:12px;max-height:86vh;overflow:auto}.orders-form-grid-v233{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}.orders-form-grid-v233 .wide{grid-column:1/-1}.orders-filters-v233{position:sticky;top:0;z-index:5;background:#fff;border:1px solid var(--line);border-radius:18px;padding:10px}.orders-table-wrap-v233{max-height:72vh}.orders-table-wrap-v233 th{top:0}.orders-table-wrap-v233 td{max-width:280px;overflow:hidden;text-overflow:ellipsis}.orders-table-wrap-v233 td.details-cell-v233{white-space:normal;min-width:260px}.readonly-note-v233{background:#f6faf8}.orders-row-done-v233{background:#fbfffd}.orders-row-late-v233{background:#fffaf0}.orders-row-cancel-v233{background:#fff5f5}.orders-hidden-col-v233{opacity:.75;color:#60706a}.orders-form-card-v233 input[readonly]{background:#f4f8f6;color:#0a4033;font-weight:900}@media(max-width:1100px){.orders-layout-v233{grid-template-columns:1fr!important}.orders-form-card-v233{position:static}.orders-form-grid-v233{grid-template-columns:1fr}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function hydrateOrdersForm(){
+    const box=$('orderFormFieldsV233'); if(!box || box.dataset.ready==='1') return;
+    box.dataset.ready='1';
+    box.innerHTML = editableHeaders.filter(h=>h!=='رقم الطلب بالجروب').map(h=>{
+      const id=fieldId(h); const wide=isTextarea(h)||h==='التفاصيل'||h==='ملاحظات'||h==='كيفية التنفيذ';
+      let html='';
+      if(isDropdown(h)){
+        html = `<select id="${id}"><option value="">اختر</option>${optionValues(h).map(v=>`<option value="${esc2(v)}">${esc2(v)}</option>`).join('')}</select>`;
+      }else if(isTextarea(h)){
+        html = `<textarea id="${id}"></textarea>`;
+      }else{
+        html = `<input id="${id}" type="${inputType(h)}">`;
+      }
+      const readonly = ['الضريبة 15%','السعر قبل الضريبة','الربح'].includes(h) ? ' <span class="orders-hidden-col-v233">(تلقائي)</span>' : '';
+      return `<div class="${wide?'wide':''}"><label>${esc2(h)}${readonly}</label>${html}</div>`;
+    }).join('');
+    ['السعر (شامل الضريبة)','التكلفة'].forEach(h=>{ const el=$(fieldId(h)); if(el) el.addEventListener('input', previewCalc); });
+  }
+
+  function hydrateOrdersFilters(){
+    const map=[['orderProjectFilterV233','المشروع','كل المشاريع'],['orderExecutorFilterV233','المنفذ','كل المنفذين'],['orderSenderFilterV233','مرسل الطلب','كل مرسلي الطلب'],['orderStatusFilterV233','حالة التنفيذ','كل حالات التنفيذ'],['orderPaymentFilterV233','حالة السداد','كل حالات السداد'],['orderBillingFilterV233','فوترة بالسيستم','كل حالات الفوترة']];
+    map.forEach(([id,h,label])=>{ const el=$(id); if(!el || el.dataset.ready==='1') return; el.dataset.ready='1'; el.innerHTML=`<option value="">${label}</option>`+optionValues(h).map(v=>`<option value="${esc2(v)}">${esc2(v)}</option>`).join(''); });
+  }
+
+  function previewCalc(){
+    const inc=$(fieldId('السعر (شامل الضريبة)')); const cost=$(fieldId('التكلفة'));
+    const vat=$(fieldId('الضريبة 15%')); const before=$(fieldId('السعر قبل الضريبة')); const profit=$(fieldId('الربح'));
+    if(!inc || !cost) return;
+    const row=recalc({'السعر (شامل الضريبة)':inc.value,'التكلفة':cost.value});
+    if(vat) vat.value = row['الضريبة 15%'] || 0;
+    if(before) before.value = row['السعر قبل الضريبة'] || 0;
+    if(profit) profit.value = row['الربح'] || 0;
+  }
+
+  window.clearOrderFormV233 = function(){
+    hydrateOrdersForm();
+    if($('orderEditIndexV233')) $('orderEditIndexV233').value='';
+    if($('orderNoV233')) $('orderNoV233').value='';
+    if($('orderGroupNoV233')) $('orderGroupNoV233').value='';
+    editableHeaders.forEach(h=>{ const el=$(fieldId(h)); if(el) el.value=''; });
+    if($('orderFormTitleV233')) $('orderFormTitleV233').textContent='إضافة أوردر';
+    const dateEl=$(fieldId('تاريخ الطلب')); if(dateEl && !dateEl.value) dateEl.value=localToday();
+  };
+
+  window.editOrderV233 = function(index){
+    hydrateOrdersForm();
+    const rows=getOrders(); const r=rows[index]; if(!r) return;
+    $('orderEditIndexV233').value=String(index);
+    $('orderNoV233').value=r['رقم الطلب']||'';
+    $('orderGroupNoV233').value=r['رقم الطلب بالجروب']??'';
+    editableHeaders.forEach(h=>{
+      if(h==='رقم الطلب بالجروب') return;
+      const el=$(fieldId(h)); if(!el) return;
+      let v=r[h];
+      if(inputType(h)==='date') v=normalizeDateForInput(v);
+      if(inputType(h)==='time' && typeof v==='number') v='';
+      el.value = v ?? '';
+    });
+    if($('orderFormTitleV233')) $('orderFormTitleV233').textContent='تعديل أوردر '+(r['رقم الطلب']||'');
+    $('orders')?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+
+  window.saveOrderV233 = function(){
+    hydrateOrdersForm();
+    const rows=getOrders();
+    const idxStr=$('orderEditIndexV233')?.value;
+    const editing = idxStr!=='' && idxStr!==undefined;
+    let row = editing ? Object.assign({}, rows[Number(idxStr)]||{}) : {};
+    row['رقم الطلب'] = editing ? (row['رقم الطلب'] || $('orderNoV233')?.value || nextOrderNo(rows)) : nextOrderNo(rows);
+    row['رقم الطلب بالجروب'] = $('orderGroupNoV233')?.value || '';
+    editableHeaders.forEach(h=>{
+      if(h==='رقم الطلب بالجروب') return;
+      const el=$(fieldId(h)); if(!el) return;
+      row[h]=el.value;
+    });
+    if(!row['تاريخ الطلب']) row['تاريخ الطلب']=localToday();
+    row = recalc(row);
+    if(editing) rows[Number(idxStr)] = row; else rows.unshift(row);
+    setOrders(rows);
+    try{ msg(editing?'تم تحديث الأوردر':'تم حفظ الأوردر'); }catch(e){}
+    clearOrderFormV233();
+    renderOrdersV233();
+  };
+
+  window.deleteCurrentOrderV233 = function(){
+    const idxStr=$('orderEditIndexV233')?.value;
+    if(idxStr==='' || idxStr===undefined) return alert('اختر أوردر أولًا من الجدول');
+    const rows=getOrders(); const r=rows[Number(idxStr)];
+    if(!r) return;
+    if(!confirm('حذف الأوردر '+(r['رقم الطلب']||'')+'؟')) return;
+    rows.splice(Number(idxStr),1); setOrders(rows); clearOrderFormV233(); renderOrdersV233();
+  };
+
+  window.deleteOrderV233 = function(index){
+    const rows=getOrders(); const r=rows[index]; if(!r) return;
+    if(!confirm('حذف الأوردر '+(r['رقم الطلب']||'')+'؟')) return;
+    rows.splice(index,1); setOrders(rows); renderOrdersV233();
+  };
+
+  function filteredOrders(){
+    const q=($('orderSearchV233')?.value||'').trim().toLowerCase();
+    const project=$('orderProjectFilterV233')?.value||'';
+    const exec=$('orderExecutorFilterV233')?.value||'';
+    const sender=$('orderSenderFilterV233')?.value||'';
+    const status=$('orderStatusFilterV233')?.value||'';
+    const pay=$('orderPaymentFilterV233')?.value||'';
+    const bill=$('orderBillingFilterV233')?.value||'';
+    const from=$('orderFromDateV233')?.value||'';
+    const to=$('orderToDateV233')?.value||'';
+    return getOrders().map((r,i)=>({r,i})).filter(({r})=>{
+      if(project && String(r['المشروع']||'').trim()!==project) return false;
+      if(exec && String(r['المنفذ']||'').trim()!==exec) return false;
+      if(sender && String(r['مرسل الطلب']||'').trim()!==sender) return false;
+      if(status && String(r['حالة التنفيذ']||'').trim()!==status) return false;
+      if(pay && String(r['حالة السداد']||'').trim()!==pay) return false;
+      if(bill && String(r['فوترة بالسيستم']||'').trim()!==bill) return false;
+      const d=dateForFilter(r['تاريخ الطلب']);
+      if(from && d && d<from) return false;
+      if(to && d && d>to) return false;
+      if(q){
+        const hay=[r['رقم الطلب'],r['رقم الطلب بالجروب'],r['المشروع'],r['اسم العميل'],r['رقم العميل'],r['التفاصيل'],r['ملاحظات'],r['رقم الفاتورة'],r['المنفذ']].join(' ').toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+  function rowClass(r){
+    const st=String(r['حالة التنفيذ']||''); const pay=String(r['حالة السداد']||'');
+    if(st.includes('لم ينفذ') || st.includes('ملغي')) return 'orders-row-cancel-v233';
+    if(pay.includes('آجل') || pay.includes('جزئي')) return 'orders-row-late-v233';
+    if(st.includes('تم التنفيذ')) return 'orders-row-done-v233';
+    return '';
+  }
+
+  window.renderOrdersV233 = function(){
+    ensureStyle(); hydrateOrdersForm(); hydrateOrdersFilters();
+    const head=$('ordersHeadV233'), body=$('ordersBodyV233'); if(!head || !body) return;
+    const list=filteredOrders();
+    const tableHeaders=visibleHeaders;
+    head.innerHTML = `<tr>${tableHeaders.map(h=>`<th>${esc2(h)}</th>`).join('')}<th>الإجراءات</th></tr>`;
+    body.innerHTML = list.map(({r,i})=>{
+      return `<tr class="${rowClass(r)}">${tableHeaders.map(h=>{
+        let v=r[h];
+        if(h.includes('تاريخ')) v=displayDate(v);
+        const cls = ['التفاصيل','ملاحظات','كيفية التنفيذ'].includes(h) ? ' class="details-cell-v233"' : '';
+        return `<td${cls}>${esc2(v ?? '')}</td>`;
+      }).join('')}<td class="row-actions"><button onclick="editOrderV233(${i})">تعديل</button><button class="light" onclick="sendOrderWhatsappV233(${i})">واتساب</button><button class="danger" onclick="deleteOrderV233(${i})">حذف</button></td></tr>`;
+    }).join('') || `<tr><td colspan="${tableHeaders.length+1}">لا توجد أوردرات حسب الفلتر الحالي</td></tr>`;
+    renderOrdersSummaryV233(list.map(x=>x.r));
+  };
+
+  window.renderOrdersSummaryV233 = function(rows){
+    rows = rows || getOrders();
+    const total=rows.length;
+    const done=rows.filter(r=>String(r['حالة التنفيذ']||'').includes('تم التنفيذ')).length;
+    const notDone=rows.filter(r=>String(r['حالة التنفيذ']||'').includes('لم ينفذ')).length;
+    const paid=rows.filter(r=>String(r['حالة السداد']||'').includes('تم السداد')).length;
+    const due=rows.filter(r=>String(r['حالة السداد']||'').includes('آجل') || String(r['حالة السداد']||'').includes('جزئي') || (!r['حالة السداد'] && n2(r['السعر (شامل الضريبة)'])>0)).length;
+    const revenue=rows.reduce((a,r)=>a+n2(r['السعر (شامل الضريبة)']),0);
+    const vat=rows.reduce((a,r)=>a+n2(r['الضريبة 15%']),0);
+    const cost=rows.reduce((a,r)=>a+n2(r['التكلفة']),0);
+    const profit=rows.reduce((a,r)=>a+n2(r['الربح']),0);
+    if($('ordersTotalKpiV233')) $('ordersTotalKpiV233').textContent=total;
+    if($('ordersDoneKpiV233')) $('ordersDoneKpiV233').textContent=done;
+    if($('ordersDueKpiV233')) $('ordersDueKpiV233').textContent=due;
+    if($('ordersProfitKpiV233')) $('ordersProfitKpiV233').textContent=money2(profit).replace(' ر.س','');
+    const box=$('ordersSummaryV233');
+    if(box) box.innerHTML = [
+      ['إجمالي الإيرادات شامل الضريبة', money2(revenue)],
+      ['إجمالي الضريبة 15%', money2(vat)],
+      ['إجمالي التكلفة', money2(cost)],
+      ['صافي الربح', money2(profit)],
+      ['تم السداد', paid+' أوردر'],
+      ['لم ينفذ / ملغي', notDone+' أوردر']
+    ].map(x=>`<div class="summary-item"><b>${esc2(x[0])}</b><br>${esc2(x[1])}</div>`).join('');
+  };
+
+  window.resetOrdersFiltersV233 = function(){
+    ['orderSearchV233','orderProjectFilterV233','orderExecutorFilterV233','orderSenderFilterV233','orderStatusFilterV233','orderPaymentFilterV233','orderBillingFilterV233','orderFromDateV233','orderToDateV233'].forEach(id=>{ if($(id)) $(id).value=''; });
+    renderOrdersV233();
+  };
+
+  window.sendOrderWhatsappV233 = function(index){
+    const r=getOrders()[index]; if(!r) return;
+    const msg = `*متابعة أوردر*%0Aرقم النظام: ${encodeURIComponent(r['رقم الطلب']||'')}%0Aرقم القروب: ${encodeURIComponent(r['رقم الطلب بالجروب']||'')}%0Aالمشروع: ${encodeURIComponent(r['المشروع']||'')}%0Aالعميل: ${encodeURIComponent(r['اسم العميل']||'-')}%0Aالجوال: ${encodeURIComponent(r['رقم العميل']||'-')}%0Aالتفاصيل: ${encodeURIComponent(r['التفاصيل']||'')}%0Aالسعر شامل الضريبة: ${encodeURIComponent(r['السعر (شامل الضريبة)']||0)}%0Aحالة التنفيذ: ${encodeURIComponent(r['حالة التنفيذ']||'')}%0Aحالة السداد: ${encodeURIComponent(r['حالة السداد']||'')}%0Aالمنفذ: ${encodeURIComponent(r['المنفذ']||'')}`;
+    window.open('https://wa.me/?text='+msg,'_blank');
+  };
+
+  window.exportOrdersCSVV233 = function(){
+    const rows=filteredOrders().map(x=>x.r);
+    const headers=visibleHeaders;
+    const csv=[headers.join(',')].concat(rows.map(r=>headers.map(h=>'"'+String(r[h]??'').replace(/"/g,'""')+'"').join(','))).join('\n');
+    const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='tasneef_orders.csv'; a.click(); URL.revokeObjectURL(a.href);
+  };
+
+  window.resetOrdersToExcelSeedV233 = function(){
+    if(!confirm('سيتم استبدال بيانات الأوردرات الحالية بنسخة الإكسل الأصلية. هل أنت متأكد؟')) return;
+    localStorage.removeItem(STORAGE_KEY); renderOrdersV233();
+  };
+
+  const oldShowPageV233 = window.showPage;
+  window.showPage = function(id, btn){
+    if(typeof oldShowPageV233==='function') oldShowPageV233(id, btn);
+    if(id==='orders') setTimeout(renderOrdersV233, 50);
+  };
+  const oldRenderAllV233 = window.renderAll;
+  window.renderAll = function(){
+    if(typeof oldRenderAllV233==='function') oldRenderAllV233();
+    try{ renderOrdersSummaryV233(getOrders()); }catch(e){}
+  };
+  document.addEventListener('DOMContentLoaded', function(){ if($('orders')){ ensureStyle(); hydrateOrdersForm(); hydrateOrdersFilters(); renderOrdersSummaryV233(getOrders()); } });
+})();
