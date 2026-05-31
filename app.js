@@ -20147,7 +20147,7 @@ setInterval(()=>{ try{ if(document.getElementById('logsBody')) renderTimeLogs();
 /* ===== V261: Orders filters + total before VAT ===== */
 (function(){
   'use strict';
-  window.TASNEEF_BUILD = 'V261_ORDERS_FILTER_BEFORE_VAT_2026_05_31';
+  window.TASNEEF_BUILD = 'V262_TECHNICIAN_ORDERS_WORKSPACE_2026_05_31';
   const $ = window.$ || (id=>document.getElementById(id));
   const esc = window.esc || (v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])));
   const num = v=>{ const x=Number(String(v??'').replace(/,/g,'')); return Number.isFinite(x)?x:0; };
@@ -20300,4 +20300,129 @@ setInterval(()=>{ try{ if(document.getElementById('logsBody')) renderTimeLogs();
   document.addEventListener('DOMContentLoaded',()=>setTimeout(addOrdersFiltersV261,900));
   window.addEventListener('load',()=>setTimeout(addOrdersFiltersV261,1200));
   console.log('Tasneef V261 loaded: orders filters and before VAT totals');
+})();
+
+/* ===== V262: Technician orders workspace ===== */
+(function(){
+  'use strict';
+  window.TASNEEF_BUILD = 'V262_TECHNICIAN_ORDERS_WORKSPACE_2026_05_31';
+  const $ = window.$ || (id=>document.getElementById(id));
+  const esc = window.esc || (v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])));
+  const arr = v => Array.isArray(v) ? v : [];
+  const today = ()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const fmtDate = v => v ? String(v).slice(0,10) : '-';
+  const short = (v,n=120)=>{ v=String(v??''); return esc(v.length>n ? v.slice(0,n)+'…' : (v||'-')); };
+  function currentTech(){ const u=(typeof window.session==='function'?window.session():null) || {}; return {id:u.id, name:(u.full_name||u.name||u.username||'فني')}; }
+  function projectNameLocal(id){
+    try{ if(typeof window.projectName==='function') return window.projectName(id); }catch(e){}
+    try{ if(typeof window.projectNameLocal==='function') return window.projectNameLocal(id); }catch(e){}
+    const p=arr(window.data?.projects).find(x=>String(x.id)===String(id));
+    return p?.name || id || '-';
+  }
+  function orderNo(o){ return o?.order_no || ('ORD' + String(o?.id||0).padStart(4,'0')); }
+  function statusClass(s){ return s==='تم التنفيذ'?'green':(s==='لم ينفذ'?'red':(s==='قيد التنفيذ'?'amber':'pink')); }
+  function isDone(o){ return String(o?.execution_status||'')==='تم التنفيذ'; }
+  function assignedToMe(o){ const me=currentTech(); return String(o?.executor||'').trim() && String(o.executor).trim()===String(me.name).trim(); }
+  function unassigned(o){ return !String(o?.executor||'').trim() && !isDone(o); }
+
+  async function loadTechnicianOrders(){
+    if(!window.sb) return [];
+    const {data,error}=await window.sb.from('maintenance_orders').select('*').order('order_date',{ascending:false}).order('id',{ascending:false});
+    if(error){ console.warn('technician orders load', error.message); if(typeof window.msg==='function') window.msg('تعذر تحميل الأوردرات: '+error.message,'err'); return arr(window.technicianOrdersV262); }
+    window.technicianOrdersV262=data||[];
+    return window.technicianOrdersV262;
+  }
+  window.refreshTechnicianOrdersV262=async function(){ await loadTechnicianOrders(); renderTechnicianOrdersV262(); };
+
+  function filteredOrders(){
+    const scope=$('techOrderScope')?.value||'mine';
+    const st=$('techOrderStatus')?.value||'';
+    const q=($('techOrderSearch')?.value||'').trim().toLowerCase();
+    const me=currentTech();
+    let rows=[...arr(window.technicianOrdersV262)];
+    if(scope==='mine') rows=rows.filter(o=>assignedToMe(o) && !isDone(o));
+    else if(scope==='open') rows=rows.filter(o=>unassigned(o));
+    else if(scope==='done') rows=rows.filter(o=>assignedToMe(o) && isDone(o));
+    else if(scope==='all') rows=rows.filter(o=>unassigned(o) || assignedToMe(o));
+    if(st) rows=rows.filter(o=>String(o.execution_status||'')===st);
+    if(q) rows=rows.filter(o=>[
+      orderNo(o), o.group_no, o.order_date, projectNameLocal(o.project_id), o.unit_no, o.details, o.notes,
+      o.execution_status, o.execution_method, o.executor, o.client_name, o.client_phone
+    ].join(' ').toLowerCase().includes(q));
+    return rows.sort((a,b)=>String(b.order_date||'').localeCompare(String(a.order_date||'')) || Number(b.id||0)-Number(a.id||0));
+  }
+
+  window.renderTechnicianOrdersV262=function(){
+    const body=$('techOrdersBodyV262');
+    const all=arr(window.technicianOrdersV262);
+    const rows=filteredOrders();
+    const set=(id,v)=>{ const el=$(id); if(el) el.textContent=v; };
+    set('techOrdersOpenCount', all.filter(unassigned).length);
+    set('techOrdersAssignedCount', all.filter(o=>assignedToMe(o)&&!isDone(o)).length);
+    set('techOrdersProcessingCount', all.filter(o=>assignedToMe(o)&&String(o.execution_status||'')==='قيد التنفيذ').length);
+    set('techOrdersDoneCount', all.filter(o=>assignedToMe(o)&&isDone(o)).length);
+    set('techOrdersMineCount', all.filter(o=>assignedToMe(o)&&!isDone(o)).length);
+    if(!body) return;
+    body.innerHTML=rows.map(o=>{
+      const done=isDone(o), assigned=assignedToMe(o), open=unassigned(o);
+      const actions = done ? '<span class="muted">منفذ</span>' :
+        (open ? `<button onclick="techClaimOrderV262(${Number(o.id)})">استلام</button>` : '') +
+        (assigned ? `<button onclick="techStartOrderV262(${Number(o.id)})" class="light">قيد التنفيذ</button><button onclick="techCloseOrderV262(${Number(o.id)})">إغلاق</button>` : '');
+      return `<tr>
+        <td><b>${esc(orderNo(o))}</b><br><small>${esc(o.group_no||'')}</small></td>
+        <td>${esc(fmtDate(o.order_date))}</td>
+        <td>${esc(projectNameLocal(o.project_id))}</td>
+        <td>${esc(o.unit_no||'-')}</td>
+        <td style="white-space:normal;min-width:240px">${short(o.details,150)}${o.notes?`<br><small>${short(o.notes,90)}</small>`:''}</td>
+        <td><span class="badge ${statusClass(o.execution_status)}">${esc(o.execution_status||'لم ينفذ')}</span></td>
+        <td>${esc(o.executor||'-')}</td>
+        <td style="white-space:normal;min-width:180px">${short(o.execution_method,120)}</td>
+        <td class="row-actions">${actions||'-'}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="9">لا توجد أوردرات حسب الفلتر الحالي</td></tr>';
+  };
+
+  async function updateOrder(id,row,success){
+    if(!window.sb) return;
+    const {error}=await window.sb.from('maintenance_orders').update(row).eq('id',id);
+    if(error){ if(typeof window.msg==='function') window.msg(error.message,'err'); else alert(error.message); return; }
+    if(typeof window.msg==='function') window.msg(success||'تم تحديث الأوردر');
+    await loadTechnicianOrders();
+    renderTechnicianOrdersV262();
+  }
+  window.techClaimOrderV262=async function(id){
+    const me=currentTech();
+    const o=arr(window.technicianOrdersV262).find(x=>String(x.id)===String(id));
+    if(!o) return;
+    if(String(o.executor||'').trim() && !assignedToMe(o)) return (typeof window.msg==='function'?window.msg('الأوردر مستلم بواسطة '+o.executor,'err'):alert('الأوردر مستلم'));
+    await updateOrder(id,{executor:me.name, execution_status:'قيد التنفيذ'},'تم استلام الأوردر');
+  };
+  window.techStartOrderV262=async function(id){
+    const me=currentTech();
+    await updateOrder(id,{executor:me.name, execution_status:'قيد التنفيذ'},'تم تحويل الأوردر إلى قيد التنفيذ');
+  };
+  window.techCloseOrderV262=async function(id){
+    const me=currentTech();
+    const note=prompt('اكتب طريقة تنفيذ الأوردر أو ملاحظات الإغلاق');
+    if(!note || !note.trim()) return (typeof window.msg==='function'?window.msg('لا يمكن إغلاق الأوردر بدون ملاحظة التنفيذ','err'):alert('اكتب ملاحظة التنفيذ'));
+    await updateOrder(id,{executor:me.name, execution_status:'تم التنفيذ', done_date:today(), execution_method:note.trim()},'تم إغلاق الأوردر وحفظ طريقة التنفيذ');
+  };
+
+  const oldShowTechWindow=window.showTechWindow;
+  window.showTechWindow=function(id,btn){
+    if(typeof oldShowTechWindow==='function') oldShowTechWindow(id,btn);
+    if(id==='techOrders') setTimeout(()=>{ renderTechnicianOrdersV262(); if(!window.technicianOrdersV262) refreshTechnicianOrdersV262(); },50);
+  };
+
+  const oldInitTech=window.initTechnician;
+  window.initTechnician=async function(){
+    const u=(typeof window.requireRole==='function') ? window.requireRole('technician') : true;
+    if(!u) return;
+    if(typeof oldInitTech==='function') await oldInitTech();
+    await loadTechnicianOrders();
+    renderTechnicianOrdersV262();
+    if(window.__techOrdersTimerV262) clearInterval(window.__techOrdersTimerV262);
+    window.__techOrdersTimerV262=setInterval(async()=>{ await loadTechnicianOrders(); renderTechnicianOrdersV262(); },120000);
+  };
+  console.log('Tasneef V262 loaded: technician orders workspace');
 })();
