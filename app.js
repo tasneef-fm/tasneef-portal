@@ -16,7 +16,7 @@
     }
     if(window.caches){ caches.keys().then(function(keys){ keys.forEach(function(k){ if(/^tasneef/i.test(k)) caches.delete(k); }); }).catch(function(){}); }
   }catch(e){}
-  window.TASNEEF_BUILD='V277_STABLE_ROLLBACK_NO_SW';
+  window.TASNEEF_BUILD='V278_STABLE_NO_ABORT_NO_CACHE';
 })();
 /* TASNEEF BUILD V257 - stable live today logs/tickets fix - 2026-05-31 */
 /* V154 Smart Loading Branding */
@@ -136,98 +136,43 @@
 
 
 
-/* ===================== V239: LITE NETWORK RESILIENCE + OFFLINE CACHE ===================== */
+/* ===================== V278: STABLE NETWORK - NO ABORT, NO SUPABASE CACHE ===================== */
 (function(){
-  if(window.__tasneefLiteNetworkV239) return;
-  window.__tasneefLiteNetworkV239 = true;
-  window.TASNEEF_BUILD = 'V277_STABLE_ROLLBACK_NO_SW';
+  if(window.__tasneefStableNetworkV278) return;
+  window.__tasneefStableNetworkV278 = true;
+  window.TASNEEF_BUILD = 'V278_STABLE_NO_ABORT_NO_CACHE';
 
   function addLiteStyle(){
-    if(document.getElementById('tasneefLiteStyleV239')) return;
+    if(document.getElementById('tasneefLiteStyleV278')) return;
     const st=document.createElement('style');
-    st.id='tasneefLiteStyleV239';
+    st.id='tasneefLiteStyleV278';
     st.textContent=`
-      .tasneef-netbar-v239{position:fixed;left:16px;bottom:16px;z-index:999998;direction:rtl;background:#064c3f;color:white;border-radius:16px;padding:10px 14px;box-shadow:0 12px 28px rgba(0,0,0,.18);font:700 13px Tahoma,Arial;display:none;max-width:360px;line-height:1.7}
-      .tasneef-netbar-v239.warn{background:#8a5b00}.tasneef-netbar-v239.err{background:#9b1c1c}.tasneef-netbar-v239.show{display:block}
-      .tasneef-lite-skeleton-v239{min-height:120px;border-radius:18px;background:linear-gradient(90deg,#eef6f3,#fff,#eef6f3);background-size:220% 100%;animation:tasneefSkV239 1.4s infinite;border:1px solid #d9e8e3}
-      @keyframes tasneefSkV239{0%{background-position:0 0}100%{background-position:-220% 0}}
+      .tasneef-netbar-v278{position:fixed;left:16px;bottom:16px;z-index:999998;direction:rtl;background:#064c3f;color:white;border-radius:16px;padding:10px 14px;box-shadow:0 12px 28px rgba(0,0,0,.18);font:700 13px Tahoma,Arial;display:none;max-width:360px;line-height:1.7}
+      .tasneef-netbar-v278.warn{background:#8a5b00}.tasneef-netbar-v278.err{background:#9b1c1c}.tasneef-netbar-v278.show{display:block}
     `;
     document.head.appendChild(st);
   }
   function netbar(text,type='warn',ms=4500){
     try{
       addLiteStyle();
-      let b=document.getElementById('tasneefNetbarV239');
-      if(!b){ b=document.createElement('div'); b.id='tasneefNetbarV239'; b.className='tasneef-netbar-v239'; document.body.appendChild(b); }
-      b.textContent=text; b.className='tasneef-netbar-v239 '+type+' show';
+      let b=document.getElementById('tasneefNetbarV278');
+      if(!b){ b=document.createElement('div'); b.id='tasneefNetbarV278'; b.className='tasneef-netbar-v278'; document.body.appendChild(b); }
+      b.textContent=text; b.className='tasneef-netbar-v278 '+type+' show';
       clearTimeout(b.__t); b.__t=setTimeout(()=>b.classList.remove('show'),ms);
     }catch(e){}
   }
   window.tasneefNetbarV239 = netbar;
+  window.tasneefNetbarV278 = netbar;
 
   function pageReady(){
     addLiteStyle();
-    window.addEventListener('offline',()=>netbar('الاتصال ضعيف أو غير متاح. سيتم عرض آخر بيانات محفوظة إن وجدت.','err',7000));
-    window.addEventListener('online',()=>netbar('تم رجوع الاتصال. يمكنك الضغط على تحديث البيانات.','warn',5000));
-    if(!navigator.onLine) netbar('أنت الآن بدون اتصال. النظام سيحاول العمل من آخر بيانات محفوظة.','err',8000);
+    window.addEventListener('offline',()=>netbar('الاتصال غير متاح. تأكد من الشبكة ثم حدّث الصفحة.','err',7000));
+    window.addEventListener('online',()=>netbar('تم رجوع الاتصال. اضغط تحديث البيانات عند الحاجة.','warn',5000));
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',pageReady); else pageReady();
 
-  // V277: Service Worker disabled. Direct network loading only.
-
-  // Supabase GET cache fallback: network first, then cached data if internet is weak.
-  const previousFetch = window.fetch;
-  if(previousFetch && !previousFetch.__tasneefCacheV239){
-    const CACHE_PREFIX='tasneef_sb_cache_v239:';
-    const MAX_AGE_MS=1000*60*60*12; // 12 hours for emergency fallback
-    const NETWORK_TIMEOUT_MS=8500;
-    function currentUserKey(){
-      try{ const u=JSON.parse(localStorage.getItem('tasneef_user')||'null'); return (u?.username||u?.role||'guest'); }catch(e){ return 'guest'; }
-    }
-    function cacheKey(url){ return CACHE_PREFIX+currentUserKey()+':'+String(url); }
-    function canCache(url, init){
-      const method=String(init?.method || 'GET').toUpperCase();
-      return method==='GET' && /supabase\.co\/rest\/v1\//i.test(String(url));
-    }
-    function responseFromCache(key){
-      try{
-        const raw=localStorage.getItem(key); if(!raw) return null;
-        const obj=JSON.parse(raw); if(!obj || !obj.body) return null;
-        if(Date.now()-(obj.ts||0)>MAX_AGE_MS) return null;
-        netbar('الاتصال بطيء، تم عرض آخر بيانات محفوظة مؤقتًا.','warn',5000);
-        return new Response(obj.body,{status:200,statusText:'OK (Tasneef Cache)',headers:{'content-type':obj.contentType||'application/json','x-tasneef-cache':'1'}});
-      }catch(e){ return null; }
-    }
-    async function saveCache(key,res){
-      try{
-        if(!res || !res.ok) return;
-        const contentType=res.headers.get('content-type')||'application/json';
-        const txt=await res.clone().text();
-        if(!txt || txt.length>900000) return;
-        localStorage.setItem(key,JSON.stringify({ts:Date.now(),contentType,body:txt}));
-      }catch(e){}
-    }
-    const patched=function(input, init={}){
-      const url=(typeof input==='string')?input:(input&&input.url?input.url:'');
-      if(!canCache(url,init)) return previousFetch.apply(this,arguments);
-      const key=cacheKey(url);
-      const controller = new AbortController();
-      const merged = Object.assign({}, init, {signal: init.signal || controller.signal});
-      const timer=setTimeout(()=>{try{controller.abort()}catch(e){}}, NETWORK_TIMEOUT_MS);
-      return previousFetch.call(this,input,merged).then(res=>{
-        clearTimeout(timer);
-        saveCache(key,res);
-        return res;
-      }).catch(err=>{
-        clearTimeout(timer);
-        const cached=responseFromCache(key);
-        if(cached) return cached;
-        throw err;
-      });
-    };
-    patched.__tasneefCacheV239=true;
-    window.fetch=patched;
-  }
+  // مهم جدًا: لا نستخدم AbortController ولا كاش Supabase هنا.
+  // أي طلب Supabase يذهب مباشرة للقاعدة حتى لا تظهر البيانات صفر ولا يفشل تسجيل الدخول.
 })();
 
 // Tasneef HTML App V86 - Contract Services Cloud View Fix
@@ -17510,7 +17455,7 @@ function financePrintReport(kind){
 ============================================================================ */
 (function(){
   'use strict';
-  window.TASNEEF_BUILD = 'V277_STABLE_ROLLBACK_NO_SW';
+  window.TASNEEF_BUILD = 'V278_STABLE_NO_ABORT_NO_CACHE';
   const E = (v)=>String(v ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const $id = (id)=>document.getElementById(id);
   const say = (t,type)=>{ try{ (window.msg||window.setMsg||alert)(t,type); }catch{ alert(t); } };
