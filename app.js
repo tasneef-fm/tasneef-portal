@@ -19533,3 +19533,246 @@ function financePrintReport(kind){
 
   console.log('Tasneef V254 loaded: import screenshot tickets + stronger counts cards');
 })();
+
+/* ===================== V255: PROFESSIONAL FAST START + REAL IMPORT CONFIRM + COUNTS CARDS ===================== */
+(function(){
+  if(window.__tasneefV255ProFix) return;
+  window.__tasneefV255ProFix = true;
+  window.TASNEEF_BUILD = 'V255_PRO_FAST_IMPORT_COUNTS_2026_05_31';
+  const $v255 = (id)=>document.getElementById(id);
+  const arrV255 = (x)=>Array.isArray(x)?x:[];
+  const escV255 = (s)=>String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const normV255 = (s)=>String(s||'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+  function hideBlockingLoadersV255(){
+    try{ window.hideTasneefLoading && window.hideTasneefLoading(); }catch(_){ }
+    try{ const l=$v255('tasneefLoadingV154'); if(l) l.classList.add('hidden'); }catch(_){ }
+    try{ const s=$v255('tasneefSplashV154'); if(s) s.classList.add('hidden'); }catch(_){ }
+  }
+  window.hideBlockingLoadersV255 = hideBlockingLoadersV255;
+  setTimeout(hideBlockingLoadersV255, 900); setTimeout(hideBlockingLoadersV255, 1800); setTimeout(hideBlockingLoadersV255, 3200);
+  setInterval(()=>{ const l=$v255('tasneefLoadingV154'); if(l && !l.classList.contains('hidden')) l.classList.add('hidden'); }, 3500);
+  function addStyleV255(){
+    if($v255('tasneefStyleV255')) return;
+    const st=document.createElement('style'); st.id='tasneefStyleV255';
+    st.textContent=`.tasneef-loading-v154,.tasneef-splash-v154{pointer-events:none!important}.v255-status-bar{margin:10px 0 0;padding:10px 14px;border-radius:14px;background:#eef8f4;border:1px solid #cfe7de;color:#064c3f;font-weight:800;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap}.v255-status-bar small{font-weight:700;color:#61736d}.v255-status-bar button{border:0;border-radius:10px;padding:8px 12px;background:#064c3f;color:#fff;cursor:pointer;font-weight:800}.v255-dashboard-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:12px 0}.v255-dashboard-kpi .kpi{background:#fff;border:1px solid #dce9e4;border-radius:16px;padding:14px 16px;box-shadow:0 10px 28px rgba(6,76,63,.05)}.v255-dashboard-kpi .kpi b{display:block;font-size:26px;color:#064c3f}.v255-dashboard-kpi .kpi span{color:#667a73;font-size:13px;font-weight:800}.v255-import-box{border:1px solid #b7dfd1;background:#f0fbf6;border-radius:16px;padding:14px;margin:12px 0;color:#064c3f}.v255-import-box b{font-size:16px}.v255-import-box small{display:block;margin:6px 0 10px;color:#60736c}.v255-import-box button{background:#064c3f;color:#fff;border:0;border-radius:12px;padding:10px 16px;font-weight:900;cursor:pointer}.v255-import-box .light{background:#fff;color:#064c3f;border:1px solid #b7dfd1}.v255-import-result{margin-top:10px;white-space:pre-wrap;background:#fff;border:1px dashed #b7dfd1;border-radius:12px;padding:10px;color:#0a4033;line-height:1.9}.v255-count-mini{display:inline-flex;gap:6px;margin:4px 4px 0 0;padding:4px 8px;border-radius:999px;background:#eef8f4;border:1px solid #d4e9e2;color:#064c3f;font-size:12px;font-weight:800}`;
+    document.head.appendChild(st);
+  }
+  function firstNumV255(o, keys){ for(const k of keys){ const n=Number(String(o?.[k] ?? '').replace(/,/g,'')); if(Number.isFinite(n) && n>0) return n; } return 0; }
+  window.projectBuildingsCountV255 = function(p){ return firstNumV255(p, ['buildings_count','building_count','buildings','building_no','buildingCount','buildingsCount','number_of_buildings','num_buildings','عمائر','عدد_العمائر','عدد العمائر']); };
+  window.projectUnitsCountV255 = function(p){ return firstNumV255(p, ['units_count','apartments_count','apartment_count','units','apartments','flats_count','flat_count','unitsCount','number_of_units','number_of_apartments','num_units','num_apartments','شقق','عدد_الشقق','عدد الشقق']); };
+  function totalsV255(){ const projects=arrV255(window.data?.projects); return {buildings:projects.reduce((a,p)=>a+window.projectBuildingsCountV255(p),0), units:projects.reduce((a,p)=>a+window.projectUnitsCountV255(p),0), tickets:arrV255(window.data?.tickets).length}; }
+  function ensureDashboardCountsV255(){ addStyleV255(); const dashboard=$v255('dashboard'); if(!dashboard) return; let box=$v255('dashboardCountsV255'); if(!box){ const after=$v255('todaySummary')?.closest('.card') || dashboard.querySelector('.kpis') || dashboard.firstElementChild; box=document.createElement('div'); box.id='dashboardCountsV255'; box.className='v255-dashboard-kpi'; if(after) after.insertAdjacentElement('afterend', box); else dashboard.prepend(box); } const t=totalsV255(); box.innerHTML=`<div class="kpi"><b>${t.tickets}</b><span>إجمالي التكتات المحملة</span></div><div class="kpi"><b>${t.buildings}</b><span>إجمالي العمائر</span></div><div class="kpi"><b>${t.units}</b><span>إجمالي الشقق</span></div>`; }
+  function addCountsToCardsV255(){ const projects=arrV255(window.data?.projects); document.querySelectorAll('[data-project-id], .service-card, .contract-service-card, .smart-service-card').forEach(card=>{ if(card.querySelector('.v255-count-mini')) return; const pid=card.getAttribute('data-project-id'); let p=pid?projects.find(x=>String(x.id)===String(pid)):null; if(!p){ const txt=normV255(card.textContent); p=projects.find(x=> txt.includes(normV255(x.name))); } if(!p) return; const b=window.projectBuildingsCountV255(p), u=window.projectUnitsCountV255(p); if(!b && !u) return; const line=document.createElement('div'); line.innerHTML=`<span class="v255-count-mini">العمائر: ${b}</span><span class="v255-count-mini">الشقق: ${u}</span>`; card.appendChild(line); }); }
+  function projectByNameV255(name){ const projects=arrV255(window.data?.projects); const aliases={'عام':'','39 جاده':'جادة 39','جاده 39':'جادة 39','جادة 39':'جادة 39','جود الياسمين':'جود الياسمين','مغني 29':'مغنى 29','مغنى 29':'مغنى 29','مكين 37':'مكين 37','عالم الابتكار 47':'عالم الابتكار 47','الين 32':'الين 32','الين':'الين 32','ألين 32':'الين 32','فرساي 11':'فرساي 11','فرساي 7':'فرساي 7','اتحاد العاصمه':'اتحاد العاصمة','اتحاد العاصمة':'اتحاد العاصمة'}; const ali=aliases[normV255(name)] ?? name; const w=normV255(ali); if(!w) return null; return projects.find(p=>normV255(p.name)===w) || projects.find(p=>normV255(p.name).includes(w) || w.includes(normV255(p.name))); }
+  function supervisorByNameV255(name, pid){ const w=normV255(name); const users=arrV255(window.data?.users); const u=users.find(x=>{ const n=normV255(x.full_name||x.name||x.username); return n && (n.includes(w)||w.includes(n)); }); if(u) return u; const p=arrV255(window.data?.projects).find(x=>String(x.id)===String(pid)); return users.find(x=>String(x.id)===String(p?.supervisor_id)) || null; }
+  const screenshotTicketsV255=[
+    {old:'1545',project:'عام',raiser:'هيثم',type:'عام',time:'',desc:'طلب جميع حراس المشاريع بتجهيزات'},
+    {old:'2112',project:'اتحاد العاصمة',raiser:'حارس',type:'نظافة',time:'11:09',desc:'رئيس الجمعية يبقى دورية كل مدخل فيه واجهات نظافة ومواعيد أداء المدينة'},
+    {old:'2133',project:'جادة 39',raiser:'هشام',type:'صيانة',time:'09:37',desc:'تهريب من السطح ومراجعته وإجراء حل مناسب لتفادي المشكلة مستقبلًا'},
+    {old:'2162',project:'جود الياسمين',raiser:'هيثم',type:'صيانة',time:'07:48',desc:'تنبيه جميع الإضاءات الداخلية والخارجية والبيسمنت وتوحيد الإضاءات كاملة'},
+    {old:'2171',project:'جود الياسمين',raiser:'مازن',type:'نظافة',time:'11:20',desc:'ورق تعليمات إزالة البلدية'},
+    {old:'2178',project:'جادة 39',raiser:'مصطفى',type:'صيانة',time:'04:03',desc:'إلى أين الحل المناسب للمدخل وترتيب الكابلات لتقليل فتحة السلم'},
+    {old:'2191',project:'جود الياسمين',raiser:'مازن',type:'صيانة',time:'11:11',desc:'كهربائي، قاطع كهرباء في F3'},
+    {old:'2213',project:'جود الياسمين',raiser:'مازن',type:'صيانة',time:'11:55',desc:'دفاش مبنى A'},
+    {old:'2217',project:'جود الياسمين',raiser:'مازن',type:'صيانة',time:'04:56',desc:'دفاش مبنى C'},
+    {old:'2234',project:'مغنى 29',raiser:'هيثم',type:'نظافة',time:'05:44',desc:'جهاز مفتوح'},
+    {old:'2240',project:'مكين 37',raiser:'محمود',type:'صيانة',time:'09:03',desc:'المبنى A&B في البسمنت مشكلة الأبواب رجعت تعمل كما في خارج لها تعليق كما موضح في الفيديوهات المرفقة'},
+    {old:'2279',project:'عالم الابتكار 47',raiser:'فهد',type:'صيانة',time:'02:19',desc:'وصل المشكلة للدكان'},
+    {old:'2280',project:'الين 32',raiser:'عبده طاهر',type:'نظافة',time:'02:26',desc:'الخارجية للمبنى كلها لا تعمل'},
+    {old:'2281',project:'مغنى 29',raiser:'فهد',type:'صيانة',time:'04:14',desc:'جهاز التعطير الأول لا يوجد عطل وتم إغلاقه حتى الآن'},
+    {old:'2283',project:'فرساي 7',raiser:'فهد',type:'صيانة',time:'08:51',desc:'وصف المشكلة: جهاز التعطير الأول لا يوجد عطل وتم إغلاقه حتى الآن'},
+    {old:'2289',project:'عالم الابتكار 47',raiser:'فهد',type:'نظافة',time:'01:15',desc:'جهاز التعطير الأول لا يوجد عطل وتم إغلاقه حتى الآن وتم تركيب جهاز بديل جديد'},
+    {old:'2295',project:'فرساي 11',raiser:'فهد',type:'نظافة',time:'05:14',desc:'جهاز التعطير الأول لا يوجد عطل وتم إغلاقه حتى الآن وتم تركيب جهاز جديد'}
+  ]; window.screenshotTicketsV255=screenshotTicketsV255;
+  function ticketPayloadV255(r){ const p=projectByNameV255(r.project); const sup=supervisorByNameV255(r.raiser,p?.id); const kind=r.type==='صيانة'?'صيانة':(r.type==='نظافة'?'نظافة':'عام'); const description=`رقم التكت في الملف القديم: ${r.old}\nرافع التكت: ${r.raiser || '-'}\nوقت التكت في الملف القديم: ${r.time || '-'}\nنوع الشكوى: ${r.type || '-'}\nالمشروع في الملف القديم: ${r.project || '-'}\n\nالتفاصيل:\n${r.desc || '-'}`; const u=(typeof session==='function'?session():null)||{}; return {project_id:p?.id||null,supervisor_id:sup?.id||p?.supervisor_id||null,created_by:u.id||null,title:`${kind}: ${(r.desc||'-').slice(0,70)}`,description,priority:kind==='صيانة'?'high':'normal',status:'open',ticket_number:'OLD-'+r.old,created_at:new Date().toISOString(),updated_at:new Date().toISOString()}; }
+  async function liveTicketsByMarkersV255(){ if(!window.sb) return []; const found=[]; for(const r of screenshotTicketsV255){ const m='رقم التكت في الملف القديم: '+r.old; try{ const res=await window.sb.from('tickets').select('*').or(`description.ilike.%${m}%,ticket_number.eq.OLD-${r.old}`).limit(1); if(!res.error && res.data?.length) found.push(res.data[0]); }catch(_){ } } return found; }
+  window.importScreenshotTicketsV255=async function(){ addStyleV255(); hideBlockingLoadersV255(); if(!window.sb){ alert('لم يتم الاتصال بقاعدة البيانات'); return; } if(!confirm('سيتم إضافة تكتات الصورة. الرقم القديم سيظهر داخل التفاصيل. هل تريد المتابعة؟')) return; try{ if(typeof window.loadAll==='function') await Promise.race([window.loadAll(),new Promise(r=>setTimeout(r,3500))]); }catch(_){ } const liveFound=await liveTicketsByMarkersV255(); if(liveFound.length){ window.data=window.data||{}; window.data.tickets=[...liveFound,...arrV255(window.data.tickets).filter(t=>!liveFound.some(x=>String(x.id)===String(t.id)))]; } let inserted=0,skipped=0,failed=0; const errors=[]; for(const r of screenshotTicketsV255){ const marker='رقم التكت في الملف القديم: '+r.old; const exists=arrV255(window.data?.tickets).some(t=>String(t.description||'').includes(marker)||String(t.ticket_number||'')==='OLD-'+r.old); if(exists){ skipped++; continue; } const payload=ticketPayloadV255(r); let res=await window.sb.from('tickets').insert(payload).select('*').single(); if(res.error && /ticket_number/i.test(res.error.message||'')){ const p2={...payload}; delete p2.ticket_number; res=await window.sb.from('tickets').insert(p2).select('*').single(); } if(res.error && /created_by/i.test(res.error.message||'')){ const p3={...payload}; delete p3.created_by; res=await window.sb.from('tickets').insert(p3).select('*').single(); } if(res.error){ failed++; errors.push(`${r.old}: ${res.error.message}`); continue; } inserted++; if(res.data){ window.data=window.data||{}; window.data.tickets=arrV255(window.data.tickets); window.data.tickets.unshift(res.data); } } try{ if(typeof window.loadAll==='function') await window.loadAll(); }catch(_){ } try{ if(typeof window.renderTickets==='function') window.renderTickets(); }catch(_){ } ensureDashboardCountsV255(); const text=`نتيجة الاستيراد:\nالمضاف: ${inserted}\nالموجود مسبقًا: ${skipped}\nفشل: ${failed}${errors.length?'\n\nأخطاء:\n'+errors.slice(0,8).join('\n'):''}`; alert(text); };
+  window.importScreenshotTicketsV254=window.importScreenshotTicketsV255;
+  window.verifyImportedTicketsV255=async function(){ const found=await liveTicketsByMarkersV255(); alert(`تم العثور على ${found.length} من أصل ${screenshotTicketsV255.length} تكت مستورد في قاعدة البيانات.`); try{ if(typeof window.loadAll==='function') await window.loadAll(); if(typeof window.renderTickets==='function') window.renderTickets(); ensureDashboardCountsV255(); }catch(_){ } };
+  function addImportPanelV255(){ addStyleV255(); const targets=[]; const tickets=$v255('tickets'); if(tickets) targets.push(tickets.querySelector('.card')||tickets); const dash=$v255('dashboard'); if(dash) targets.push(dash.querySelector('.card')||dash); targets.forEach(target=>{ if(!target||target.querySelector('.v255-import-box')) return; const box=document.createElement('div'); box.className='v255-import-box'; box.innerHTML='<b>استيراد تكتات الصورة</b><small>يضيف 17 تكت، ويضع رقم الصورة القديم داخل التفاصيل مثل: رقم التكت في الملف القديم: 2133</small><button type="button" onclick="importScreenshotTicketsV255()">استيراد التكتات الآن</button> <button type="button" class="light" onclick="verifyImportedTicketsV255()">تحقق من الإضافة</button>'; target.prepend(box); }); }
+  const oldRenderAllV255=window.renderAll; if(typeof oldRenderAllV255==='function'){ window.renderAll=function(){ const out=oldRenderAllV255.apply(this,arguments); setTimeout(()=>{ hideBlockingLoadersV255(); ensureDashboardCountsV255(); addCountsToCardsV255(); addImportPanelV255(); },60); return out; }; }
+  window.reloadCurrentDataV255=async function(){ const bar=$v255('loadStatusV255'); if(bar) bar.innerHTML='<span>جاري تحديث البيانات...</span><small>يمكنك الاستمرار في استخدام النظام</small>'; try{ if(typeof window.refreshAll==='function') await window.refreshAll(); }catch(e){ alert('تعذر التحديث: '+(e.message||e)); } finally{ hideBlockingLoadersV255(); ensureDashboardCountsV255(); addCountsToCardsV255(); addImportPanelV255(); if(bar) bar.innerHTML='<span>تم تحديث البيانات.</span><small>آخر تحديث الآن</small><button onclick="reloadCurrentDataV255()">تحديث مرة أخرى</button>'; } };
+  window.initAdmin=async function(){ try{ if(typeof requireRole==='function') requireRole('admin'); }catch(_){ } addStyleV255(); hideBlockingLoadersV255(); ensureDashboardCountsV255(); addImportPanelV255(); const header=document.querySelector('.hero, header, .topbar, .main-header')||document.body; if(header && !$v255('loadStatusV255')){ const bar=document.createElement('div'); bar.id='loadStatusV255'; bar.className='v255-status-bar'; bar.innerHTML='<span>النظام جاهز للاستخدام، وجاري تحديث البيانات في الخلفية...</span><small>لن يتم إيقاف الشاشة أثناء التحميل</small><button onclick="reloadCurrentDataV255()">تحديث الآن</button>'; header.appendChild(bar); } setTimeout(async()=>{ try{ if(typeof window.refreshAll==='function') await window.refreshAll(); const bar=$v255('loadStatusV255'); if(bar) bar.innerHTML='<span>تم تحديث البيانات بنجاح.</span><small>يمكنك العمل الآن بدون انتظار شاشة تحميل طويلة</small><button onclick="reloadCurrentDataV255()">تحديث مرة أخرى</button>'; }catch(e){ const bar=$v255('loadStatusV255'); if(bar) bar.innerHTML='<span>تعذر تحديث بعض البيانات، تم عرض آخر بيانات متاحة.</span><small>'+escV255(e.message||e)+'</small><button onclick="reloadCurrentDataV255()">إعادة المحاولة</button>'; } finally{ hideBlockingLoadersV255(); ensureDashboardCountsV255(); addImportPanelV255(); } },80); };
+  document.addEventListener('DOMContentLoaded',()=>{ addStyleV255(); setTimeout(()=>{ hideBlockingLoadersV255(); ensureDashboardCountsV255(); addCountsToCardsV255(); addImportPanelV255(); },300); });
+  window.addEventListener('load',()=>setTimeout(()=>{ hideBlockingLoadersV255(); ensureDashboardCountsV255(); addCountsToCardsV255(); addImportPanelV255(); },700));
+  console.log('Tasneef V255 loaded: pro fast start + import verification + counts cards');
+})();
+
+
+/* ===================== V256: EXCEL IMPORT FOR MAINTENANCE ORDERS ===================== */
+(function(){
+  if(window.__tasneefV256OrdersExcel) return;
+  window.__tasneefV256OrdersExcel = true;
+  window.TASNEEF_BUILD = 'V256_ORDERS_EXCEL_IMPORT_2026_05_31';
+  const $ = (id)=>document.getElementById(id);
+  const arr = (x)=>Array.isArray(x)?x:[];
+  const esc = (s)=>String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const norm = (s)=>String(s||'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+  const num = (v)=>{ if(v===null||v===undefined||v==='') return 0; const n=Number(String(v).replace(/[,،\s]/g,'').replace(/[ررسSAR]/gi,'')); return Number.isFinite(n)?n:0; };
+  function style(){
+    if($('ordersImportStyleV256')) return;
+    const st=document.createElement('style'); st.id='ordersImportStyleV256';
+    st.textContent='.orders-import-v256{border:1px solid #b7dfd1;background:linear-gradient(135deg,#f1fbf7,#fff);border-radius:18px;padding:14px;margin:12px 0;color:#064c3f}.orders-import-v256 b{font-size:17px}.orders-import-v256 small{display:block;color:#60736c;margin:5px 0 10px;line-height:1.8}.orders-import-v256 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.orders-import-v256 input[type=file]{max-width:420px;background:#fff}.orders-import-v256 button{background:#064c3f;color:white;border:0;border-radius:12px;padding:10px 14px;font-weight:900;cursor:pointer}.orders-import-v256 button.light{background:#fff;color:#064c3f;border:1px solid #b7dfd1}.orders-import-result-v256{margin-top:10px;white-space:pre-wrap;background:#fff;border:1px dashed #b7dfd1;border-radius:12px;padding:10px;line-height:1.9;color:#103d32}.orders-import-preview-v256{max-height:260px;overflow:auto;margin-top:10px;border:1px solid #dbe8e3;border-radius:12px;background:#fff}.orders-import-preview-v256 table{width:100%;border-collapse:collapse;font-size:12px}.orders-import-preview-v256 th{background:#eff7f4;color:#064c3f;position:sticky;top:0}.orders-import-preview-v256 th,.orders-import-preview-v256 td{padding:7px;border-bottom:1px solid #edf3f1;text-align:right;white-space:nowrap}';
+    document.head.appendChild(st);
+  }
+  function cleanHeader(h){ return norm(String(h||'').replace(/[\u200f\u200e]/g,'').replace(/[:：]/g,'').replace(/\*/g,'').trim()); }
+  function excelSerialToDate(n){
+    const d=new Date(Math.round((Number(n)-25569)*86400*1000));
+    if(isNaN(d.getTime())) return '';
+    return d.toISOString().slice(0,10);
+  }
+  function dateVal(v){
+    if(v===null||v===undefined||v==='') return null;
+    if(v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0,10);
+    if(typeof v==='number') return excelSerialToDate(v);
+    const s=String(v).trim(); if(!s) return null;
+    const m=s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
+    if(m){ let y=Number(m[3]); if(y<100) y+=2000; return `${y}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`; }
+    const m2=s.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/);
+    if(m2) return `${m2[1]}-${String(m2[2]).padStart(2,'0')}-${String(m2[3]).padStart(2,'0')}`;
+    const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString().slice(0,10);
+  }
+  function timeVal(v){
+    if(v===null||v===undefined||v==='') return null;
+    if(v instanceof Date && !isNaN(v.getTime())) return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+    if(typeof v==='number') { const total=Math.round((v%1)*24*60); return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`; }
+    const s=String(v).trim(); const m=s.match(/(\d{1,2}):(\d{2})/); if(m) return `${String(m[1]).padStart(2,'0')}:${m[2]}`; return null;
+  }
+  function projectByName(name){
+    const s=norm(name); if(!s) return null;
+    const aliases={ 'مغني 29':'مغنى 29','مكين37':'مكين 37','صفا28':'صفاء 28','صفا 28':'صفاء 28','صفا50':'صفاء 50','صفا 50':'صفاء 50','صفا65':'صفاء 65','صفا 65':'صفاء 65','الين 32':'الين 32','الين32':'الين 32','ألين 32':'الين 32' };
+    const want=norm(aliases[s]||name);
+    const projects=arr(window.data?.projects);
+    return projects.find(p=>norm(p.name)===want) || projects.find(p=>norm(p.name).includes(want) || want.includes(norm(p.name)));
+  }
+  function val(row, names){
+    for(const k of names){ const kk=cleanHeader(k); if(row[kk]!==undefined && row[kk]!==null) return row[kk]; }
+    return '';
+  }
+  function normalizeSheetRows(ws){
+    const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,cellDates:true});
+    let headerIndex=-1;
+    for(let i=0;i<Math.min(raw.length,15);i++){
+      const heads=raw[i].map(cleanHeader);
+      if(heads.includes(cleanHeader('رقم الطلب')) && (heads.includes(cleanHeader('المشروع')) || heads.includes(cleanHeader('التفاصيل')))){ headerIndex=i; break; }
+    }
+    if(headerIndex<0) throw new Error('لم أجد صف العناوين داخل ملف Excel. تأكد أن الملف يحتوي على نموذج الطلبات.');
+    const headers=raw[headerIndex].map(cleanHeader);
+    const rows=[];
+    for(let r=headerIndex+1;r<raw.length;r++){
+      const obj={}; headers.forEach((h,i)=>{ if(h) obj[h]=raw[r][i]; });
+      const has=String(val(obj,['رقم الطلب','رقم الطلب بالجروب','المشروع','التفاصيل'])||'').trim() || String(val(obj,['المشروع'])||'').trim() || String(val(obj,['التفاصيل'])||'').trim();
+      if(has) rows.push(obj);
+    }
+    return rows;
+  }
+  function payloadFromExcelRow(r){
+    const price=num(val(r,['السعر (شامل الضريبة)','السعر شامل الضريبة','السعر شامل','السعر']));
+    let vat=num(val(r,['الضريبة 15%','الضريبة','ضريبة'])); if(!vat && price) vat=price*15/115;
+    let before=num(val(r,['السعر قبل الضريبة','قبل الضريبة'])); if(!before && price) before=price-vat;
+    const cost=num(val(r,['التكلفة','تكلفة']));
+    let profit=num(val(r,['الربح','صافي الربح'])); if(!profit && (before||cost)) profit=before-cost;
+    const projectName=String(val(r,['المشروع','اسم المشروع'])||'').trim();
+    const project=projectByName(projectName);
+    const orderNo=String(val(r,['رقم الطلب'])||'').trim();
+    const groupNo=String(val(r,['رقم الطلب بالجروب','رقم الطلب في الجروب','رقم الجروب'])||'').trim();
+    return {
+      order_no: orderNo,
+      group_no: groupNo,
+      order_date: dateVal(val(r,['تاريخ الطلب','التاريخ'])) || null,
+      order_time: timeVal(val(r,['وقت الطلب','الوقت'])) || null,
+      sender: String(val(r,['مرسل الطلب','المرسل'])||'').trim(),
+      project_id: project ? project.id : null,
+      property_type: String(val(r,['نوع العقار','العقار'])||'').trim(),
+      unit_no: String(val(r,['رقم الشقة','الشقة','الوحدة'])||'').trim(),
+      client_name: String(val(r,['اسم العميل','العميل'])||'').trim(),
+      client_phone: String(val(r,['رقم العميل','جوال العميل','هاتف العميل'])||'').trim(),
+      executor: String(val(r,['المنفذ','الفني','المشرف'])||'').trim(),
+      details: String(val(r,['التفاصيل','وصف الطلب','البيان'])||'').trim(),
+      notes: String(val(r,['ملاحظات','الملاحظات'])||'').trim(),
+      concern: String(val(r,['تخص'])||'').trim(),
+      done_date: dateVal(val(r,['تاريخ التنفيذ'])) || null,
+      execution_method: String(val(r,['كيفية التنفيذ','طريقة التنفيذ'])||'').trim(),
+      execution_status: String(val(r,['حالة التنفيذ','حالة الطلب'])||'').trim() || 'لم ينفذ',
+      report_status: String(val(r,['تقرير','التقرير'])||'').trim(),
+      price_incl_vat: price,
+      vat_amount: vat,
+      price_before_vat: before,
+      cost: cost,
+      profit: profit,
+      payment_status: String(val(r,['حالة السداد','السداد'])||'').trim(),
+      invoice_no: String(val(r,['رقم الفاتورة','الفاتورة'])||'').trim(),
+      system_invoice_status: String(val(r,['فوترة بالسيستم','الفوترة بالسيستم','فوترة النظام'])||'').trim()
+    };
+  }
+  async function ensureXlsxLib(){
+    if(window.XLSX) return;
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=resolve; s.onerror=()=>reject(new Error('تعذر تحميل مكتبة Excel. تأكد من وجود اتصال إنترنت ثم أعد المحاولة.'));
+      document.head.appendChild(s);
+    });
+  }
+  async function readExcelFile(file){
+    await ensureXlsxLib();
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array',cellDates:true,raw:true});
+    const preferred=wb.SheetNames.find(n=>norm(n).includes('نموذج')||norm(n).includes('طلب')) || wb.SheetNames[0];
+    return normalizeSheetRows(wb.Sheets[preferred]);
+  }
+  function setResult(txt){ const el=$('ordersImportResultV256'); if(el) el.textContent=txt; }
+  function previewRows(rows){
+    const el=$('ordersImportPreviewV256'); if(!el) return;
+    const sample=rows.slice(0,8).map(r=>payloadFromExcelRow(r));
+    el.innerHTML=sample.length?`<table><thead><tr><th>رقم</th><th>رقم الجروب</th><th>التاريخ</th><th>المشروع</th><th>التفاصيل</th><th>السعر</th></tr></thead><tbody>${sample.map(p=>`<tr><td>${esc(p.order_no)}</td><td>${esc(p.group_no)}</td><td>${esc(p.order_date||'')}</td><td>${esc(projectByName(val(rows[sample.indexOf(p)]||{},['المشروع']))?.name||val(rows[sample.indexOf(p)]||{},['المشروع']))}</td><td>${esc((p.details||'').slice(0,80))}</td><td>${esc(p.price_incl_vat)}</td></tr>`).join('')}</tbody></table>`:'';
+  }
+  window.previewOrdersExcelV256=async function(){
+    const file=$('ordersExcelFileV256')?.files?.[0]; if(!file) return alert('اختر ملف Excel أولًا');
+    try{ setResult('جاري قراءة الملف...'); const rows=await readExcelFile(file); window.__ordersExcelRowsV256=rows; previewRows(rows); setResult(`تمت قراءة ${rows.length} صف من الملف. راجع المعاينة ثم اضغط استيراد.`); }
+    catch(e){ setResult('خطأ: '+(e.message||e)); alert(e.message||e); }
+  };
+  window.importOrdersExcelV256=async function(){
+    if(!window.sb) return alert('قاعدة البيانات غير متصلة');
+    const file=$('ordersExcelFileV256')?.files?.[0]; if(!file && !window.__ordersExcelRowsV256) return alert('اختر ملف Excel أولًا');
+    try{
+      setResult('جاري تجهيز البيانات...');
+      const rows=window.__ordersExcelRowsV256 || await readExcelFile(file);
+      if(!rows.length) return setResult('لم يتم العثور على بيانات صالحة داخل الملف.');
+      if(typeof window.loadOrdersV197==='function') await window.loadOrdersV197(true);
+      const existing=new Set(arr(window.ordersV197).map(o=>String(o.group_no||'').trim()).filter(Boolean));
+      const payloads=[]; let skipped=0, missingProject=0, missingDetails=0;
+      rows.forEach(r=>{
+        const p=payloadFromExcelRow(r);
+        if(!p.details){ missingDetails++; return; }
+        if(!p.project_id){ missingProject++; return; }
+        if(p.group_no && existing.has(String(p.group_no).trim())){ skipped++; return; }
+        payloads.push(p); if(p.group_no) existing.add(String(p.group_no).trim());
+      });
+      if(!payloads.length){ setResult(`لا توجد أوردرات جديدة للاستيراد.\nمكرر: ${skipped}\nبدون مشروع مطابق: ${missingProject}\nبدون تفاصيل: ${missingDetails}`); return; }
+      if(!confirm(`سيتم استيراد ${payloads.length} أوردر جديد. هل تريد المتابعة؟`)) return;
+      let inserted=0, failed=0; const errors=[];
+      for(let i=0;i<payloads.length;i+=200){
+        const chunk=payloads.slice(i,i+200);
+        const res=await window.sb.from('maintenance_orders').insert(chunk).select('*');
+        if(res.error){ failed+=chunk.length; errors.push(res.error.message); }
+        else { inserted+=(res.data||[]).length || chunk.length; }
+        setResult(`جاري الاستيراد...\nتمت معالجة ${Math.min(i+200,payloads.length)} من ${payloads.length}`);
+      }
+      try{ if(typeof window.loadOrdersV197==='function') await window.loadOrdersV197(true); }catch(_){ }
+      setResult(`نتيجة الاستيراد:\nالمضاف: ${inserted}\nالمكرر حسب رقم الجروب: ${skipped}\nبدون مشروع مطابق: ${missingProject}\nبدون تفاصيل: ${missingDetails}\nفشل: ${failed}${errors.length?'\n\nأخطاء:\n'+[...new Set(errors)].slice(0,5).join('\n'):''}`);
+    }catch(e){ setResult('خطأ: '+(e.message||e)); alert(e.message||e); }
+  };
+  function addOrdersImportPanel(){
+    style(); const orders=$('orders'); if(!orders || $('ordersImportBoxV256')) return;
+    const card=orders.querySelector('.card') || orders;
+    const box=document.createElement('div'); box.id='ordersImportBoxV256'; box.className='orders-import-v256';
+    box.innerHTML='<b>استيراد الأوردرات من Excel</b><small>ارفع ملف الطلبات بنفس الأعمدة الموجودة عندك. سيتم ربط المشروع تلقائيًا، وحساب الضريبة والربح، ومنع التكرار حسب رقم الطلب بالجروب.</small><div class="row"><input id="ordersExcelFileV256" type="file" accept=".xlsx,.xls"><button type="button" class="light" onclick="previewOrdersExcelV256()">معاينة الملف</button><button type="button" onclick="importOrdersExcelV256()">استيراد إلى الأوردرات</button></div><div id="ordersImportResultV256" class="orders-import-result-v256">اختر ملف Excel ثم اضغط معاينة.</div><div id="ordersImportPreviewV256" class="orders-import-preview-v256"></div>';
+    card.prepend(box);
+  }
+  const oldShow=window.showPage;
+  if(typeof oldShow==='function') window.showPage=function(id,btn){ const r=oldShow.apply(this,arguments); if(id==='orders') setTimeout(addOrdersImportPanel,80); return r; };
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(addOrdersImportPanel,600));
+  window.addEventListener('load',()=>setTimeout(addOrdersImportPanel,1000));
+  console.log('Tasneef V256 loaded: Excel import for orders');
+})();
