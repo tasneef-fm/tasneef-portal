@@ -20598,3 +20598,71 @@ setInterval(()=>{ try{ if(document.getElementById('logsBody')) renderTimeLogs();
   window.addEventListener('load',()=>setTimeout(()=>{injectReceiptField(); try{window.renderOrdersV197&&window.renderOrdersV197(); window.renderTechnicianOrdersV262&&window.renderTechnicianOrdersV262();}catch(_){}},1200));
   console.log('Tasneef V263 loaded: orders WhatsApp + receipt attachment');
 })();
+
+/* ===== V264: Orders WhatsApp send to Orders Group ===== */
+(function(){
+  'use strict';
+  window.TASNEEF_BUILD = 'V264_ORDERS_WHATSAPP_GROUP_2026_05_31';
+  const $ = window.$ || (id=>document.getElementById(id));
+  const arr = v => Array.isArray(v) ? v : [];
+  const E = window.esc || (v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])));
+  function getOrdersGroupLink(){ return String(localStorage.getItem('tasneef_orders_group_link')||'').trim(); }
+  function setOrdersGroupLink(v){ localStorage.setItem('tasneef_orders_group_link', String(v||'').trim()); }
+  function validGroupLink(v){ return /chat\.whatsapp\.com\//i.test(String(v||'')); }
+  function injectOrdersGroupToolsV264(){
+    const body = $('ordersBodyV197');
+    if(!body || $('ordersGroupToolsV264')) return;
+    const host = body.closest('.card') || body.closest('section') || body.parentElement;
+    if(!host) return;
+    const box = document.createElement('div');
+    box.id = 'ordersGroupToolsV264';
+    box.className = 'orders-group-tools-v264';
+    box.innerHTML = `
+      <div class="orders-group-title-v264">إرسال أوردرات واتساب</div>
+      <div class="orders-group-line-v264">
+        <input id="ordersGroupLinkV264" placeholder="اختياري: ضع رابط قروب الأوردرات من واتساب" value="${E(getOrdersGroupLink())}">
+        <button type="button" class="light" id="saveOrdersGroupLinkV264">حفظ رابط القروب</button>
+      </div>
+      <small>ملاحظة: واتساب لا يسمح للنظام بالإرسال المباشر داخل قروب محدد تلقائيًا. الزر ينسخ رسالة الأوردر ويفتح واتساب، ثم تختار قروب الأوردرات أو تلصق الرسالة فيه.</small>`;
+    host.insertBefore(box, host.firstChild);
+    $('saveOrdersGroupLinkV264')?.addEventListener('click',()=>{
+      const v=$('ordersGroupLinkV264')?.value||'';
+      setOrdersGroupLink(v);
+      if(window.msg) msg(validGroupLink(v)?'تم حفظ رابط قروب الأوردرات':'تم الحفظ، لكن الرابط لا يبدو كرابط قروب واتساب.');
+    });
+  }
+  async function copyTextV264(text){
+    try{ if(navigator.clipboard?.writeText){ await navigator.clipboard.writeText(text); return true; } }catch(_){}
+    try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); return true; }catch(_){ return false; }
+  }
+  window.sendOrderWhatsAppV263 = window.sendOrderWhatsAppV264 = async function(id){
+    const o=[...arr(window.ordersV197),...arr(window.technicianOrdersV262)].find(x=>String(x.id)===String(id));
+    if(!o) return (window.msg?msg('الأوردر غير موجود','err'):alert('الأوردر غير موجود'));
+    const text = (typeof window.buildOrderWhatsAppTextV263==='function') ? window.buildOrderWhatsAppTextV263(o) : JSON.stringify(o,null,2);
+    await copyTextV264(text);
+    const groupLink=getOrdersGroupLink();
+    if(validGroupLink(groupLink)){
+      window.open(groupLink,'_blank');
+      setTimeout(()=>window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank'),600);
+      if(window.msg) msg('تم نسخ رسالة الأوردر وفتح قروب الأوردرات. الصق الرسالة داخل القروب أو اختره من نافذة المشاركة.');
+    }else{
+      window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank');
+      if(window.msg) msg('تم نسخ رسالة الأوردر. اختر قروب الأوردرات من واتساب ثم أرسل الرسالة.');
+    }
+  };
+  function renameOrderWhatsappButtonsV264(){
+    document.querySelectorAll('.wa-order-btn-v263,.wa-order-btn-v264').forEach(b=>{
+      b.classList.add('wa-order-btn-v264');
+      if((b.textContent||'').trim()==='واتساب') b.textContent='إرسال للقروب';
+      b.title='إرسال إلى قروب الأوردرات';
+    });
+  }
+  const oldRenderOrders=window.renderOrdersV197;
+  window.renderOrdersV197=function(){ if(typeof oldRenderOrders==='function') oldRenderOrders.apply(this,arguments); setTimeout(()=>{injectOrdersGroupToolsV264(); renameOrderWhatsappButtonsV264();},50); };
+  const oldTechRender=window.renderTechnicianOrdersV262;
+  window.renderTechnicianOrdersV262=function(){ if(typeof oldTechRender==='function') oldTechRender.apply(this,arguments); setTimeout(renameOrderWhatsappButtonsV264,50); };
+  if(!document.getElementById('ordersV264Css')){ const css=document.createElement('style'); css.id='ordersV264Css'; css.textContent='.orders-group-tools-v264{border:1px solid #d7eadf;background:#f8fcfa;border-radius:16px;padding:12px;margin:0 0 14px 0}.orders-group-title-v264{font-weight:900;margin-bottom:8px}.orders-group-line-v264{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.orders-group-line-v264 input{min-width:260px;flex:1}.wa-order-btn-v264{background:#128C7E!important;color:#fff!important;border:0!important;border-radius:10px!important;padding:7px 10px!important;font-weight:800!important}'; document.head.appendChild(css); }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{injectOrdersGroupToolsV264(); renameOrderWhatsappButtonsV264();},1000));
+  window.addEventListener('load',()=>setTimeout(()=>{injectOrdersGroupToolsV264(); renameOrderWhatsappButtonsV264();},1300));
+  console.log('Tasneef V264 loaded: orders WhatsApp group send');
+})();
