@@ -1,4 +1,4 @@
-/* TASNEEF BUILD V232 - inventory schema safe + hide warehouse cost info - 2026-05-20 */
+/* TASNEEF BUILD V249 - unified session + permission stability - 2026-05-31 */
 /* V154 Smart Loading Branding */
 (function(){
   if(window.__tasneefLoadingV154) return;
@@ -120,7 +120,7 @@
 (function(){
   if(window.__tasneefLiteNetworkV239) return;
   window.__tasneefLiteNetworkV239 = true;
-  window.TASNEEF_BUILD = 'V239_LITE_NETWORK_STABLE_2026_05_21';
+  window.TASNEEF_BUILD = 'V249_SESSION_PERMISSION_STABLE_2026_05_31';
 
   function addLiteStyle(){
     if(document.getElementById('tasneefLiteStyleV239')) return;
@@ -225,9 +225,24 @@ window.sb = sb;
 const $ = id => document.getElementById(id);
 const today = () => new Date().toISOString().slice(0,10);
 const nowTime = () => new Date().toTimeString().slice(0,5);
-const session = () => JSON.parse(localStorage.getItem('tasneef_user') || 'null');
-const setSession = u => localStorage.setItem('tasneef_user', JSON.stringify(u));
-const clearSession = () => localStorage.removeItem('tasneef_user');
+/* V249: Unified session storage fix
+   بعض أجزاء النظام القديمة كانت تقرأ tasneef_session بينما الدخول يحفظ tasneef_user فقط.
+   التوحيد هنا يمنع رجوع الحساب القديم بعد تسجيل الخروج، ويجعل الصلاحيات تظهر بنفس الشكل بين الأجهزة. */
+const session = () => {
+  try{
+    const raw = localStorage.getItem('tasneef_user') || localStorage.getItem('tasneef_session') || sessionStorage.getItem('tasneef_user') || sessionStorage.getItem('tasneef_session') || 'null';
+    return JSON.parse(raw);
+  }catch(_){ return null; }
+};
+const setSession = u => {
+  const val = JSON.stringify(u || null);
+  localStorage.setItem('tasneef_user', val);
+  localStorage.setItem('tasneef_session', val);
+  try{ sessionStorage.setItem('tasneef_user', val); sessionStorage.setItem('tasneef_session', val); }catch(_){ }
+};
+const clearSession = () => {
+  ['tasneef_user','tasneef_session','tasneef_current_user','current_user'].forEach(k=>{ try{ localStorage.removeItem(k); sessionStorage.removeItem(k); }catch(_){ } });
+};
 const fmt = d => d ? new Date(d).toLocaleString('ar-SA') : '-';
 const timeOnly = d => d ? new Date(d).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'}) : '-';
 const minsToText = m => { m=Number(m||0); const h=Math.floor(m/60), mm=m%60; return `${h}:${String(mm).padStart(2,'0')}`; };
@@ -17478,7 +17493,7 @@ function financePrintReport(kind){
 ============================================================================ */
 (function(){
   'use strict';
-  window.TASNEEF_BUILD = 'V239_LITE_NETWORK_STABLE_2026_05_21';
+  window.TASNEEF_BUILD = 'V249_SESSION_PERMISSION_STABLE_2026_05_31';
   const E = (v)=>String(v ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const $id = (id)=>document.getElementById(id);
   const say = (t,type)=>{ try{ (window.msg||window.setMsg||alert)(t,type); }catch{ alert(t); } };
