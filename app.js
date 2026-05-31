@@ -17271,79 +17271,47 @@ function financePrintReport(kind){
   console.log('Tasneef V235 final fixes loaded');
 })();
 
-/* ===== V236: System Admin UI Block Controls (hide / read only) ===== */
+/* ===== V247: System Admin UI Block Controls - Supabase synced (hide / read only) ===== */
 (function(){
-  const VERSION='237';
-  const STORE_KEY='tasneef_ui_block_rules_v236';
+  const VERSION='247';
   const TABLE='ui_section_rules';
+  const STORE_KEY='tasneef_ui_block_rules_v247_cache';
+  const OLD_KEYS=['tasneef_ui_block_rules_v236'];
   const ADMIN_AREA_ROLES=new Set(['admin','general_manager','operations_manager','financial_manager','warehouse_manager']);
-  // مدير النظام فقط: لا نعتمد على role=admin لأن عندك حسابات إدارية أخرى.
-  // يسمح فقط بحساب admin أو دور system_admin/super_admin أو علامة is_system_admin.
   const SYSTEM_ADMIN_USERNAMES=new Set(['admin']);
   const SYSTEM_ADMIN_ROLES=new Set(['system_admin','super_admin','owner']);
-  const safeText=(s)=>String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-  const $id=(id)=>document.getElementById(id);
-  function getUser(){ try{return typeof session==='function'?(session()||{}):(JSON.parse(localStorage.getItem('tasneef_session')||'{}')||{});}catch{return {}} }
+  const safeText=(s)=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function user(){
+    try{
+      return (typeof session==='function'?(session()||{}):null) || JSON.parse(localStorage.getItem('tasneef_user')||localStorage.getItem('tasneef_session')||'{}') || {};
+    }catch(_){ return {}; }
+  }
   function isSystemAdmin(){
-    const u=getUser();
-    const username=String(u.username||'').trim().toLowerCase();
-    const role=String(u.role||'').trim().toLowerCase();
+    const u=user(); const username=String(u.username||'').trim().toLowerCase(); const role=String(u.role||'').trim().toLowerCase();
     return !!(u.is_system_admin || u.system_admin || SYSTEM_ADMIN_ROLES.has(role) || SYSTEM_ADMIN_USERNAMES.has(username));
   }
-  function isAdminAreaUser(){ const u=getUser(); return ADMIN_AREA_ROLES.has(String(u.role||'').trim().toLowerCase()) || !['supervisor','technician','worker'].includes(String(u.role||'').trim().toLowerCase()); }
-  function readLocal(){ try{return JSON.parse(localStorage.getItem(STORE_KEY)||'{}')||{};}catch{return {}} }
-  function writeLocal(rules){ try{localStorage.setItem(STORE_KEY,JSON.stringify(rules||{}));}catch{} }
-  function setMsg(text,type){ try{ if(typeof msg==='function') msg(text,type||''); else console.log(text); }catch{ console.log(text); } }
-  window.tasneefUiBlockRulesV236=window.tasneefUiBlockRulesV236||readLocal();
-  let loading=false, loadedOnce=false;
-  function rules(){ return window.tasneefUiBlockRulesV236 || {}; }
+  function isAdminAreaUser(){
+    const role=String(user().role||'').trim().toLowerCase();
+    return ADMIN_AREA_ROLES.has(role) || !['supervisor','technician','worker'].includes(role);
+  }
+  function setMsg(text,type){ try{ (window.msg||window.setMsg||console.log)(text,type||''); }catch(_){ console.log(text); } }
+  function readJson(k){ try{return JSON.parse(localStorage.getItem(k)||'{}')||{};}catch(_){return {};}}
+  function readCache(){
+    const cur=readJson(STORE_KEY);
+    if(Object.keys(cur).length) return cur;
+    for(const k of OLD_KEYS){ const old=readJson(k); if(Object.keys(old).length) return old; }
+    return {};
+  }
+  function writeCache(rules){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(rules||{})); }catch(_){} }
+  function setRules(r){ window.tasneefUiBlockRulesV236 = r || {}; window.tasneefUiBlockRulesV247 = window.tasneefUiBlockRulesV236; writeCache(window.tasneefUiBlockRulesV236); }
+  function rules(){ if(!window.tasneefUiBlockRulesV236) setRules(readCache()); return window.tasneefUiBlockRulesV236 || {}; }
+  setRules(readCache());
   function normalizeTitle(t){ return String(t||'').replace(/\s+/g,' ').trim(); }
-  function ruleForBlock(key,title){
-    const r=rules();
-    if(r[key]) return {rule:r[key], matchedKey:key};
-    const nt=normalizeTitle(title);
-    const found=Object.entries(r).find(([k,v])=>{
-      if(!v) return false;
-      const vt=normalizeTitle(v.title||'');
-      return vt && nt && vt===nt;
-    });
-    if(found) return {rule:found[1], matchedKey:found[0]};
-    return {rule:{}, matchedKey:key};
-  }
-  function saveRules(r){ window.tasneefUiBlockRulesV236=r||{}; writeLocal(window.tasneefUiBlockRulesV236); }
-  async function loadRemoteRules(){
-    if(loading || loadedOnce) return; loading=true;
-    try{
-      if(!window.sb) return;
-      const res=await sb.from(TABLE).select('*');
-      if(res && !res.error && Array.isArray(res.data)){
-        const next={};
-        res.data.forEach(x=>{ if(x && x.block_key) next[x.block_key]={hidden:!!x.hidden, readonly:!!x.readonly, title:x.title||''}; });
-        saveRules(Object.assign(readLocal(),next));
-        loadedOnce=true;
-      }
-    }catch(e){ /* table may not exist - local fallback */ }
-    finally{ loading=false; }
-  }
-  async function persistRule(key, patch, title){
-    const r=rules();
-    r[key]=Object.assign({hidden:false,readonly:false,title:title||key}, r[key]||{}, patch||{}, {title:title||r[key]?.title||key, updated_at:new Date().toISOString()});
-    saveRules(r);
-    try{
-      if(window.sb){
-        await sb.from(TABLE).upsert({block_key:key,title:title||key,hidden:!!r[key].hidden,readonly:!!r[key].readonly,updated_at:new Date().toISOString()},{onConflict:'block_key'});
-      }
-    }catch(e){ /* local fallback */ }
-    applyUiBlockRulesV236();
-  }
   function blockTitle(el){
     const h=el.querySelector('h1,h2,h3,.section-title,label');
     let t=(h?.textContent||'').trim();
-    if(!t){
-      const page=el.closest('.page')?.id||'عام';
-      t=page+' - جزئية';
-    }
-    return t.replace(/\s+/g,' ').slice(0,60);
+    if(!t){ const page=el.closest('.page')?.id||'عام'; t=page+' - جزئية'; }
+    return normalizeTitle(t).slice(0,80);
   }
   function blockKey(el,idx){
     if(el.dataset.uiBlockKey) return el.dataset.uiBlockKey;
@@ -17354,51 +17322,94 @@ function financePrintReport(kind){
     el.dataset.uiBlockKey=key;
     return key;
   }
+  function ruleForBlock(key,title){
+    const r=rules();
+    if(r[key]) return {rule:r[key], matchedKey:key};
+    const nt=normalizeTitle(title);
+    const found=Object.entries(r).find(([k,v])=>{ const vt=normalizeTitle(v?.title||''); return vt && nt && vt===nt; });
+    return found ? {rule:found[1], matchedKey:found[0]} : {rule:{}, matchedKey:key};
+  }
   function blocks(){
     const arr=[];
     document.querySelectorAll('main .page .card, main .page .section-head, main .page .report-form-card, main .page .export-slide-v222').forEach((el,i)=>{
       if(el.closest('.tasneef-ui-panel-v236')) return;
-      arr.push(el);
-      blockKey(el,i);
+      arr.push(el); blockKey(el,i);
     });
     return arr;
+  }
+  async function loadRemoteRulesV247(force=false){
+    if(!window.sb) return false;
+    try{
+      const res=await sb.from(TABLE).select('block_key,title,hidden,readonly,updated_at');
+      if(res.error) throw res.error;
+      const next={};
+      (res.data||[]).forEach(x=>{ if(x?.block_key) next[x.block_key]={hidden:!!x.hidden, readonly:!!x.readonly, title:x.title||'', updated_at:x.updated_at||''}; });
+      // إذا الجدول موجود، قاعدة البيانات هي المصدر الرئيسي لكل الأجهزة.
+      setRules(next);
+      applyUiBlockRulesV236();
+      return true;
+    }catch(e){
+      if(isSystemAdmin() && !window.__uiRulesDbWarnedV247){
+        window.__uiRulesDbWarnedV247=true;
+        console.warn('ui_section_rules sync failed:', e);
+        setMsg('تنبيه: صلاحيات الواجهة تعمل محليًا فقط. شغّل ملف SQL الخاص بـ ui_section_rules في Supabase لتعمل على كل الأجهزة.','err');
+      }
+      return false;
+    }
+  }
+  async function saveRemoteRuleV247(key, rule){
+    if(!window.sb) return false;
+    try{
+      const row={ block_key:key, title:rule.title||key, hidden:!!rule.hidden, readonly:!!rule.readonly, updated_at:new Date().toISOString() };
+      const res=await sb.from(TABLE).upsert(row,{onConflict:'block_key'});
+      if(res.error) throw res.error;
+      return true;
+    }catch(e){ console.warn('save ui rule failed',e); return false; }
+  }
+  async function deleteRemoteRuleV247(key){
+    if(!window.sb) return false;
+    try{ const res=await sb.from(TABLE).delete().eq('block_key',key); if(res.error) throw res.error; return true; }catch(e){ console.warn('delete ui rule failed',e); return false; }
+  }
+  async function clearRemoteRulesV247(){
+    if(!window.sb) return false;
+    try{ const res=await sb.from(TABLE).delete().neq('block_key','__never__'); if(res.error) throw res.error; return true; }catch(e){ console.warn('clear ui rules failed',e); return false; }
+  }
+  async function persistRule(key, patch, title){
+    const r=Object.assign({},rules());
+    const row=Object.assign({hidden:false,readonly:false,title:title||key}, r[key]||{}, patch||{}, {title:title||r[key]?.title||key, updated_at:new Date().toISOString()});
+    if(!row.hidden && !row.readonly) delete r[key]; else r[key]=row;
+    setRules(r); applyUiBlockRulesV236();
+    const ok = row.hidden||row.readonly ? await saveRemoteRuleV247(key,row) : await deleteRemoteRuleV247(key);
+    if(!ok && isSystemAdmin()) setMsg('لم يتم حفظ الصلاحية في قاعدة البيانات. ستعمل على هذا الجهاز فقط إلى أن يتم تشغيل SQL.','err');
+    else setMsg('تم حفظ صلاحيات الواجهة لكل الأجهزة');
+    await loadRemoteRulesV247(true);
   }
   function injectControls(el,key){
     if(!isSystemAdmin()) return;
     if(el.querySelector(':scope > .ui-control-v236')) return;
     const title=blockTitle(el);
-    const wrap=document.createElement('div');
-    wrap.className='ui-control-v236';
+    const wrap=document.createElement('div'); wrap.className='ui-control-v236';
     wrap.innerHTML=`<span title="${safeText(key)}">تحكم مدير النظام</span><button type="button" class="light ui-hide-v236">إخفاء</button><button type="button" class="light ui-read-v236">قراءة فقط</button>`;
     el.insertBefore(wrap, el.firstChild);
-    wrap.querySelector('.ui-hide-v236').onclick=(e)=>{ e.stopPropagation(); const cur=rules()[key]||{}; persistRule(key,{hidden:!cur.hidden},title); };
-    wrap.querySelector('.ui-read-v236').onclick=(e)=>{ e.stopPropagation(); const cur=rules()[key]||{}; persistRule(key,{readonly:!cur.readonly},title); };
+    wrap.querySelector('.ui-hide-v236').onclick=(e)=>{ e.stopPropagation(); const cur=(ruleForBlock(key,title).rule)||{}; persistRule(key,{hidden:!cur.hidden},title); };
+    wrap.querySelector('.ui-read-v236').onclick=(e)=>{ e.stopPropagation(); const cur=(ruleForBlock(key,title).rule)||{}; persistRule(key,{readonly:!cur.readonly},title); };
   }
-  function updateControlState(el, rule){
+  function updateControlState(el,rule){
     const c=el.querySelector(':scope > .ui-control-v236'); if(!c) return;
-    c.querySelector('.ui-hide-v236')?.classList.toggle('active',!!rule.hidden);
-    c.querySelector('.ui-read-v236')?.classList.toggle('active',!!rule.readonly);
-    c.querySelector('.ui-hide-v236').textContent=rule.hidden?'إلغاء الإخفاء':'إخفاء';
-    c.querySelector('.ui-read-v236').textContent=rule.readonly?'إلغاء القراءة فقط':'قراءة فقط';
+    const h=c.querySelector('.ui-hide-v236'), ro=c.querySelector('.ui-read-v236');
+    h?.classList.toggle('active',!!rule.hidden); ro?.classList.toggle('active',!!rule.readonly);
+    if(h) h.textContent=rule.hidden?'إلغاء الإخفاء':'إخفاء';
+    if(ro) ro.textContent=rule.readonly?'إلغاء القراءة فقط':'قراءة فقط';
   }
   function isAllowedButton(btn){
     const txt=(btn.textContent||'').trim();
-    const okWords=['عرض','طباعة','تصدير','تنزيل','معاينة','بحث','تحديث','إغلاق','رجوع','فلتر','CSV','PDF'];
+    const okWords=['عرض','طباعة','تصدير','تنزيل','معاينة','بحث','تحديث','إغلاق','رجوع','فلتر','CSV','PDF','إعادة ضبط'];
     return okWords.some(w=>txt.includes(w));
   }
   function readonlyBlock(el){
     el.classList.add('ui-readonly-v236');
-    el.querySelectorAll('input,select,textarea').forEach(x=>{
-      if(x.closest('.ui-control-v236')) return;
-      x.dataset.uiPrevDisabled=x.disabled?'1':'0';
-      x.disabled=true;
-    });
-    el.querySelectorAll('button').forEach(b=>{
-      if(b.closest('.ui-control-v236')) return;
-      if(isAllowedButton(b)) return;
-      b.dataset.uiPrevDisabled=b.disabled?'1':'0';
-      b.disabled=true; b.classList.add('ui-disabled-v236');
-    });
+    el.querySelectorAll('input,select,textarea').forEach(x=>{ if(x.closest('.ui-control-v236')) return; x.dataset.uiPrevDisabled=x.disabled?'1':'0'; x.disabled=true; });
+    el.querySelectorAll('button').forEach(b=>{ if(b.closest('.ui-control-v236')) return; if(isAllowedButton(b)) return; b.dataset.uiPrevDisabled=b.disabled?'1':'0'; b.disabled=true; b.classList.add('ui-disabled-v236'); });
     el.querySelectorAll('a[onclick], [contenteditable="true"]').forEach(x=>{ if(!x.closest('.ui-control-v236')) x.classList.add('ui-disabled-v236'); });
   }
   function clearReadonlyBlock(el){
@@ -17408,33 +17419,26 @@ function financePrintReport(kind){
   }
   function applyUiBlockRulesV236(){
     if(!document.body) return;
-    const r=rules();
-    const sys=isSystemAdmin();
-    const adminUser=isAdminAreaUser();
+    const sys=isSystemAdmin(), adminUser=isAdminAreaUser();
     blocks().forEach((el,idx)=>{
-      const key=blockKey(el,idx); const title=blockTitle(el); const found=ruleForBlock(key,title); const rule=found.rule||{};
-      // أي حساب غير مدير النظام لا يرى أزرار التحكم حتى لو بقيت من رسم سابق.
-      if(!sys) el.querySelectorAll(':scope > .ui-control-v236').forEach(x=>x.remove());
-      else injectControls(el,key);
+      const key=blockKey(el,idx), title=blockTitle(el), rule=(ruleForBlock(key,title).rule)||{};
+      if(!sys) el.querySelectorAll(':scope > .ui-control-v236').forEach(x=>x.remove()); else injectControls(el,key);
       updateControlState(el,rule);
-      el.classList.remove('ui-hidden-for-admins-v236');
-      clearReadonlyBlock(el);
-      if(!sys && adminUser){
-        if(rule.hidden){ el.classList.add('ui-hidden-for-admins-v236'); return; }
-        if(rule.readonly) readonlyBlock(el);
-      }
+      el.classList.remove('ui-hidden-for-admins-v236'); clearReadonlyBlock(el);
+      if(!sys && adminUser){ if(rule.hidden){ el.classList.add('ui-hidden-for-admins-v236'); return; } if(rule.readonly) readonlyBlock(el); }
     });
   }
   window.applyUiBlockRulesV236=applyUiBlockRulesV236;
+  window.tasneefReloadUiRulesV247=()=>loadRemoteRulesV247(true);
   window.uiBlockRulesPanelV236=function(){
     if(!isSystemAdmin()) return setMsg('هذه اللوحة تظهر لمدير النظام فقط','err');
     const r=rules();
     const rows=Object.entries(r).filter(([,v])=>v.hidden||v.readonly).map(([k,v])=>`<tr><td>${safeText(v.title||k)}</td><td>${safeText(k)}</td><td>${v.hidden?'مخفي':'ظاهر'}</td><td>${v.readonly?'قراءة فقط':'كامل'}</td><td><button class="light" onclick="tasneefResetUiRuleV236('${safeText(k)}')">إعادة ضبط</button></td></tr>`).join('')||'<tr><td colspan="5">لا توجد قواعد مفعلة</td></tr>';
-    const old=document.getElementById('uiRulesModalV236'); if(old) old.remove();
-    document.body.insertAdjacentHTML('beforeend',`<div id="uiRulesModalV236" class="modal-backdrop" onclick="if(event.target===this)this.remove()"><div class="modal-card" style="max-width:900px"><div class="modal-head"><h2>صلاحيات عناصر الواجهة</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div class="table-wrap"><table><thead><tr><th>الجزئية</th><th>المفتاح</th><th>الإخفاء</th><th>القراءة</th><th>إجراء</th></tr></thead><tbody>${rows}</tbody></table></div><div class="actions"><button class="danger" onclick="tasneefClearAllUiRulesV236()">إعادة ضبط الكل</button></div></div></div>`);
+    document.getElementById('uiRulesModalV236')?.remove();
+    document.body.insertAdjacentHTML('beforeend',`<div id="uiRulesModalV236" class="modal-backdrop" onclick="if(event.target===this)this.remove()"><div class="modal-card" style="max-width:900px"><div class="modal-head"><h2>صلاحيات عناصر الواجهة</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div class="actions" style="justify-content:flex-start"><button class="light" onclick="tasneefReloadUiRulesV247().then(()=>{document.getElementById('uiRulesModalV236')?.remove();uiBlockRulesPanelV236();})">تحديث من قاعدة البيانات</button></div><div class="table-wrap"><table><thead><tr><th>الجزئية</th><th>المفتاح</th><th>الإخفاء</th><th>القراءة</th><th>إجراء</th></tr></thead><tbody>${rows}</tbody></table></div><div class="actions"><button class="danger" onclick="tasneefClearAllUiRulesV236()">إعادة ضبط الكل</button></div></div></div>`);
   };
-  window.tasneefResetUiRuleV236=async function(key){ const r=rules(); delete r[key]; saveRules(r); try{ if(window.sb) await sb.from(TABLE).delete().eq('block_key',key); }catch{} applyUiBlockRulesV236(); document.getElementById('uiRulesModalV236')?.remove(); window.uiBlockRulesPanelV236(); };
-  window.tasneefClearAllUiRulesV236=async function(){ if(!confirm('إعادة ضبط كل قواعد الإخفاء والقراءة فقط؟')) return; saveRules({}); try{ if(window.sb) await sb.from(TABLE).delete().neq('block_key','__none__'); }catch{} applyUiBlockRulesV236(); document.getElementById('uiRulesModalV236')?.remove(); };
+  window.tasneefResetUiRuleV236=async function(key){ const r=Object.assign({},rules()); delete r[key]; setRules(r); await deleteRemoteRuleV247(key); applyUiBlockRulesV236(); document.getElementById('uiRulesModalV236')?.remove(); window.uiBlockRulesPanelV236(); };
+  window.tasneefClearAllUiRulesV236=async function(){ if(!confirm('إعادة ضبط كل قواعد الإخفاء والقراءة فقط؟')) return; setRules({}); await clearRemoteRulesV247(); applyUiBlockRulesV236(); document.getElementById('uiRulesModalV236')?.remove(); };
   function addSystemPanelButton(){
     if(!isSystemAdmin()) return;
     const firstHero=document.querySelector('.hero .actions, .hero');
@@ -17447,38 +17451,24 @@ function financePrintReport(kind){
     if(isSystemAdmin()) return;
     const btn=e.target && e.target.closest && e.target.closest('button,a,[role=button]');
     if(!btn || btn.closest('.ui-control-v236')) return;
-    if(targetReadonly(btn) && !isAllowedButton(btn)){
-      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      setMsg('هذه الجزئية قراءة فقط حسب صلاحيات مدير النظام','err');
-    }
+    if(targetReadonly(btn) && !isAllowedButton(btn)){ e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); setMsg('هذه الجزئية قراءة فقط حسب صلاحيات مدير النظام','err'); }
   },true);
   document.addEventListener('submit',function(e){
     if(isSystemAdmin()) return;
-    if(targetReadonly(e.target)){
-      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-      setMsg('لا يمكن الحفظ؛ هذه الجزئية قراءة فقط','err');
-    }
+    if(targetReadonly(e.target)){ e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); setMsg('لا يمكن الحفظ؛ هذه الجزئية قراءة فقط','err'); }
   },true);
   const oldShow=window.showPage;
-  if(typeof oldShow==='function' && !oldShow._v236){
-    const fn=function(){ const out=oldShow.apply(this,arguments); setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },120); return out; };
-    fn._v236=true; window.showPage=fn;
-  }
+  if(typeof oldShow==='function' && !oldShow._v247){ const fn=function(){ const out=oldShow.apply(this,arguments); setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },120); return out; }; fn._v247=true; window.showPage=fn; }
   const oldRenderAll=window.renderAll;
-  if(typeof oldRenderAll==='function' && !oldRenderAll._v236){
-    const fn=function(){ const out=oldRenderAll.apply(this,arguments); setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },180); return out; };
-    fn._v236=true; window.renderAll=fn;
-  }
+  if(typeof oldRenderAll==='function' && !oldRenderAll._v247){ const fn=function(){ const out=oldRenderAll.apply(this,arguments); setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },180); return out; }; fn._v247=true; window.renderAll=fn; }
   const css=document.createElement('style');
-  css.textContent=`
-  .ui-control-v236{display:flex;gap:6px;align-items:center;justify-content:flex-start;flex-wrap:wrap;margin:-4px 0 10px;padding:7px 9px;border:1px dashed #b9dfcb;background:#f4fbf8;border-radius:14px;color:#0A4033;font-size:12px;font-weight:800}
-  .ui-control-v236 button{padding:6px 9px;border-radius:10px;font-size:12px}.ui-control-v236 button.active{background:#0A4033!important;color:#fff!important}.ui-hidden-for-admins-v236{display:none!important}.ui-readonly-v236{position:relative;background:linear-gradient(180deg,#fff,#fbfdfc)}.ui-readonly-v236:after{content:'قراءة فقط';position:absolute;top:10px;left:10px;background:#fff5da;color:#8a6700;border:1px solid #edd188;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;pointer-events:none}.ui-disabled-v236{opacity:.55!important;pointer-events:none!important}
-  #uiRulesPanelBtnV236{margin-inline-start:8px}`;
+  css.textContent=`.ui-control-v236{display:flex;gap:6px;align-items:center;justify-content:flex-start;flex-wrap:wrap;margin:-4px 0 10px;padding:7px 9px;border:1px dashed #b9dfcb;background:#f4fbf8;border-radius:14px;color:#0A4033;font-size:12px;font-weight:800}.ui-control-v236 button{padding:6px 9px;border-radius:10px;font-size:12px}.ui-control-v236 button.active{background:#0A4033!important;color:#fff!important}.ui-hidden-for-admins-v236{display:none!important}.ui-readonly-v236{position:relative;background:linear-gradient(180deg,#fff,#fbfdfc)}.ui-readonly-v236:after{content:'قراءة فقط';position:absolute;top:10px;left:10px;background:#fff5da;color:#8a6700;border:1px solid #edd188;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;pointer-events:none}.ui-disabled-v236{opacity:.55!important;pointer-events:none!important}#uiRulesPanelBtnV236{margin-inline-start:8px}`;
   document.head.appendChild(css);
-  window.addEventListener('DOMContentLoaded',()=>{ loadRemoteRules().finally(()=>setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },700)); });
-  window.addEventListener('load',()=>{ loadRemoteRules().finally(()=>setTimeout(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); },1200)); });
-  setInterval(()=>{ try{ addSystemPanelButton(); applyUiBlockRulesV236(); }catch(e){} },4000);
-  console.log('Tasneef V237 UI block controls strict loaded');
+  async function boot(){ await loadRemoteRulesV247(true); addSystemPanelButton(); applyUiBlockRulesV236(); }
+  window.addEventListener('DOMContentLoaded',()=>setTimeout(boot,500));
+  window.addEventListener('load',()=>setTimeout(boot,1000));
+  setInterval(()=>{ try{ loadRemoteRulesV247(true).finally(()=>{ addSystemPanelButton(); applyUiBlockRulesV236(); }); }catch(e){} },12000);
+  console.log('Tasneef V247 UI block controls Supabase sync loaded');
 })();
 
 /* ===================== V238: SMART PDF WINDOWS FOR DAILY LOGS + MONTHLY TIMES =====================
@@ -18412,4 +18402,393 @@ function financePrintReport(kind){
   setTimeout(rewire,1500);
   window.addEventListener('load',()=>setTimeout(()=>{try{ if($id('monthlyBody')) window.renderMonthly(); }catch(_){} rewire();},900));
   console.log('Tasneef V246 monthly current supervisor dedupe + totals loaded');
+})();
+
+/* ===== V248: Stable UI section permissions across all devices ===== */
+(function(){
+  const VERSION='248';
+  const TABLE='ui_section_rules';
+  const CACHE='tasneef_ui_section_rules_v248_cache';
+  const LEGACY_CACHES=['tasneef_ui_block_rules_v247_cache','tasneef_ui_block_rules_v236'];
+  const SYS_USERNAMES=new Set(['admin']);
+  const SYS_ROLES=new Set(['system_admin','super_admin','owner']);
+  const ADMIN_ROLES=new Set(['admin','general_manager','operations_manager','financial_manager','warehouse_manager']);
+  const $=(id)=>document.getElementById(id);
+  const norm=(s)=>String(s||'').replace(/\s+/g,' ').trim();
+  const esc=(s)=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function msg(t,type){ try{ (window.msg||window.setMsg||console.log)(t,type||''); }catch(_){ console.log(t); } }
+  function currentUser(){
+    try{
+      const u=(typeof session==='function'?(session()||{}):null) || JSON.parse(localStorage.getItem('tasneef_user')||localStorage.getItem('tasneef_session')||'{}') || {};
+      return u;
+    }catch(_){ return {}; }
+  }
+  function isSystemAdmin(){
+    const u=currentUser();
+    const username=String(u.username||'').trim().toLowerCase();
+    const role=String(u.role||'').trim().toLowerCase();
+    return !!(u.is_system_admin || u.system_admin || SYS_USERNAMES.has(username) || SYS_ROLES.has(role));
+  }
+  function isAdminLike(){
+    const role=String(currentUser().role||'').trim().toLowerCase();
+    return isSystemAdmin() || ADMIN_ROLES.has(role) || !['supervisor','technician','worker'].includes(role);
+  }
+  function readJson(k){ try{return JSON.parse(localStorage.getItem(k)||'{}')||{};}catch(_){return{};} }
+  function writeJson(k,v){ try{localStorage.setItem(k,JSON.stringify(v||{}));}catch(_){} }
+  function initialRules(){
+    let r=readJson(CACHE); if(Object.keys(r).length) return r;
+    for(const k of LEGACY_CACHES){ r=readJson(k); if(Object.keys(r).length) return r; }
+    return {};
+  }
+  function setRules(r){ window.tasneefUiSectionRulesV248=r||{}; window.tasneefUiBlockRulesV247=window.tasneefUiSectionRulesV248; window.tasneefUiBlockRulesV236=window.tasneefUiSectionRulesV248; writeJson(CACHE,r||{}); }
+  function rules(){ if(!window.tasneefUiSectionRulesV248) setRules(initialRules()); return window.tasneefUiSectionRulesV248||{}; }
+  setRules(initialRules());
+
+  const titleKeyMap = new Map(Object.entries({
+    'ملخص اليوم':'dashboard.summary','تنبيهات العقود':'dashboard.contract_alerts',
+    'تسجيل دخول / خروج':'daily.form','التسجيلات اليومية':'daily.list',
+    'إضافة مستخدم':'users.add','المستخدمون':'users.list',
+    'إدارة المشاريع':'projects.header','إضافة مشروع':'projects.add','المشاريع':'projects.list','إدارة المشروع':'projects.manager',
+    'العقود والخدمات السنوية':'contracts.header','العقود القريبة والمنتهية':'contracts.expiring','كل العقود':'contracts.list','الخدمات التعاقدية':'contracts.services','الجدولة الذكية للخدمات غير المنفذة':'contracts.schedule','نافذة الخدمات للمشرف':'contracts.supervisor_services',
+    'إدارة العمال':'workers.header','إضافة عامل':'workers.add','قائمة العمال':'workers.list',
+    'تسجيل حضور / غياب':'attendance.form','سجلات الحضور':'attendance.logs','جدول الحضور والغياب الشهري':'attendance.monthly',
+    'الأوقات الشهرية':'monthly.report',
+    'إضافة تكت':'tickets.add','التكتات':'tickets.list',
+    'بوابة تقارير العملاء - شرائح ذكية':'client_reports.header','إنشاء تقرير جديد':'client_reports.add','البحث والفلاتر':'client_reports.filters','سجل التقارير':'client_reports.list',
+    'تقييمات العملاء':'client_ratings.list',
+    'بحث وفلاتر':'finance.filters','آخر المصروفات':'expenses.latest','أصناف منخفضة المخزون':'inventory.low_stock','تسجيل مصروف':'expenses.add','المصروفات':'expenses.list',
+    'إضافة / تعديل صنف':'inventory.item_form','قائمة المخزون':'inventory.items','تسجيل حركة مخزون':'inventory.movement_form','حركة المخزون':'inventory.movements',
+    'إعدادات مسار اعتماد صرف المخزون':'inventory.workflow','طلب صرف من المخزون':'inventory.request_form','إضافة أصناف إلى نفس أمر الصرف':'inventory.request_items','طلبات الصرف والاعتمادات':'inventory.requests',
+    'إضافة / تعديل مركز تكلفة':'finance.cost_center_form','قائمة مراكز التكلفة':'finance.cost_centers','فلاتر التقارير':'finance.report_filters',
+    'مصروفات حسب المشروع':'reports.expenses_by_project','صرف المخزون حسب المشروع':'reports.stock_out_by_project','استهلاك المشرفين حسب المشروع':'reports.supervisor_consumption','تقرير تفاصيل منتج':'reports.product_detail','تقرير المخزون العام':'reports.stock_general','تقرير مراكز التكلفة':'reports.cost_centers','تقرير توضيحي للاستهلاك: ماذا استُخدم ومتى ولأي مشروع':'reports.consumption_explain',
+    'التنبيهات وأخطاء التوزيع':'alerts.list','مساعد تصنيف':'assistant.panel','تصدير CSV سريع':'export.quick'
+  }));
+  const selectorDefs=[
+    ['#export .export-slide-v222:nth-of-type(1)','export.filters','شريحة الفلاتر'],
+    ['#export .export-slide-v222:nth-of-type(2)','export.meeting_excel','شريحة ملف الاجتماع Excel'],
+    ['#export .export-slide-v222:nth-of-type(3)','export.import_template','شريحة نموذج الاستيراد'],
+    ['#financeDashboard .finance-tabbar','finance.tabs','تبويبات المصروفات والمخزون'],
+    ['#clientReports .client-report-tabs,#clientReports .premium-report-tabs','client_reports.tabs','تبويبات تقارير العملاء']
+  ];
+  function sectionTitle(el){
+    if(el.dataset.uiSectionTitle) return norm(el.dataset.uiSectionTitle);
+    const h=el.querySelector('h1,h2,h3,.section-title,label');
+    let t=norm(h?.textContent||'');
+    if(!t && el.matches('.export-slide-v222')) t=norm(el.querySelector('h3')?.textContent||'شريحة تصدير');
+    if(!t) t=norm(el.id||el.className||'جزئية');
+    return t.slice(0,100);
+  }
+  function stableKey(el){
+    if(el.dataset.uiSectionKey) return el.dataset.uiSectionKey;
+    for(const [sel,key,title] of selectorDefs){
+      try{ if(el.matches(sel)){ el.dataset.uiSectionKey=key; el.dataset.uiSectionTitle=title; return key; } }catch(_){}
+    }
+    const title=sectionTitle(el);
+    let key=titleKeyMap.get(title);
+    if(!key){
+      const page=el.closest('.page')?.id || 'global';
+      if(el.id) key=`${page}.${el.id}`;
+      else key=`${page}.${title.replace(/[\s\W]+/g,'_').replace(/^_+|_+$/g,'').slice(0,55)||'block'}`;
+    }
+    el.dataset.uiSectionKey=key;
+    el.dataset.uiSectionTitle=title;
+    return key;
+  }
+  function candidateSections(){
+    const out=[];
+    document.querySelectorAll('main .page .card, main .page .section-head, main .page .report-form-card, main .page .export-slide-v222, #financeDashboard .finance-tabbar').forEach(el=>{
+      if(el.closest('#uiRulesModalV248,.ui-control-v248,.ui-control-v236')) return;
+      out.push(el);
+    });
+    return [...new Set(out)];
+  }
+  function ruleFor(key,title){
+    const r=rules();
+    if(r[key]) return r[key];
+    const nt=norm(title);
+    // توافق مع القواعد القديمة: إذا كان نفس عنوان الجزئية محفوظًا بمفتاح قديم، طبقه على المفتاح الثابت.
+    const old=Object.entries(r).find(([k,v])=> k!==key && norm(v?.title)===nt && (v?.hidden||v?.readonly));
+    return old ? old[1] : {};
+  }
+  async function loadRules(){
+    if(!window.sb) return false;
+    try{
+      const res=await sb.from(TABLE).select('block_key,title,hidden,readonly,updated_at');
+      if(res.error) throw res.error;
+      const next={};
+      (res.data||[]).forEach(x=>{ if(x?.block_key) next[x.block_key]={title:x.title||x.block_key,hidden:!!x.hidden,readonly:!!x.readonly,updated_at:x.updated_at||''}; });
+      setRules(next); applyRules(); return true;
+    }catch(e){ console.warn('V248 ui rules load failed',e); return false; }
+  }
+  async function saveRule(key,row){
+    const local=Object.assign({},rules());
+    if(row.hidden || row.readonly) local[key]=row; else delete local[key];
+    setRules(local); applyRules();
+    if(!window.sb) return false;
+    try{
+      if(row.hidden || row.readonly){
+        const res=await sb.from(TABLE).upsert({block_key:key,title:row.title||key,hidden:!!row.hidden,readonly:!!row.readonly,updated_at:new Date().toISOString()},{onConflict:'block_key'});
+        if(res.error) throw res.error;
+      }else{
+        const res=await sb.from(TABLE).delete().eq('block_key',key); if(res.error) throw res.error;
+      }
+      await loadRules();
+      return true;
+    }catch(e){ console.warn('V248 ui rules save failed',e); msg('لم يتم حفظ الصلاحية في قاعدة البيانات. تأكد من تشغيل SQL الخاص بصلاحيات الواجهة.','err'); return false; }
+  }
+  async function clearAllRules(){
+    setRules({}); applyRules();
+    if(window.sb){ try{ const res=await sb.from(TABLE).delete().neq('block_key','__never__'); if(res.error) throw res.error; }catch(e){ console.warn(e); } }
+    await loadRules();
+  }
+  function allowedButton(btn){
+    const txt=norm(btn.textContent);
+    return ['عرض','طباعة','تصدير','تنزيل','معاينة','بحث','تحديث','إغلاق','رجوع','فلتر','CSV','PDF','إعادة ضبط','تحديث من قاعدة البيانات','صلاحيات الواجهة'].some(w=>txt.includes(w));
+  }
+  function clearState(el){
+    el.classList.remove('ui-hidden-for-admins-v248','ui-readonly-v248','ui-hidden-for-admins-v236','ui-readonly-v236');
+    el.querySelectorAll('.ui-disabled-v248,.ui-disabled-v236').forEach(x=>x.classList.remove('ui-disabled-v248','ui-disabled-v236'));
+    el.querySelectorAll('[data-v248-disabled]').forEach(x=>{ if(x.dataset.v248PrevDisabled==='0') x.disabled=false; delete x.dataset.v248Disabled; delete x.dataset.v248PrevDisabled; });
+  }
+  function makeReadonly(el){
+    el.classList.add('ui-readonly-v248');
+    el.querySelectorAll('input,select,textarea').forEach(x=>{
+      if(x.closest('.ui-control-v248,.ui-control-v236')) return;
+      if(x.dataset.v248Disabled) return;
+      x.dataset.v248PrevDisabled=x.disabled?'1':'0';
+      x.dataset.v248Disabled='1';
+      x.disabled=true;
+    });
+    el.querySelectorAll('button,a[role="button"],input[type="button"],input[type="submit"]').forEach(b=>{
+      if(b.closest('.ui-control-v248,.ui-control-v236')) return;
+      if(allowedButton(b)) return;
+      b.classList.add('ui-disabled-v248');
+    });
+  }
+  function removeOldControlsIfNeeded(){
+    if(!isSystemAdmin()) document.querySelectorAll('.ui-control-v236,.ui-control-v248').forEach(x=>x.remove());
+    else document.querySelectorAll('.ui-control-v236').forEach(x=>x.remove());
+  }
+  function injectControl(el,key,title,rule){
+    if(!isSystemAdmin()) return;
+    let c=el.querySelector(':scope > .ui-control-v248');
+    if(!c){
+      c=document.createElement('div'); c.className='ui-control-v248';
+      c.innerHTML=`<span>تحكم مدير النظام</span><button type="button" class="light v248-hide">إخفاء</button><button type="button" class="light v248-read">قراءة فقط</button>`;
+      el.insertBefore(c,el.firstChild);
+      c.querySelector('.v248-hide').onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); const cur=ruleFor(key,title); saveRule(key,{title,hidden:!cur.hidden,readonly:!!cur.readonly,updated_at:new Date().toISOString()}); };
+      c.querySelector('.v248-read').onclick=(e)=>{ e.preventDefault(); e.stopPropagation(); const cur=ruleFor(key,title); saveRule(key,{title,hidden:!!cur.hidden,readonly:!cur.readonly,updated_at:new Date().toISOString()}); };
+    }
+    const h=c.querySelector('.v248-hide'), r=c.querySelector('.v248-read');
+    h.classList.toggle('active',!!rule.hidden); h.textContent=rule.hidden?'إلغاء الإخفاء':'إخفاء';
+    r.classList.toggle('active',!!rule.readonly); r.textContent=rule.readonly?'إلغاء القراءة فقط':'قراءة فقط';
+  }
+  function applyRules(){
+    removeOldControlsIfNeeded();
+    const sys=isSystemAdmin(), admin=isAdminLike();
+    candidateSections().forEach(el=>{
+      const key=stableKey(el), title=sectionTitle(el), rule=ruleFor(key,title);
+      clearState(el);
+      injectControl(el,key,title,rule);
+      if(!sys && admin){
+        if(rule.hidden){ el.classList.add('ui-hidden-for-admins-v248'); return; }
+        if(rule.readonly) makeReadonly(el);
+      }
+    });
+  }
+  window.applyUiBlockRulesV248=applyRules;
+  window.tasneefReloadUiRulesV248=loadRules;
+  window.tasneefResetUiRuleV248=async function(key){ const r=Object.assign({},rules()); delete r[key]; setRules(r); if(window.sb){ try{ await sb.from(TABLE).delete().eq('block_key',key); }catch(_){} } applyRules(); document.getElementById('uiRulesModalV248')?.remove(); window.uiBlockRulesPanelV248(); };
+  window.tasneefClearAllUiRulesV248=async function(){ if(!confirm('إعادة ضبط كل قواعد الإخفاء والقراءة فقط؟')) return; await clearAllRules(); document.getElementById('uiRulesModalV248')?.remove(); window.uiBlockRulesPanelV248(); };
+  window.uiBlockRulesPanelV248=function(){
+    const r=rules();
+    const rows=Object.entries(r).filter(([,v])=>v.hidden||v.readonly).sort((a,b)=>norm(a[1].title).localeCompare(norm(b[1].title),'ar')).map(([k,v])=>`<tr><td>${esc(v.title||k)}</td><td>${esc(k)}</td><td>${v.hidden?'مخفي':'ظاهر'}</td><td>${v.readonly?'قراءة فقط':'كامل'}</td><td><button class="light" onclick="tasneefResetUiRuleV248('${esc(k)}')">إعادة ضبط</button></td></tr>`).join('') || '<tr><td colspan="5">لا توجد قواعد مفعلة</td></tr>';
+    document.body.insertAdjacentHTML('beforeend',`<div id="uiRulesModalV248" class="modal-backdrop" onclick="if(event.target===this)this.remove()"><div class="modal-card" style="max-width:980px"><div class="modal-head"><h2>صلاحيات عناصر الواجهة</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div class="actions" style="justify-content:flex-start"><button class="light" onclick="tasneefReloadUiRulesV248().then(()=>{document.getElementById('uiRulesModalV248')?.remove();uiBlockRulesPanelV248();})">تحديث من قاعدة البيانات</button></div><div class="table-wrap"><table><thead><tr><th>الجزئية</th><th>المفتاح الثابت</th><th>الإخفاء</th><th>القراءة</th><th>إجراء</th></tr></thead><tbody>${rows}</tbody></table></div><div class="actions"><button class="danger" onclick="tasneefClearAllUiRulesV248()">إعادة ضبط الكل</button></div></div></div>`);
+  };
+  function addPanelButton(){
+    if(!isSystemAdmin()) return;
+    if(document.getElementById('uiRulesPanelBtnV248')) return;
+    const nav=document.querySelector('.topbar .actions,.top-actions,.actions');
+    const btn=document.createElement('button'); btn.id='uiRulesPanelBtnV248'; btn.className='light'; btn.textContent='صلاحيات الواجهة'; btn.onclick=window.uiBlockRulesPanelV248;
+    (nav||document.body).appendChild(btn);
+  }
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest('button,a[role="button"],input[type="button"],input[type="submit"]');
+    if(btn && btn.closest('.ui-readonly-v248') && !allowedButton(btn)){
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); msg('هذه الجزئية قراءة فقط حسب صلاحيات مدير النظام','err');
+    }
+  },true);
+  document.addEventListener('submit',function(e){ if(e.target.closest('.ui-readonly-v248')){ e.preventDefault(); e.stopPropagation(); msg('لا يمكن الحفظ؛ هذه الجزئية قراءة فقط','err'); } },true);
+  if(!document.getElementById('uiSectionPermissionsV248Css')){
+    const css=document.createElement('style'); css.id='uiSectionPermissionsV248Css';
+    css.textContent=`.ui-control-v248{display:flex;gap:6px;align-items:center;justify-content:flex-start;flex-wrap:wrap;margin:-4px 0 10px;padding:7px 9px;border:1px dashed #b9dfcb;background:#f4fbf8;border-radius:14px;color:#0A4033;font-size:12px;font-weight:800}.ui-control-v248 button{padding:6px 9px;border-radius:10px;font-size:12px}.ui-control-v248 button.active{background:#0A4033!important;color:#fff!important}.ui-hidden-for-admins-v248{display:none!important}.ui-readonly-v248{position:relative;background:linear-gradient(180deg,#fff,#fbfdfc)}.ui-readonly-v248:after{content:'قراءة فقط';position:absolute;top:10px;left:10px;background:#fff5da;color:#8a6700;border:1px solid #edd188;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;pointer-events:none;z-index:3}.ui-disabled-v248{opacity:.5!important;pointer-events:none!important}#uiRulesPanelBtnV248{margin-inline-start:8px}`;
+    document.head.appendChild(css);
+  }
+  function boot(){ addPanelButton(); loadRules().then(()=>{ applyRules(); }); setTimeout(applyRules,300); setTimeout(applyRules,1200); }
+  const oldShow=window.showPage;
+  if(typeof oldShow==='function' && !oldShow.__v248){
+    const fn=function(){ const out=oldShow.apply(this,arguments); setTimeout(()=>{ addPanelButton(); applyRules(); },80); setTimeout(applyRules,550); return out; };
+    fn.__v248=true; window.showPage=fn;
+  }
+  const mo=new MutationObserver(()=>{ clearTimeout(window.__v248UiTimer); window.__v248UiTimer=setTimeout(applyRules,120); });
+  window.addEventListener('DOMContentLoaded',()=>{ try{mo.observe(document.body,{childList:true,subtree:true});}catch(_){} boot(); });
+  window.addEventListener('load',()=>{ try{mo.observe(document.body,{childList:true,subtree:true});}catch(_){} boot(); });
+  setTimeout(boot,500); setTimeout(boot,1800);
+  console.log('Tasneef V248 stable UI section permissions loaded');
+})();
+
+
+/* ===== V195: Dashboard units/buildings + ticket PDF/dropdown + product stock formula + permissions helpers ===== */
+(function(){
+  if(window.__tasneefV195DashboardTicketsStock) return;
+  window.__tasneefV195DashboardTicketsStock = true;
+  const $ = id => document.getElementById(id);
+  const A = v => Array.isArray(v)?v:[];
+  const D = () => window.data || {};
+  const S = v => String(v ?? '').trim();
+  const N = v => Number(v || 0) || 0;
+  const esc = v => S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  const q = v => { const n=N(v); return Number.isInteger(n)?String(n):n.toFixed(2); };
+  const money = v => `${N(v).toFixed(2)} ر.س`;
+  const user = () => { try{return typeof session==='function'?(session()||{}):(window.currentUser||{});}catch(e){return window.currentUser||{};} };
+  const projectNameSafe = id => { try{return typeof projectName==='function'?projectName(id):(A(D().projects).find(p=>S(p.id)===S(id))?.name||'-');}catch(e){return A(D().projects).find(p=>S(p.id)===S(id))?.name||'-';} };
+  const supervisorNameSafe = id => { try{return typeof supervisorName==='function'?supervisorName(id):(A(D().supervisors).concat(A(D().users)).find(u=>S(u.id)===S(id))?.full_name||'-');}catch(e){return '-';} };
+  const codeOf = it => S((typeof v118ProductCode==='function' ? v118ProductCode(it) : '') || it.product_code || it.company_code || it.serial_number || it.barcode || ('INV-'+(it.id||'')));
+  const imgOf = it => S(it.image_url || it.product_image || it.product_image_url || it.image || it.photo_url || it.img || '');
+
+  function addDashboardKpis(){
+    const kpis = document.querySelector('#dashboard .kpis');
+    if(!kpis || $('kpiBuildings') || $('kpiUnits')) return;
+    kpis.insertAdjacentHTML('beforeend', `
+      <div class="kpi"><small>إجمالي العمائر</small><b id="kpiBuildings">0</b></div>
+      <div class="kpi"><small>إجمالي الشقق</small><b id="kpiUnits">0</b></div>
+    `);
+  }
+  function updateDashboardProjectTotals(){
+    addDashboardKpis();
+    const projects = A(D().projects);
+    const buildings = projects.reduce((s,p)=>s+N(p.buildings_count ?? p.buildings ?? p.building_count ?? p.towers_count),0);
+    const units = projects.reduce((s,p)=>s+N(p.units_count ?? p.apartments_count ?? p.flats_count ?? p.units ?? p.apartments),0);
+    if($('kpiBuildings')) $('kpiBuildings').textContent = buildings;
+    if($('kpiUnits')) $('kpiUnits').textContent = units;
+  }
+  const oldRenderDashboardV195 = window.renderDashboard;
+  window.renderDashboard = function(){
+    if(typeof oldRenderDashboardV195 === 'function') oldRenderDashboardV195.apply(this, arguments);
+    updateDashboardProjectTotals();
+  };
+
+  function ensureTicketTitleList(){
+    if(!document.getElementById('ticketTitleOptionsV195')){
+      document.body.insertAdjacentHTML('beforeend', `<datalist id="ticketTitleOptionsV195">
+        <option value="مشكلة كهرباء"><option value="مشكلة سباكة"><option value="مشكلة مصعد"><option value="مشكلة كاميرات"><option value="مشكلة إنارة"><option value="مشكلة تكييف"><option value="تسريب مياه"><option value="انسداد صرف"><option value="نظافة"><option value="باب / قفل"><option value="أخرى">
+      </datalist>`);
+    }
+    ['ticketTitle','techNewTicketTitle'].forEach(id=>{ const el=$(id); if(el){ el.setAttribute('list','ticketTitleOptionsV195'); el.setAttribute('placeholder','اختر أو اكتب عنوان التكت'); } });
+  }
+
+  function ticketNo(t){ return t.ticket_number || ('T-' + String(t.id||0).padStart(4,'0')); }
+  function ticketStatusLabel(s){ return s==='closed'?'مغلق':(s==='processing'?'تحت المعالجة':'مفتوح'); }
+  function ticketPriorityLabel(p){ return p==='urgent'?'عاجل':(p==='high'?'مهم':(p==='low'?'منخفض':'عادي')); }
+  function filteredTicketsForPrint(){
+    let rows = A(D().tickets).slice();
+    const adminBody=$('ticketsBody'), supBody=$('supTicketsBody');
+    const st = adminBody ? ($('ticketFilterStatus')?.value||'') : ($('supTicketFilterStatus')?.value||'');
+    const pid = adminBody ? '' : ($('supTicketFilterProject')?.value||'');
+    const qv = (adminBody ? ($('ticketSearch')?.value||'') : ($('supTicketSearch')?.value||'')).toLowerCase().trim();
+    if(st) rows = rows.filter(t=>S(t.status||'open')===st);
+    if(pid) rows = rows.filter(t=>S(t.project_id)===S(pid));
+    if(qv) rows = rows.filter(t=>[ticketNo(t),t.title,t.description,projectNameSafe(t.project_id),supervisorNameSafe(t.supervisor_id),ticketStatusLabel(t.status),t.closed_by_name,t.claimed_by_name,t.closure_note].join(' ').toLowerCase().includes(qv));
+    return rows;
+  }
+  function ticketPdfHtml(list){
+    const rows = list.map(t=>`<tr><td>${esc(ticketNo(t))}</td><td>${esc(projectNameSafe(t.project_id))}</td><td>${esc(supervisorNameSafe(t.supervisor_id))}</td><td>${esc(t.title||'-')}</td><td>${esc(ticketPriorityLabel(t.priority))}</td><td>${esc(ticketStatusLabel(t.status))}</td><td>${esc(S(t.created_at).slice(0,10))}</td><td>${esc(t.description||'-')}</td><td>${esc(t.closure_note||'-')}</td></tr>`).join('') || `<tr><td colspan="9">لا توجد تكتات</td></tr>`;
+    return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير التكتات</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Arial,Tahoma,sans-serif;color:#123} .head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0A4033;padding-bottom:10px;margin-bottom:14px}.brand{display:flex;gap:10px;align-items:center}.brand img{width:72px;height:72px;object-fit:contain}.brand h1{font-size:20px;margin:0;color:#0A4033}.meta{font-size:12px;color:#60706a}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#0A4033;color:#fff}td,th{border:1px solid #cfded8;padding:7px;text-align:center;vertical-align:top}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.k{border:1px solid #dbe8e3;border-radius:12px;padding:8px;background:#f6fbf9}.k b{font-size:18px;color:#0A4033}</style></head><body><div class="head"><div class="brand"><img src="tasneef_logo_print.png"><div><h1>شركة تصنيف لإدارة المرافق</h1><div class="meta">تقرير التكتات بصيغة PDF / طباعة</div></div></div><div class="meta">تاريخ التقرير: ${new Date().toLocaleString('ar-SA')}</div></div><div class="summary"><div class="k">إجمالي<br><b>${list.length}</b></div><div class="k">مفتوحة<br><b>${list.filter(t=>S(t.status||'open')==='open').length}</b></div><div class="k">تحت المعالجة<br><b>${list.filter(t=>S(t.status)==='processing').length}</b></div><div class="k">مغلقة<br><b>${list.filter(t=>S(t.status)==='closed').length}</b></div></div><table><thead><tr><th>رقم التكت</th><th>المشروع</th><th>المشرف</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>التاريخ</th><th>الوصف</th><th>الإغلاق</th></tr></thead><tbody>${rows}</tbody></table><script>setTimeout(()=>window.print(),300)<\/script></body></html>`;
+  }
+  window.downloadTicketsPdfV195 = function(){
+    const list=filteredTicketsForPrint();
+    const w=window.open('','_blank');
+    if(!w){ if(typeof msg==='function') msg('المتصفح منع فتح نافذة PDF. فعّل النوافذ المنبثقة.','err'); return; }
+    w.document.open(); w.document.write(ticketPdfHtml(list)); w.document.close();
+  };
+  function ensureTicketPdfButtons(){
+    const adminFilters = document.querySelector('#tickets .filters');
+    if(adminFilters && !$('ticketPdfAllV195')) adminFilters.insertAdjacentHTML('beforeend','<button type="button" id="ticketPdfAllV195" class="light" onclick="downloadTicketsPdfV195()">تحميل PDF</button>');
+    const supFilters = document.querySelector('#supTicketsBody')?.closest('section')?.querySelector('.filters');
+    if(supFilters && !$('supTicketPdfAllV195')) supFilters.insertAdjacentHTML('beforeend','<button type="button" id="supTicketPdfAllV195" class="light" onclick="downloadTicketsPdfV195()">تحميل PDF</button>');
+  }
+  const oldRenderTicketsV195 = window.renderTickets;
+  window.renderTickets = function(){
+    if(typeof oldRenderTicketsV195 === 'function') oldRenderTicketsV195.apply(this, arguments);
+    ensureTicketTitleList();
+    ensureTicketPdfButtons();
+  };
+
+  function requestLines(req){
+    let lines = req.request_items || req.items || req.request_lines || [];
+    if(typeof lines === 'string'){ try{ lines = JSON.parse(lines||'[]'); }catch(e){ lines=[]; } }
+    return A(lines);
+  }
+  function itemById(id){ return A(D().inventoryItems).find(x=>S(x.id)===S(id)) || {}; }
+  function movementsOf(id){ return A(D().inventoryMovements).filter(m=>S(m.item_id)===S(id)); }
+  function productStats(id){
+    let incoming=0, issued=0, returned=0, consumed=0, directConsumed=0;
+    movementsOf(id).forEach(m=>{
+      const t=S(m.movement_type).toLowerCase(); const qn=N(m.quantity);
+      if(['in','add','purchase','invoice_add','إدخال','شراء'].includes(t) || /إدخال|شراء/.test(S(m.reason||m.notes||m.movement_type))) incoming += qn;
+      else if(['return','returned','مرتجع'].includes(t) || /مرتجع/.test(S(m.movement_type||m.reason||m.notes))) returned += qn;
+      else if((['consume','consumption','استهلاك مباشر'].includes(t) || /استهلاك/.test(S(m.movement_type||m.reason||m.notes))) && !m.request_id){ directConsumed += qn; consumed += qn; }
+      else if(['out','issue','صرف'].includes(t) || /صرف/.test(S(m.movement_type||m.reason||m.notes))) issued += qn;
+    });
+    A(D().inventoryRequests).filter(r=>['approved','done','completed','closed'].includes(S(r.status||'').toLowerCase()) || S(r.current_step)==='done').forEach(r=>{
+      requestLines(r).forEach(l=>{
+        if(S(l.item_id)!==S(id)) return;
+        const out=N(l.quantity); issued += out;
+        const allocs=A(l.settlement_allocations);
+        let c = allocs.length ? allocs.reduce((a,x)=>a+N(x.consumed_qty||x.qty),0) : N(l.consumed_qty);
+        let ret = N(l.returned_qty);
+        if(c<=0 && ret>0) c = Math.max(0,out-ret);
+        if(c>out) c=out;
+        if(ret>out) ret=out;
+        consumed += c;
+        returned += ret;
+      });
+    });
+    const stock = Math.max(0, incoming - issued + returned);
+    const custody = Math.max(0, issued - consumed - returned);
+    return {incoming, issued, returned, consumed, directConsumed, stock, custody};
+  }
+  function openProductDetailV195(id){
+    const it = itemById(id); if(!it.id && !it.name) return;
+    document.querySelectorAll('.modal-backdrop.v195-product-modal,.modal-backdrop.v234-product-modal,.modal-backdrop.v235-product-modal').forEach(x=>x.remove());
+    const st = productStats(id); const src = imgOf(it);
+    const img = src ? `<img src="${esc(src)}" style="max-width:170px;max-height:170px;object-fit:contain;border:1px solid #d7e4df;border-radius:18px;background:#fff;padding:8px" onerror="this.outerHTML='<span class=&quot;inventory-image-empty&quot;>لا توجد صورة</span>'">` : `<span class="inventory-image-empty">لا توجد صورة</span>`;
+    const costVisible = !['warehouse_manager','مدير المخزون','مدير مخزون'].includes(S(user().role).toLowerCase());
+    const costLine = costVisible ? `<div class="m"><small>تكلفة الوحدة</small><b>${money(it.unit_cost || it.unit_price || it.price)}</b></div>` : '';
+    const movRows = movementsOf(id).slice(-16).reverse().map(m=>`<tr><td>${esc(S(m.movement_date||m.created_at).slice(0,10))}</td><td>${esc(m.movement_type||'-')}</td><td>${q(m.quantity)} ${esc(it.unit||'')}</td><td>${esc(m.project_name||projectNameSafe(m.project_id)||'-')}</td><td>${esc(m.receiver||m.receiver_name||'-')}</td><td>${esc(m.reason||m.notes||'-')}</td></tr>`).join('') || '<tr><td colspan="6">لا توجد حركات</td></tr>';
+    const html = `<div class="modal-backdrop v195-product-modal" onclick="if(event.target===this)this.remove()"><div class="modal-card" style="max-width:1120px"><div class="modal-head"><h2>تفاصيل المنتج</h2><button onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div style="padding:16px"><div class="grid two"><div class="card soft-card"><h2>${esc(it.name||'-')}</h2><p>كود المنتج: <b>${esc(codeOf(it)||'-')}</b></p><p>المورد: <b>${esc(it.supplier||'-')}</b> | الوحدة: <b>${esc(it.unit||'-')}</b></p><div class="smart-meta-v129"><div class="m"><small>الداخل</small><b>${q(st.incoming)}</b></div><div class="m"><small>الصادر عهدة</small><b>${q(st.issued)}</b></div><div class="m"><small>المستهلك الفعلي</small><b>${q(st.consumed)}</b></div><div class="m"><small>المرتجع</small><b>${q(st.returned)}</b></div><div class="m"><small>العهدة الحالية</small><b>${q(st.custody)}</b></div><div class="m"><small>المتبقي في المخزون</small><b>${q(st.stock)}</b></div>${costLine}</div></div><div class="card soft-card" style="text-align:center;display:flex;align-items:center;justify-content:center;min-height:185px">${img}</div></div><h3>آخر الحركات</h3><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>الكمية</th><th>المشروع</th><th>المستلم</th><th>السبب</th></tr></thead><tbody>${movRows}</tbody></table></div></div></div></div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  }
+  window.inventoryOpenItemSmart = openProductDetailV195;
+  window.v118ShowProductDetail = openProductDetailV195;
+  window.openProductDetail = openProductDetailV195;
+
+  function ensurePermissionMatrixV195(){
+    const grid = document.querySelector('.perm-grid-v72');
+    if(!grid || document.getElementById('perm_can_edit_all')) return;
+    const perms = [
+      ['can_edit_all','صلاحية تعديل عامة'],['can_delete_all','صلاحية حذف عامة'],['can_print_all','صلاحية طباعة عامة'],['can_approve_all','صلاحية اعتماد عامة'],
+      ['can_edit_projects','تعديل المشاريع'],['can_delete_projects','حذف المشاريع'],['can_edit_contracts','تعديل العقود والخدمات'],['can_delete_contracts','حذف العقود والخدمات'],
+      ['can_edit_tickets','تعديل التكتات'],['can_delete_tickets','حذف التكتات'],['can_print_tickets','طباعة التكتات PDF'],
+      ['can_edit_finance','تعديل المصروفات والمخزون'],['can_delete_finance','حذف المصروفات والمخزون'],['can_approve_inventory','اعتماد طلبات الصرف'],['can_edit_inventory_requests','تعديل طلبات الصرف'],['can_delete_inventory_requests','حذف طلبات الصرف']
+    ];
+    grid.insertAdjacentHTML('beforeend', perms.map(([k,l])=>`<label class="perm-item-v72"><input type="checkbox" id="perm_${k}" data-perm="${k}"> <span>${l}</span></label>`).join(''));
+  }
+
+  function bootV195(){
+    addDashboardKpis(); updateDashboardProjectTotals(); ensureTicketTitleList(); ensureTicketPdfButtons(); ensurePermissionMatrixV195();
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV195, ev==='load'?700:150)));
+  setTimeout(bootV195,1000); setInterval(()=>{ try{ensureTicketTitleList();ensureTicketPdfButtons();ensurePermissionMatrixV195();}catch(e){} },2500);
+  console.log('Tasneef V195 dashboard/tickets/stock/permissions loaded');
 })();
