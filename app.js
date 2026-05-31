@@ -18792,3 +18792,181 @@ function financePrintReport(kind){
   setTimeout(bootV195,1000); setInterval(()=>{ try{ensureTicketTitleList();ensureTicketPdfButtons();ensurePermissionMatrixV195();}catch(e){} },2500);
   console.log('Tasneef V195 dashboard/tickets/stock/permissions loaded');
 })();
+
+
+/* ===== V196: Stable core fix - daily records visibility, contracts totals only, instant CRUD refresh ===== */
+(function(){
+  if(window.__tasneefV196StableCoreFix) return;
+  window.__tasneefV196StableCoreFix = true;
+  const $ = (id)=>document.getElementById(id);
+  const arr = (v)=>Array.isArray(v)?v:[];
+  const S = (v)=>String(v ?? '').trim();
+  const N = (v)=>Number(v || 0) || 0;
+  const todayStr = ()=>{
+    try{ return typeof today==='function' ? today() : new Date().toISOString().slice(0,10); }
+    catch(_){ return new Date().toISOString().slice(0,10); }
+  };
+  const monthStr = ()=>{
+    const v = $('monthlyMonth')?.value || todayStr().slice(0,7);
+    return v;
+  };
+  const mStart = (m)=>`${m}-01`;
+  const mEnd = (m)=>{
+    const [y,mo]=String(m).split('-').map(Number);
+    return new Date(y, mo, 0).toISOString().slice(0,10);
+  };
+  function getData(){ window.data = window.data || {}; return window.data; }
+  function currentUser(){ try{return typeof session==='function' ? (session()||{}) : (window.currentUser||{});}catch(_){return window.currentUser||{};} }
+  function isAdminUser(){ const u=currentUser(); return ['admin','general_manager','operations_manager','financial_manager'].includes(S(u.role)); }
+  function esc(v){ return S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
+
+  /* 1) إخفاء إجمالي الشقق/العمائر من الرئيسية، وإظهارها داخل العقود والخدمات فقط */
+  function hideDashboardApartmentKpis(){
+    ['kpiBuildings','kpiUnits'].forEach(id=>{
+      const el=$(id); const box=el?.closest('.kpi'); if(box) box.style.display='none';
+    });
+  }
+  function ensureContractsTotalsKpis(){
+    const contracts = $('contracts');
+    if(!contracts) return;
+    let kpis = contracts.querySelector('.kpis');
+    if(!kpis){
+      const header = contracts.querySelector('.page-head') || contracts.querySelector('.card') || contracts.firstElementChild;
+      kpis = document.createElement('div'); kpis.className='kpis';
+      (header?.parentNode || contracts).insertBefore(kpis, header?.nextSibling || contracts.firstChild);
+    }
+    if(!$('contractsBuildingsTotal')){
+      kpis.insertAdjacentHTML('beforeend', '<div class="kpi contracts-units-v196"><small>إجمالي العمائر</small><b id="contractsBuildingsTotal">0</b></div><div class="kpi contracts-units-v196"><small>إجمالي الشقق</small><b id="contractsUnitsTotal">0</b></div>');
+    }
+  }
+  function updateContractsTotalsOnly(){
+    hideDashboardApartmentKpis();
+    ensureContractsTotalsKpis();
+    const projects = arr(getData().projects);
+    const buildings = projects.reduce((s,p)=>s+N(p.buildings_count ?? p.buildings ?? p.building_count ?? p.towers_count),0);
+    const units = projects.reduce((s,p)=>s+N(p.units_count ?? p.apartments_count ?? p.flats_count ?? p.units ?? p.apartments),0);
+    if($('contractsBuildingsTotal')) $('contractsBuildingsTotal').textContent = buildings;
+    if($('contractsUnitsTotal')) $('contractsUnitsTotal').textContent = units;
+  }
+
+  /* 2) تحميل سجلات اليوم/الشهر من قاعدة البيانات مباشرة بدون كاش قديم */
+  async function reloadTimeLogsForVisibleRangeV196(){
+    if(!window.sb) return;
+    const dailyDate = $('dailyDate')?.value || todayStr();
+    const month = monthStr();
+    const start = mStart(month);
+    const end = mEnd(month);
+    try{
+      const cols = 'id,user_id,supervisor_id,project_id,check_in,check_out,log_date,duration_minutes,travel_minutes,visit_type,required_minutes,time_difference_minutes,time_status,notes,created_at,updated_at';
+      const {data:monthRows,error:e1}=await sb.from('time_logs').select(cols).gte('log_date',start).lte('log_date',end).order('check_in',{ascending:false}).limit(5000);
+      if(e1) console.warn('V196 monthly logs reload:', e1.message);
+      const {data:dayRows,error:e2}=await sb.from('time_logs').select(cols).eq('log_date',dailyDate).order('check_in',{ascending:false}).limit(2000);
+      if(e2) console.warn('V196 daily logs reload:', e2.message);
+      const map = new Map();
+      [...arr(monthRows), ...arr(dayRows)].forEach(r=>{ if(r && r.id!==undefined) map.set(String(r.id), r); });
+      getData().logs = Array.from(map.values()).sort((a,b)=>new Date(b.check_in||b.created_at||0)-new Date(a.check_in||a.created_at||0));
+    }catch(e){ console.warn('V196 reloadTimeLogsForVisibleRange failed:', e); }
+  }
+  window.reloadTimeLogsForVisibleRangeV196 = reloadTimeLogsForVisibleRangeV196;
+
+  /* 3) تحديث فوري بعد الحذف بدون الحاجة لرفرش كامل */
+  const oldDeleteRowV196 = window.deleteRow;
+  window.deleteRow = async function(table,id){
+    if(!confirm('تأكيد الحذف؟')) return;
+    try{
+      const {error}=await sb.from(table).delete().eq('id',id);
+      if(error) return msg(error.message,'err');
+      // حذف فوري من الذاكرة حتى يختفي الصف مباشرة
+      const D=getData();
+      const keyMap={app_users:'users',projects:'projects',workers:'workers',attendance:'attendance',time_logs:'logs',tickets:'tickets',contract_services:'contractServices'};
+      const key=keyMap[table];
+      if(key && Array.isArray(D[key])) D[key]=D[key].filter(x=>String(x.id)!==String(id));
+      try{ renderAll && renderAll(); }catch(_){ }
+      if(table==='time_logs') await reloadTimeLogsForVisibleRangeV196();
+      try{ renderTimeLogs && renderTimeLogs(); renderMonthly && renderMonthly(); renderDashboard && renderDashboard(); updateContractsTotalsOnly(); }catch(_){ }
+      msg('تم الحذف');
+    }catch(e){
+      console.error(e);
+      if(typeof oldDeleteRowV196==='function') return oldDeleteRowV196.apply(this,arguments);
+      msg(e.message||String(e),'err');
+    }
+  };
+
+  /* 4) عند الحفظ/التعديل في سجلات المشرفين يتم إعادة تحميل السجلات الحالية فقط */
+  const oldSaveTimeLogV196 = window.saveTimeLog;
+  if(typeof oldSaveTimeLogV196 === 'function'){
+    window.saveTimeLog = async function(){
+      const out = await oldSaveTimeLogV196.apply(this,arguments);
+      await reloadTimeLogsForVisibleRangeV196();
+      try{ hydrateForms && hydrateForms(); renderTimeLogs && renderTimeLogs(); renderMonthly && renderMonthly(); renderDashboard && renderDashboard(); }catch(_){ }
+      return out;
+    };
+  }
+
+  /* 5) ضمان أن الإدارة ترى سجلات اليوم دائماً، وعدم ترك الصلاحيات أو الكاش يخفيها */
+  const oldFilterLogsV196 = window.filterLogs;
+  window.filterLogs = function(){
+    let rows = Array.isArray(getData().logs) ? [...getData().logs] : [];
+    const d=$('dailyDate')?.value, s=$('dailySupervisor')?.value, p=$('dailyProject')?.value, q=($('dailySearch')?.value||'').trim();
+    if(d) rows=rows.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===d);
+    if(s) rows=rows.filter(l=>String(l.supervisor_id)===String(s));
+    if(p) rows=rows.filter(l=>String(l.project_id)===String(p));
+    if(q){
+      const sup = (id)=>{ try{return supervisorName(id)}catch(_){return ''} };
+      const pro = (id)=>{ try{return projectName(id)}catch(_){return ''} };
+      rows=rows.filter(l=>[sup(l.supervisor_id),pro(l.project_id),l.visit_type,l.time_status,l.notes].join(' ').includes(q));
+    }
+    return rows;
+  };
+
+  /* 6) إعادة تحديث القسم الظاهر فقط بعد تعديل/حذف لتقليل التهنيج */
+  function rerenderVisiblePageV196(){
+    const visible=document.querySelector('.page:not(.hidden)')?.id;
+    try{
+      if(visible==='daily') renderTimeLogs();
+      else if(visible==='monthly') renderMonthly();
+      else if(visible==='contracts'){ renderContracts&&renderContracts(); renderContractServices&&renderContractServices(); updateContractsTotalsOnly(); }
+      else if(visible==='projects'){ renderProjects&&renderProjects(); updateContractsTotalsOnly(); }
+      else if(visible==='dashboard'){ renderDashboard&&renderDashboard(); }
+      else if(typeof renderAll==='function') renderAll();
+    }catch(e){ console.warn('V196 rerender visible failed:', e); }
+  }
+  window.rerenderVisiblePageV196 = rerenderVisiblePageV196;
+
+  const oldRenderDashboardV196 = window.renderDashboard;
+  window.renderDashboard = function(){
+    if(typeof oldRenderDashboardV196==='function') oldRenderDashboardV196.apply(this,arguments);
+    hideDashboardApartmentKpis();
+  };
+  const oldRenderContractsV196 = window.renderContracts;
+  if(typeof oldRenderContractsV196==='function'){
+    window.renderContracts = function(){ const out=oldRenderContractsV196.apply(this,arguments); updateContractsTotalsOnly(); return out; };
+  }
+
+  function bootV196(){
+    hideDashboardApartmentKpis();
+    updateContractsTotalsOnly();
+    if($('dailyDate') && !$('dailyDate').value) $('dailyDate').value=todayStr();
+  }
+  const oldShowPageV196 = window.showPage;
+  if(typeof oldShowPageV196==='function' && !oldShowPageV196.__v196){
+    const fn=function(id,btn){
+      const out=oldShowPageV196.apply(this,arguments);
+      setTimeout(()=>{
+        bootV196();
+        if(id==='daily') reloadTimeLogsForVisibleRangeV196().then(()=>{ try{renderTimeLogs();renderDashboard();}catch(_){} });
+        if(id==='contracts') updateContractsTotalsOnly();
+      },80);
+      return out;
+    };
+    fn.__v196=true; window.showPage=fn;
+  }
+  if(!document.getElementById('v196StableCoreCss')){
+    const st=document.createElement('style'); st.id='v196StableCoreCss';
+    st.textContent='#dashboard #kpiBuildings,#dashboard #kpiUnits{display:none!important}.contracts-units-v196{background:linear-gradient(135deg,#f6fffb,#ffffff)!important;border:1px solid #d8eee4!important}';
+    document.head.appendChild(st);
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{bootV196(); if(ev==='load') reloadTimeLogsForVisibleRangeV196().then(()=>{try{renderTimeLogs();renderDashboard();}catch(_){}});},ev==='load'?800:150)));
+  setTimeout(()=>{bootV196();},1200);
+  console.log('Tasneef V196 Stable Core Fix loaded');
+})();
