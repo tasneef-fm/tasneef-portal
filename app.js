@@ -16354,3 +16354,229 @@ function financePrintReport(kind){
   setTimeout(boot,1200);
   console.log('Tasneef V230 schema safe inventory loaded');
 })();
+
+/* ===================== TASNEEF V231 - Abu Samer requested fixes =====================
+   1) Contracts: show total buildings + total units.
+   2) Tickets: sticky filters + project filter + title filter + priority filter.
+   3) Today counters: use local date for today's logs/tickets so today's records appear correctly.
+==================================================================================== */
+(function(){
+  if(window.__tasneefV231AbuSamerFix) return;
+  window.__tasneefV231AbuSamerFix = true;
+
+  const $ = id => document.getElementById(id);
+  const A = v => Array.isArray(v) ? v : [];
+  const S = v => String(v ?? '').trim();
+  const N = v => { const n = Number(v ?? 0); return Number.isFinite(n) ? n : 0; };
+  const E = v => S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+  function localYmd(d){
+    const x = d instanceof Date ? d : new Date(d || Date.now());
+    if(isNaN(x)) return '';
+    return x.getFullYear() + '-' + String(x.getMonth()+1).padStart(2,'0') + '-' + String(x.getDate()).padStart(2,'0');
+  }
+  function todayLocal(){ return localYmd(new Date()); }
+  function rowDate(row, fields){
+    for(const f of fields){
+      const v = row && row[f];
+      if(!v) continue;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(S(v))) return S(v);
+      const d = localYmd(v);
+      if(d) return d;
+    }
+    return '';
+  }
+  function projectNameSafe(id){ try{ return typeof projectName==='function' ? projectName(id) : '-'; }catch(_){ return '-'; } }
+  function supervisorNameSafe(id){ try{ return typeof supervisorName==='function' ? supervisorName(id) : '-'; }catch(_){ return '-'; } }
+  function statusText(s){ s=S(s||'open'); return s==='closed'?'مغلق':(s==='processing'?'تحت المعالجة':'مفتوح'); }
+  function priorityText(p){ p=S(p||'normal'); return p==='urgent'?'عاجل':(p==='high'?'مهم':(p==='low'?'منخفض':'عادي')); }
+  function ticketNo(t){ return S(t.ticket_number) || ('T-' + S(t.id || 0).padStart(4,'0')); }
+  function dateTimeLabel(v){
+    if(!v) return '-';
+    const d = new Date(v); if(isNaN(d)) return S(v);
+    let h=d.getHours(); const m=String(d.getMinutes()).padStart(2,'0'); const ap=h>=12?'م':'ص'; h=h%12||12;
+    return localYmd(d) + ' ' + String(h).padStart(2,'0') + ':' + m + ' ' + ap;
+  }
+  function durationText(t){
+    const start = t.created_at || t.opened_at;
+    const end = (S(t.status)==='closed' ? (t.closed_at || t.updated_at) : new Date().toISOString());
+    const a = start ? new Date(start) : null, b = end ? new Date(end) : null;
+    if(!a || !b || isNaN(a) || isNaN(b)) return '-';
+    let mins=Math.max(0,Math.round((b-a)/60000));
+    const d=Math.floor(mins/1440); mins%=1440; const h=Math.floor(mins/60); const m=mins%60;
+    const parts=[]; if(d) parts.push(d+'ي'); if(h) parts.push(h+'س'); if(m || !parts.length) parts.push(m+'د'); return parts.join(' ');
+  }
+  function setOptions(select, rows, labelFn, allText){
+    if(!select) return;
+    const old = select.value;
+    select.innerHTML = `<option value="">${E(allText || 'الكل')}</option>` + rows.map(r=>`<option value="${E(r.id)}">${E(labelFn(r))}</option>`).join('');
+    if([...select.options].some(o=>o.value===old)) select.value = old;
+  }
+
+  function ensureContractTotalsUi(){
+    if(!$('contractsActiveCount') || $('contractsBuildingsTotal')) return;
+    const box = $('contractsActiveCount').closest('.kpis');
+    if(!box) return;
+    box.insertAdjacentHTML('beforeend',
+      '<div class="kpi contract-total-v231"><small>مجموع العمائر</small><b id="contractsBuildingsTotal">0</b></div>'+
+      '<div class="kpi contract-total-v231"><small>مجموع الشقق</small><b id="contractsUnitsTotal">0</b></div>'
+    );
+  }
+  function updateContractTotals(){
+    ensureContractTotalsUi();
+    const projects = A(window.data && window.data.projects);
+    const buildings = projects.reduce((a,p)=>a + N(p.buildings_count || p.buildings || p.building_count), 0);
+    const units = projects.reduce((a,p)=>a + N(p.units_count || p.apartments_count || p.flats_count || p.units), 0);
+    if($('contractsBuildingsTotal')) $('contractsBuildingsTotal').textContent = buildings.toLocaleString('ar-SA');
+    if($('contractsUnitsTotal')) $('contractsUnitsTotal').textContent = units.toLocaleString('ar-SA');
+  }
+
+  function ensureTodayTicketsKpi(){
+    if(!$('kpiTodayLogs') || $('kpiTodayTickets')) return;
+    const box = $('kpiTodayLogs').closest('.kpis');
+    if(!box) return;
+    $('kpiTodayLogs').closest('.kpi').insertAdjacentHTML('afterend','<div class="kpi today-ticket-kpi-v231"><small>تكتات اليوم</small><b id="kpiTodayTickets">0</b></div>');
+  }
+  function updateTodayCounters(){
+    const d = todayLocal();
+    const logs = A(window.data && window.data.logs).filter(l => rowDate(l, ['log_date','check_in','created_at']) === d);
+    const tickets = A(window.data && window.data.tickets).filter(t => rowDate(t, ['created_at','opened_at','date']) === d);
+    if($('kpiTodayLogs')) $('kpiTodayLogs').textContent = logs.length.toLocaleString('ar-SA');
+    ensureTodayTicketsKpi();
+    if($('kpiTodayTickets')) $('kpiTodayTickets').textContent = tickets.length.toLocaleString('ar-SA');
+    const div = $('todaySummary');
+    if(div && A(window.data && window.data.supervisors).length){
+      div.innerHTML = A(window.data.supervisors).map(s=>{
+        const sLogs = logs.filter(l=>S(l.supervisor_id)===S(s.id));
+        const mins = sLogs.reduce((a,l)=>a + N(l.duration_minutes || (typeof minutesBetween==='function' ? minutesBetween(l.check_in,l.check_out) : 0)),0);
+        const time = typeof minsToText==='function' ? minsToText(mins) : (mins+' دقيقة');
+        return `<div class="summary-item"><b>${E(s.full_name)}</b><br>عدد التسجيلات: ${sLogs.length}<br>إجمالي الوقت: ${E(time)}</div>`;
+      }).join('') || '<div class="summary-item">لا توجد تسجيلات اليوم</div>';
+    }
+  }
+
+  function ensureTicketFiltersUi(){
+    const filters = $('ticketSearch')?.closest('.filters');
+    if(filters){
+      if(!$('ticketFilterProject')){
+        filters.insertAdjacentHTML('afterbegin','<select id="ticketFilterProject" onchange="renderTickets()"><option value="">كل المشاريع</option></select>');
+      }
+      if(!$('ticketFilterPriority')){
+        const status = $('ticketFilterStatus');
+        (status || $('ticketSearch')).insertAdjacentHTML('afterend','<select id="ticketFilterPriority" onchange="renderTickets()"><option value="">كل الأولويات</option><option value="urgent">عاجل</option><option value="high">مهم</option><option value="normal">عادي</option><option value="low">منخفض</option></select>');
+      }
+      if(!$('ticketFilterTitle')){
+        $('ticketSearch').insertAdjacentHTML('beforebegin','<input id="ticketFilterTitle" oninput="renderTickets()" placeholder="فلتر عنوان التكت">');
+      }
+      setOptions($('ticketFilterProject'), A(window.data && window.data.projects), p=>p.name || '-', 'كل المشاريع');
+    }
+    const supFilters = $('supTicketSearch')?.closest('.filters');
+    if(supFilters){
+      if(!$('supTicketFilterPriority')) $('supTicketSearch').insertAdjacentHTML('beforebegin','<select id="supTicketFilterPriority" onchange="renderTickets()"><option value="">كل الأولويات</option><option value="urgent">عاجل</option><option value="high">مهم</option><option value="normal">عادي</option><option value="low">منخفض</option></select>');
+      if(!$('supTicketFilterTitle')) $('supTicketSearch').insertAdjacentHTML('beforebegin','<input id="supTicketFilterTitle" oninput="renderTickets()" placeholder="فلتر عنوان التكت">');
+    }
+  }
+  function ticketFilters(){
+    return {
+      status:S($('ticketFilterStatus')?.value || $('supTicketFilterStatus')?.value || ''),
+      project:S($('ticketFilterProject')?.value || $('supTicketFilterProject')?.value || ''),
+      priority:S($('ticketFilterPriority')?.value || $('supTicketFilterPriority')?.value || ''),
+      title:S($('ticketFilterTitle')?.value || $('supTicketFilterTitle')?.value || '').toLowerCase(),
+      search:S($('ticketSearch')?.value || $('supTicketSearch')?.value || '').toLowerCase()
+    };
+  }
+  function filteredTicketsV231(){
+    const f = ticketFilters();
+    let list = A(window.data && window.data.tickets).slice();
+    if(f.status) list = list.filter(t=>S(t.status || 'open') === f.status);
+    if(f.project) list = list.filter(t=>S(t.project_id) === f.project);
+    if(f.priority) list = list.filter(t=>S(t.priority || 'normal') === f.priority);
+    if(f.title) list = list.filter(t=>S(t.title).toLowerCase().includes(f.title));
+    if(f.search){
+      list = list.filter(t => [ticketNo(t), t.title, t.description, projectNameSafe(t.project_id), supervisorNameSafe(t.supervisor_id), statusText(t.status), priorityText(t.priority), t.claimed_by_name, t.closed_by_name, t.closure_note].join(' ').toLowerCase().includes(f.search));
+    }
+    return list.sort((a,b)=>(Date.parse(b.created_at||b.opened_at||'')||0)-(Date.parse(a.created_at||a.opened_at||'')||0));
+  }
+  function ticketSummaryHtml(list){
+    const open=list.filter(t=>S(t.status||'open')==='open').length;
+    const processing=list.filter(t=>S(t.status)==='processing').length;
+    const closed=list.filter(t=>S(t.status)==='closed').length;
+    const today=list.filter(t=>rowDate(t,['created_at','opened_at','date'])===todayLocal()).length;
+    return `<div class="smart-ticket-kpi"><b>${list.length}</b><span>إجمالي التكتات</span></div><div class="smart-ticket-kpi red"><b>${open}</b><span>مفتوحة</span></div><div class="smart-ticket-kpi amber"><b>${processing}</b><span>تحت المعالجة</span></div><div class="smart-ticket-kpi green"><b>${closed}</b><span>مغلقة</span></div><div class="smart-ticket-kpi dark"><b>${today}</b><span>تكتات اليوم</span></div>`;
+  }
+  function ticketCard(t, mode){
+    const id = Number(t.id)||0;
+    const st = S(t.status||'open');
+    const pr = S(t.priority||'normal');
+    const stCls = st==='closed'?'closed':(st==='processing'?'processing':'open');
+    const prCls = pr==='urgent'?'urgent':(pr==='high'?'high':'normal');
+    const canDelete = mode === 'admin';
+    const waFn = typeof window.sendTicketWhatsAppV43 === 'function' ? 'sendTicketWhatsAppV43' : (typeof window.sendTicketWhatsApp === 'function' ? 'sendTicketWhatsApp' : '');
+    const viewBtn = typeof window.viewTicketSmartV147 === 'function' ? `<button type="button" onclick="viewTicketSmartV147(${id})">عرض</button>` : '';
+    const pdfBtn = typeof window.ticketDownloadPdfV206 === 'function' ? `<button type="button" class="light" onclick="ticketDownloadPdfV206(${id})">PDF</button>` : '';
+    const claimBtn = st!=='closed' && st!=='processing' && typeof window.claimTicket === 'function' ? `<button type="button" class="light" onclick="claimTicket(${id})">استلام</button>` : '';
+    const closeBtn = st!=='closed' && typeof window.closeTicket === 'function' ? `<button type="button" onclick="closeTicket(${id})">إغلاق</button>` : '';
+    const reopenBtn = st==='closed' && typeof window.setTicketStatus === 'function' ? `<button type="button" class="light" onclick="setTicketStatus(${id},'open')">إعادة فتح</button>` : '';
+    const waBtn = waFn ? `<button type="button" class="ticket-wa-v147" onclick="${waFn}(${id})">واتساب</button>` : '';
+    const delBtn = canDelete ? `<button type="button" class="danger" onclick="deleteRow('tickets',${id})">حذف</button>` : '';
+    return `<article class="smart-ticket-card ${stCls} ${prCls}"><div class="smart-ticket-top"><div><strong>${E(ticketNo(t))}</strong><small>${E(dateTimeLabel(t.created_at||t.opened_at))}</small></div><span class="smart-ticket-status ${stCls}">${E(statusText(st))}</span></div><h3>${E(t.title||'-')}</h3><div class="smart-ticket-meta"><span>المشروع: <b>${E(projectNameSafe(t.project_id))}</b></span><span>المشرف: <b>${E(supervisorNameSafe(t.supervisor_id))}</b></span><span>الأولوية: <b>${E(priorityText(pr))}</b></span><span>مدة الفتح: <b>${E(durationText(t))}</b></span></div><p>${E(t.description||'لا يوجد وصف')}</p><div class="smart-ticket-mini"><span>استلم: ${E(t.claimed_by_name||'-')}</span><span>أغلق: ${E(t.closed_by_name||'-')}</span></div>${t.closure_note?`<div class="smart-ticket-note">الحل: ${E(t.closure_note)}</div>`:''}<div class="smart-ticket-actions">${viewBtn}${pdfBtn}<button type="button" class="light" onclick="editTicket(${id})">تعديل</button>${claimBtn}${closeBtn}${reopenBtn}${waBtn}${delBtn}</div></article>`;
+  }
+
+  const oldRenderTickets = window.renderTickets;
+  window.renderTickets = function(){
+    ensureTicketFiltersUi();
+    const adminBody = $('ticketsBody');
+    const supBody = $('supTicketsBody');
+    if(!adminBody && !supBody){ if(typeof oldRenderTickets === 'function') return oldRenderTickets.apply(this, arguments); return; }
+    const list = filteredTicketsV231();
+    if($('ticketsSmartSummary')) $('ticketsSmartSummary').innerHTML = ticketSummaryHtml(list);
+    if($('supTicketsSmartSummary')) $('supTicketsSmartSummary').innerHTML = ticketSummaryHtml(list);
+    if(adminBody){ adminBody.classList.add('smart-ticket-grid'); adminBody.innerHTML = list.map(t=>ticketCard(t,'admin')).join('') || '<div class="empty-smart-ticket">لا توجد تكتات مطابقة للفلاتر الحالية</div>'; }
+    if(supBody){ supBody.classList.add('smart-ticket-grid'); supBody.innerHTML = list.map(t=>ticketCard(t,'supervisor')).join('') || '<div class="empty-smart-ticket">لا توجد تكتات مطابقة للفلاتر الحالية</div>'; }
+    setTimeout(()=>{ try{ if(typeof window.ticketsDownloadPdfV206 === 'function') document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206').forEach(b=>b.onclick=window.ticketsDownloadPdfV206); }catch(_){} },50);
+  };
+
+  window.filterLogs = function(){
+    let rows = A(window.data && window.data.logs).slice();
+    const d = S($('dailyDate')?.value || $('supLogDate')?.value || '');
+    const s = S($('dailySupervisor')?.value || '');
+    const p = S($('dailyProject')?.value || $('logProjectFilter')?.value || '');
+    const q = S($('dailySearch')?.value || '').toLowerCase();
+    if(d) rows = rows.filter(l => rowDate(l, ['log_date','check_in','created_at']) === d);
+    if(s) rows = rows.filter(l => S(l.supervisor_id) === s);
+    if(p) rows = rows.filter(l => S(l.project_id) === p);
+    if(q) rows = rows.filter(l => [supervisorNameSafe(l.supervisor_id), projectNameSafe(l.project_id), l.visit_type, l.time_status, l.notes].join(' ').toLowerCase().includes(q));
+    return rows;
+  };
+
+  const oldRenderDashboard = window.renderDashboard;
+  window.renderDashboard = function(){
+    if(typeof oldRenderDashboard === 'function') oldRenderDashboard.apply(this, arguments);
+    updateTodayCounters();
+  };
+  const oldRenderContracts = window.renderContracts;
+  window.renderContracts = function(){
+    if(typeof oldRenderContracts === 'function') oldRenderContracts.apply(this, arguments);
+    updateContractTotals();
+  };
+  const oldRenderAll = window.renderAll;
+  window.renderAll = function(){
+    if(typeof oldRenderAll === 'function') oldRenderAll.apply(this, arguments);
+    ensureTicketFiltersUi(); updateContractTotals(); updateTodayCounters();
+  };
+
+  function css(){
+    if($('v231Css')) return;
+    const st=document.createElement('style'); st.id='v231Css'; st.textContent = `
+      #tickets .filters, #supTickets .filters { position: sticky; top: 0; z-index: 20; background: #fff; border: 1px solid var(--line,#dce6e2); border-radius: 16px; padding: 10px; box-shadow: 0 8px 20px rgba(10,64,51,.08); }
+      #tickets .filters select, #tickets .filters input, #supTickets .filters select, #supTickets .filters input { min-width: 145px; }
+      .contract-total-v231 b, .today-ticket-kpi-v231 b { color: var(--brand,#0A4033); }
+      @media(max-width:900px){ #tickets .filters, #supTickets .filters{position:static} }
+    `; document.head.appendChild(st);
+  }
+  function boot(){ css(); ensureTicketFiltersUi(); updateContractTotals(); updateTodayCounters(); try{ window.renderTickets(); }catch(_){} }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot, ev==='load'?900:250)));
+  setTimeout(boot, 1200);
+  window.TASNEEF_BUILD = 'V231_ABU_SAMER_FIXES_2026_05_31';
+  console.log('Tasneef V231 Abu Samer fixes loaded');
+})();
