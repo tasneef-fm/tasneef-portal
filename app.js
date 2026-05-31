@@ -1,4 +1,4 @@
-/* TASNEEF BUILD V249 - unified session + permission stability - 2026-05-31 */
+/* TASNEEF BUILD V253 - no stuck loading + counts cards - 2026-05-31 */
 /* V154 Smart Loading Branding */
 (function(){
   if(window.__tasneefLoadingV154) return;
@@ -19151,4 +19151,215 @@ function financePrintReport(kind){
   document.addEventListener('visibilitychange', async ()=>{ if(!document.hidden){ await hardLoadLiveDataV252(); try{ renderTimeLogs&&renderTimeLogs(); renderTickets&&renderTickets(); renderContractServices&&renderContractServices(); }catch(_){ } } });
   setTimeout(async()=>{ await hardLoadLiveDataV252(); try{ if(typeof renderTimeLogs==='function') renderTimeLogs(); if(typeof renderTickets==='function') renderTickets(); if(typeof renderContractServices==='function') renderContractServices(); }catch(_){ } },900);
   console.log('Tasneef V252 loaded: live today logs/tickets + units/buildings counts + cache bust');
+})();
+
+/* ===== V253: No stuck loading + buildings/units cards everywhere ===== */
+(function(){
+  if(window.__tasneefV253Fix) return;
+  window.__tasneefV253Fix = true;
+  window.TASNEEF_BUILD = 'V253_NO_STUCK_LOADING_COUNTS_CARDS_2026_05_31';
+
+  function $(id){ return document.getElementById(id); }
+  function S(v){ return String(v ?? '').trim(); }
+  function E(v){
+    return S(v).replace(/[&<>'"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]; });
+  }
+  function N(v){ const n=Number(v); return Number.isFinite(n) ? n : 0; }
+  function firstNum(obj, keys){
+    for(const k of keys){
+      const n=N(obj && obj[k]);
+      if(n>0) return n;
+    }
+    return 0;
+  }
+  function bCount(p){
+    if(window.projectBuildingsCountV252) return N(window.projectBuildingsCountV252(p));
+    return firstNum(p, ['buildings_count','building_count','buildings','building_no','buildingsCount','number_of_buildings','عمائر','عدد_العمائر']);
+  }
+  function uCount(p){
+    if(window.projectUnitsCountV252) return N(window.projectUnitsCountV252(p));
+    return firstNum(p, ['units_count','apartments_count','apartment_count','units','apartments','flats_count','unitsCount','number_of_units','number_of_apartments','شقق','عدد_الشقق']);
+  }
+  window.projectBuildingsCountV253 = bCount;
+  window.projectUnitsCountV253 = uCount;
+
+  function hideStuckLoading(){
+    const node = $('tasneefLoadingV154');
+    if(node){
+      node.classList.add('hidden');
+      node.style.opacity = '0';
+      node.style.visibility = 'hidden';
+      node.style.pointerEvents = 'none';
+    }
+  }
+  function armLoadingGuard(){
+    const node = $('tasneefLoadingV154');
+    if(!node || node.__v253Guarded) return;
+    node.__v253Guarded = true;
+    const arm = function(){
+      clearTimeout(node.__v253Timer);
+      if(!node.classList.contains('hidden')){
+        node.__v253Timer = setTimeout(function(){
+          hideStuckLoading();
+          try{ if(typeof tasneefNetbarV239==='function') tasneefNetbarV239('تم إخفاء شاشة التحميل تلقائيًا. البيانات ستظهر حسب آخر تحديث متاح.', 'warn', 4500); }catch(_){ }
+        }, 6500);
+      }
+    };
+    new MutationObserver(arm).observe(node, {attributes:true, attributeFilter:['class','style']});
+    arm();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', armLoadingGuard); else armLoadingGuard();
+  setInterval(function(){
+    armLoadingGuard();
+    const node = $('tasneefLoadingV154');
+    if(node && !node.classList.contains('hidden')){
+      const shownAt = node.__v253ShownAt || (node.__v253ShownAt = Date.now());
+      if(Date.now() - shownAt > 7500) hideStuckLoading();
+    }else if(node){ node.__v253ShownAt = 0; }
+  }, 1200);
+
+  // Do not allow a loading modal to block using the system.
+  (function injectCss(){
+    if($('tasneefV253Css')) return;
+    const st=document.createElement('style'); st.id='tasneefV253Css';
+    st.textContent = `
+      .tasneef-loading-v154{pointer-events:none!important}
+      .v253-count-chip{display:inline-flex;gap:6px;align-items:center;margin-inline-start:6px;margin-top:4px;background:#f5faf8;border:1px solid #dfece7;border-radius:999px;padding:4px 9px;font-size:11px;color:#0A4033;font-weight:800}
+      .quick-item .v253-count-line{display:block;margin-top:5px;color:#60756c;font-size:11px;font-weight:800}
+    `;
+    document.head.appendChild(st);
+  })();
+
+  function totalProjectCounts(projects){
+    const arr = projects || (window.data && data.projects) || [];
+    return arr.reduce((a,p)=>{ a.buildings += bCount(p); a.units += uCount(p); return a; }, {buildings:0, units:0});
+  }
+  function ensureKpi(container, id, label){
+    if(!container) return null;
+    let b=$(id);
+    if(b) return b;
+    const div=document.createElement('div');
+    div.className='kpi v253-project-count-kpi';
+    div.innerHTML=`<small>${E(label)}</small><b id="${E(id)}">0</b>`;
+    container.appendChild(div);
+    return $(id);
+  }
+  function updateCountCards(){
+    try{
+      const projects=(window.data && data.projects) || [];
+      const totals=totalProjectCounts(projects);
+      const contractKpis=$('contractsActiveCount')?.closest('.kpis');
+      const cb=ensureKpi(contractKpis,'contractsBuildingsTotalV253','إجمالي العمائر');
+      const cu=ensureKpi(contractKpis,'contractsUnitsTotalV253','إجمالي الشقق');
+      if(cb) cb.textContent=totals.buildings;
+      if(cu) cu.textContent=totals.units;
+
+      const servicesKpis=$('servicesTotalCount')?.closest('.kpis');
+      const sb=ensureKpi(servicesKpis,'servicesBuildingsTotalV253','إجمالي العمائر');
+      const su=ensureKpi(servicesKpis,'servicesUnitsTotalV253','إجمالي الشقق');
+      if(sb) sb.textContent=totals.buildings;
+      if(su) su.textContent=totals.units;
+    }catch(e){ console.warn('V253 count cards failed', e); }
+  }
+
+  function projectForService(s){
+    try{ if(typeof csProjectObj==='function'){ const p=csProjectObj(s); if(p) return p; } }catch(_){ }
+    const projects=(window.data && data.projects) || [];
+    const pid=s && s.project_id;
+    if(pid) return projects.find(p=>String(p.id)===String(pid)) || {};
+    const name=S(s && s.project_name).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه');
+    return projects.find(p=>S(p.name).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه')===name) || {};
+  }
+
+  const oldRenderContracts = window.renderContracts;
+  window.renderContracts = function(){
+    const out = oldRenderContracts ? oldRenderContracts.apply(this, arguments) : undefined;
+    try{
+      const body=$('contractsBody');
+      if(body){
+        [...body.querySelectorAll('tr')].forEach((tr)=>{
+          const name=S(tr.children[0]?.innerText || '');
+          if(!name) return;
+          const p=((data && data.projects) || []).find(x=>S(x.name)===name) || {};
+          if(tr.children[1]) tr.children[1].textContent = bCount(p);
+          if(tr.children[2]) tr.children[2].textContent = uCount(p);
+        });
+      }
+    }catch(_){ }
+    updateCountCards();
+    return out;
+  };
+
+  const oldRenderContractServices = window.renderContractServices;
+  window.renderContractServices = function(){
+    const out = oldRenderContractServices ? oldRenderContractServices.apply(this, arguments) : undefined;
+    try{
+      const body=$('contractServicesBody');
+      const table=body && body.closest('table');
+      const head=table && table.querySelector('thead tr');
+      if(head){
+        const labels=[...head.children].map(th=>S(th.textContent));
+        if(!labels.includes('العمائر')){
+          head.children[0]?.insertAdjacentHTML('afterend','<th>العمائر</th><th>الشقق</th>');
+        }
+      }
+      if(body){
+        [...body.querySelectorAll('tr')].forEach(tr=>{
+          if(tr.children.length < 4) return;
+          const projectName=S(tr.children[0]?.innerText || '').split('\n')[0];
+          const p=((data && data.projects) || []).find(x=>S(x.name)===projectName) || {};
+          // If another older renderer produced rows without count columns, insert them.
+          const second=S(tr.children[1]?.innerText || '');
+          const third=S(tr.children[2]?.innerText || '');
+          const secondLooksCount=/^\d+$/.test(second);
+          const thirdLooksCount=/^\d+$/.test(third);
+          if(!secondLooksCount || !thirdLooksCount){
+            tr.children[0]?.insertAdjacentHTML('afterend',`<td>${bCount(p)}</td><td>${uCount(p)}</td>`);
+          }else{
+            tr.children[1].textContent=bCount(p);
+            tr.children[2].textContent=uCount(p);
+          }
+        });
+      }
+    }catch(e){ console.warn('V253 service counts failed', e); }
+    updateCountCards();
+    try{ renderSmartServicesList && renderSmartServicesList(); }catch(_){ }
+    try{ showSupervisorServicesPreview && showSupervisorServicesPreview(false); }catch(_){ }
+    return out;
+  };
+
+  const oldSmartList = window.renderSmartServicesList;
+  window.renderSmartServicesList = function(){
+    const out = oldSmartList ? oldSmartList.apply(this, arguments) : undefined;
+    try{
+      const el=$('smartServicesList');
+      if(!el) return out;
+      const rows=(data.contractServices||[]).filter(s=>!['done','out','stopped'].includes(csStatusKey(s))).sort((a,b)=>{const order={late:0,due:1,soon:2,review:3}; return (order[csStatusKey(a)]??9)-(order[csStatusKey(b)]??9);}).slice(0,8);
+      el.innerHTML=rows.map((s,i)=>{
+        const p=projectForService(s), dd=csDueDate(s)||new Date(Date.now()+(i+1)*86400000).toISOString().slice(0,10), k=csStatusKey(s);
+        return `<div class="quick-item"><span><b>${E(csServiceName(s))}</b><br><small>${E(csProjectName(s))} — ${E(dd)}</small><span class="v253-count-line">العمائر: ${bCount(p)} | الشقق: ${uCount(p)}</span></span><span class="badge ${csBadgeClass(k)}">${csStatusText(k)}</span></div>`;
+      }).join('') || '<div class="quick-item">لا توجد خدمات تحتاج جدولة</div>';
+    }catch(_){ }
+    return out;
+  };
+
+  const oldSupervisorPreview = window.showSupervisorServicesPreview;
+  window.showSupervisorServicesPreview = function(scroll){
+    const out = oldSupervisorPreview ? oldSupervisorPreview.apply(this, arguments) : undefined;
+    try{
+      const el=$('supervisorServicesPreview'); if(!el) return out;
+      const sid=$('serviceFilterSupervisor')?.value || (data.supervisors && data.supervisors[0]?.id) || '';
+      const rows=(data.contractServices||[]).filter(s=>String(csSupervisorId(s)||'')===String(sid) && !['done','out','stopped'].includes(csStatusKey(s))).slice(0,6);
+      el.innerHTML=rows.map(s=>{ const p=projectForService(s); return `<div class="quick-item"><span><b>${E(csServiceName(s))}</b><br><small>${E(csProjectName(s))} — ${E(csDueDate(s)||'-')}</small><span class="v253-count-line">العمائر: ${bCount(p)} | الشقق: ${uCount(p)}</span></span><span class="badge ${csBadgeClass(csStatusKey(s))}">${csStatusText(csStatusKey(s))}</span></div>`; }).join('') || '<div class="quick-item">لا توجد خدمات مخصصة للمشرف المختار</div>';
+      if(scroll) el.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }catch(_){ }
+    return out;
+  };
+
+  document.addEventListener('visibilitychange', function(){
+    if(!document.hidden) setTimeout(function(){ hideStuckLoading(); updateCountCards(); }, 2500);
+  });
+  setTimeout(function(){ hideStuckLoading(); updateCountCards(); try{ window.renderContracts && window.renderContracts(); }catch(_){ } try{ window.renderContractServices && window.renderContractServices(); }catch(_){ } }, 1800);
+  setTimeout(function(){ hideStuckLoading(); updateCountCards(); }, 7000);
+  console.log('Tasneef V253 loaded: loading guard + buildings/units KPI cards and service cards');
 })();
