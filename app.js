@@ -303,7 +303,10 @@ function workerName(id){ return data.workers.find(w=>String(w.id)===String(id))?
 function getProjectSupervisorId(pid){ return data.projects.find(p=>String(p.id)===String(pid))?.supervisor_id || ''; }
 function dateTime(date, time){ return date && time ? new Date(`${date}T${time}:00`).toISOString() : null; }
 function minutesBetween(a,b){ if(!a||!b) return 0; return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
-function logActualMinutes(l){ const saved = Number(l.duration_minutes); if(Number.isFinite(saved) && saved > 0) return saved; return minutesBetween(l.check_in, l.check_out); }
+function logActualMinutes(l){ const saved = Number(l.duration_minutes); if(l && !l.check_out && l.check_in) return minutesBetween(l.check_in, new Date().toISOString()); if(Number.isFinite(saved) && saved > 0) return saved; return minutesBetween(l.check_in, l.check_out); }
+function logIsOpen(l){ return !!(l && l.check_in && !l.check_out); }
+function logActualDisplay(l){ if(logIsOpen(l)) return minsToText(logActualMinutes(l)) + ' / مستمر'; return minsToText(logActualMinutes(l)); }
+function logStatusDisplay(l, actual, required){ if(logIsOpen(l)) return {diff:null, status:'in_progress', text:'قيد الزيارة', cls:'blue'}; return calcTimeStatus(actual, required); }
 function logRequiredMinutes(l){ const logDate = l.log_date || String(l.check_in||'').slice(0,10); const current = l.project_id ? requiredMinutesForLog(l.project_id, logDate) : 0; if(current > 0) return current; const saved = Number(l.required_minutes); if(Number.isFinite(saved) && saved > 0) return saved; return 0; }
 async function initAdmin(){ requireRole('admin'); await refreshAll(); }
 async function refreshAll(){ await loadAll(); hydrateForms(); renderAll(); }
@@ -321,7 +324,7 @@ function hydrateForms(){
 }
 function renderAll(){ renderDashboard(); renderTimeLogs(); renderUsers(); renderProjects(); renderWorkers(); renderAttendance(); renderMonthly(); renderTickets(); renderAlerts(); renderContractServices(); }
 function showPage(id, btn){ document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden')); $(id)?.classList.remove('hidden'); document.querySelectorAll('.nav').forEach(n=>n.classList.remove('active')); btn?.classList.add('active'); renderAll(); if(id==='contracts') showContractsSubTab('services'); }
-function renderDashboard(){ if(!$('kpiUsers')) return; $('kpiUsers').textContent=data.users.length; $('kpiProjects').textContent=data.projects.length; $('kpiWorkers').textContent=data.workers.length; $('kpiTodayLogs').textContent=data.logs.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===today()).length; const div=$('todaySummary'); if(div) div.innerHTML = data.supervisors.map(s=>{ const logs=data.logs.filter(l=>String(l.supervisor_id)===String(s.id)&&(l.log_date||String(l.check_in||'').slice(0,10))===today()); const mins=logs.reduce((a,l)=>a+(l.duration_minutes||minutesBetween(l.check_in,l.check_out)),0); return `<div class="summary-item"><b>${esc(s.full_name)}</b><br>عدد التسجيلات: ${logs.length}<br>إجمالي الوقت: ${minsToText(mins)}</div>`; }).join('') || '<div class="summary-item">لا توجد تسجيلات اليوم</div>'; }
+function renderDashboard(){ if(!$('kpiUsers')) return; $('kpiUsers').textContent=data.users.length; $('kpiProjects').textContent=data.projects.length; $('kpiWorkers').textContent=data.workers.length; $('kpiTodayLogs').textContent=data.logs.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===today()).length; const div=$('todaySummary'); if(div) div.innerHTML = data.supervisors.map(s=>{ const logs=data.logs.filter(l=>String(l.supervisor_id)===String(s.id)&&(l.log_date||String(l.check_in||'').slice(0,10))===today()); const mins=logs.reduce((a,l)=>a+logActualMinutes(l),0); const openCount=logs.filter(logIsOpen).length; return `<div class="summary-item"><b>${esc(s.full_name)}</b><br>عدد التسجيلات: ${logs.length}<br>إجمالي الوقت: ${minsToText(mins)}${openCount?`<br><span class="badge blue">قيد الزيارة: ${openCount}</span>`:''}</div>`; }).join('') || '<div class="summary-item">لا توجد تسجيلات اليوم</div>'; }
 function setNow(id){ $(id).value=nowTime(); }
 function clearLogForm(){ ['logId','logIn','logOut','logTravel','logNotes'].forEach(id=>{ if($(id)) $(id).value=id==='logTravel'?'0':''; }); if($('logDate')) $('logDate').value=today(); if($('logVisitType')) $('logVisitType').value='surface'; $('logFormTitle') && ($('logFormTitle').textContent='تسجيل دخول / خروج'); }
 function findProject(id){ return data.projects.find(p=>String(p.id)===String(id)); }
@@ -410,9 +413,9 @@ function logWhatsappButtons(l){
   return `<button class="small" style="background:#128C7E;color:#fff" onclick="sendLogWhatsapp(${l.id},'in')">واتساب دخول</button>`;
 }
 function onLogProjectChange(){ const pid=$('logProject')?.value; const p=findProject(pid); if(p && $('logVisitType')) $('logVisitType').value=p.visit_type_default||'surface'; if(p && $('logSupervisor') && !$('logSupervisor').value) $('logSupervisor').value=p.supervisor_id||''; }
-async function saveTimeLog(){ const u=session(); const id=$('logId')?.value; const date=$('logDate')?.value || today(); let sup=$('logSupervisor')?.value || (u.role==='supervisor'?u.id:''); const project=$('logProject')?.value; if(!sup && project) sup=getProjectSupervisorId(project); const check_in=dateTime(date,$('logIn')?.value), check_out=dateTime(date,$('logOut')?.value); if(!project||!check_in) return msg('المشروع ووقت الدخول مطلوبان','err'); const actual=minutesBetween(check_in,check_out); const required=requiredMinutesForLog(project,date); const ts=calcTimeStatus(actual,required); const autoTravel=calculateTravelMinutes(sup,date,check_in,id); const row={user_id:u.id, supervisor_id:Number(sup)||null, project_id:Number(project), check_in, check_out, log_date:date, duration_minutes:actual, travel_minutes:autoTravel, visit_type:$('logVisitType')?.value||findProject(project)?.visit_type_default||'surface', required_minutes:required, time_difference_minutes:ts.diff, time_status:ts.status, notes:$('logNotes')?.value||''}; let res = id ? await sb.from('time_logs').update(row).eq('id',id).select('*').maybeSingle() : await sb.from('time_logs').insert(row).select('*').single(); if(res.error) return msg(res.error.message,'err'); const savedRow = res.data ? res.data : Object.assign({id:Number(id)||0}, row); playAppSound(check_out ? 'checkout' : 'checkin'); msg('تم حفظ التسجيل وحساب حالة الوقت ووقت التنقل تلقائياً'); sendLogWhatsappFromRow(savedRow, check_out ? 'out' : 'in'); clearLogForm(); await refreshAll(); }
+async function saveTimeLog(){ const u=session(); const id=$('logId')?.value; const date=$('logDate')?.value || today(); let sup=$('logSupervisor')?.value || (u.role==='supervisor'?u.id:''); const project=$('logProject')?.value; if(!sup && project) sup=getProjectSupervisorId(project); const check_in=dateTime(date,$('logIn')?.value), check_out=dateTime(date,$('logOut')?.value); if(!project||!check_in) return msg('المشروع ووقت الدخول مطلوبان','err'); const required=requiredMinutesForLog(project,date); const hasCheckout=!!check_out; const actual=hasCheckout ? minutesBetween(check_in,check_out) : 0; const ts=hasCheckout ? calcTimeStatus(actual,required) : {diff:null,status:'in_progress'}; const autoTravel=calculateTravelMinutes(sup,date,check_in,id); const row={user_id:u.id, supervisor_id:Number(sup)||null, project_id:Number(project), check_in, check_out, log_date:date, duration_minutes:actual, travel_minutes:autoTravel, visit_type:$('logVisitType')?.value||findProject(project)?.visit_type_default||'surface', required_minutes:required, time_difference_minutes:ts.diff, time_status:ts.status, notes:$('logNotes')?.value||''}; let res = id ? await sb.from('time_logs').update(row).eq('id',id).select('*').maybeSingle() : await sb.from('time_logs').insert(row).select('*').single(); if(res.error) return msg(res.error.message,'err'); const savedRow = res.data ? res.data : Object.assign({id:Number(id)||0}, row); playAppSound(check_out ? 'checkout' : 'checkin'); msg(check_out ? 'تم تسجيل الخروج وحساب مدة الزيارة' : 'تم تسجيل الدخول والزيارة قيد التنفيذ'); sendLogWhatsappFromRow(savedRow, check_out ? 'out' : 'in'); clearLogForm(); await refreshAll(); }
 function filterLogs(){ let rows=[...data.logs]; const d=$('dailyDate')?.value, s=$('dailySupervisor')?.value, p=$('dailyProject')?.value, q=($('dailySearch')?.value||'').trim(); if(d) rows=rows.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===d); if(s) rows=rows.filter(l=>String(l.supervisor_id)===String(s)); if(p) rows=rows.filter(l=>String(l.project_id)===String(p)); if(q) rows=rows.filter(l=>[supervisorName(l.supervisor_id),projectName(l.project_id),visitTypeText(l.visit_type),timeStatusText(l.time_status),l.notes].join(' ').includes(q)); return rows; }
-function renderTimeLogs(){ const body=$('logsBody'); if(!body) return; const isSupervisorPage = !document.getElementById('daily'); const rows=filterLogs(); body.innerHTML = rows.map(l=>{ const logDate=l.log_date||String(l.check_in||'').slice(0,10); const actual=Number(l.duration_minutes||minutesBetween(l.check_in,l.check_out)); const required=logRequiredMinutes(l); const diff=(l.time_difference_minutes!==null&&l.time_difference_minutes!==undefined)?Number(l.time_difference_minutes):(actual-required); const status=l.time_status||calcTimeStatus(actual,required).status; const badge=`<span class="badge ${timeStatusClass(status)}">${timeStatusText(status)}</span>`; if(isSupervisorPage){ return `<tr><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${minsToText(actual)}</td><td>${badge}</td><td class="row-actions">${logWhatsappButtons(l)}</td></tr>`; } return `<tr><td>${esc(logDate)}</td><td>${esc(supervisorName(l.supervisor_id))}</td><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${minsToText(actual)}</td><td>${diffText(diff)}</td><td>${badge}</td><td>${l.travel_minutes||0}</td><td>${esc(l.notes)}</td><td class="row-actions">${logWhatsappButtons(l)}</td><td class="row-actions"><button onclick="editTimeLog(${l.id})">تعديل</button><button class="danger" onclick="deleteRow('time_logs',${l.id})">حذف</button></td></tr>`; }).join('') || (isSupervisorPage?'<tr><td colspan="8">لا توجد بيانات</td></tr>':'<tr><td colspan="14">لا توجد بيانات</td></tr>'); }
+function renderTimeLogs(){ const body=$('logsBody'); if(!body) return; const isSupervisorPage = !document.getElementById('daily'); const rows=filterLogs(); body.innerHTML = rows.map(l=>{ const logDate=l.log_date||String(l.check_in||'').slice(0,10); const actual=logActualMinutes(l); const required=logRequiredMinutes(l); const open=logIsOpen(l); const diff=open?null:((l.time_difference_minutes!==null&&l.time_difference_minutes!==undefined)?Number(l.time_difference_minutes):(actual-required)); const status=open?'in_progress':(l.time_status&&l.time_status!=='in_progress'?l.time_status:calcTimeStatus(actual,required).status); const badge=`<span class="badge ${timeStatusClass(status)}">${timeStatusText(status)}</span>`; const actualTxt=logActualDisplay(l); const diffTxt=open?'-':diffText(diff); if(isSupervisorPage){ return `<tr><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${actualTxt}</td><td>${badge}</td><td class="row-actions">${logWhatsappButtons(l)}</td></tr>`; } return `<tr><td>${esc(logDate)}</td><td>${esc(supervisorName(l.supervisor_id))}</td><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${actualTxt}</td><td>${diffTxt}</td><td>${badge}</td><td>${l.travel_minutes||0}</td><td>${esc(l.notes)}</td><td class="row-actions">${logWhatsappButtons(l)}</td><td class="row-actions"><button onclick="editTimeLog(${l.id})">تعديل</button><button class="danger" onclick="deleteRow('time_logs',${l.id})">حذف</button></td></tr>`; }).join('') || (isSupervisorPage?'<tr><td colspan="8">لا توجد بيانات</td></tr>':'<tr><td colspan="14">لا توجد بيانات</td></tr>'); }
 function editTimeLog(id){ const l=data.logs.find(x=>x.id===id); if(!l) return; $('logId').value=l.id; $('logDate').value=l.log_date||String(l.check_in||'').slice(0,10); if($('logSupervisor')) $('logSupervisor').value=l.supervisor_id||''; $('logProject').value=l.project_id||''; if($('logVisitType')) $('logVisitType').value=l.visit_type||findProject(l.project_id)?.visit_type_default||'surface'; $('logIn').value=l.check_in?new Date(l.check_in).toTimeString().slice(0,5):''; $('logOut').value=l.check_out?new Date(l.check_out).toTimeString().slice(0,5):''; $('logTravel').value=l.travel_minutes||0; $('logNotes').value=l.notes||''; $('logFormTitle') && ($('logFormTitle').textContent='تعديل تسجيل'); window.scrollTo({top:0,behavior:'smooth'}); }
 async function deleteRow(table,id){ if(!confirm('تأكيد الحذف؟')) return; const {error}=await sb.from(table).delete().eq('id',id); if(error) return msg(error.message,'err'); msg('تم الحذف'); await refreshAll(); }
 function clearUserForm(){ ['userId','userFullName','userUsername','userPassword'].forEach(id=>$(id)&&($(id).value='')); if($('userRole')) $('userRole').value='supervisor'; if($('userActive')) $('userActive').value='true'; $('userFormTitle')&&($('userFormTitle').textContent='إضافة مستخدم'); }
@@ -20010,4 +20013,104 @@ function financePrintReport(kind){
   setInterval(()=>{ if(document.visibilityState !== 'hidden') refreshAndRender257(); }, 120000);
 
   console.log('Tasneef V257 loaded: stable live today logs/tickets without stale cache or UTC date mismatch');
+})();
+
+
+/* ===== V259: refresh open daily visit timers without reload ===== */
+setInterval(()=>{ try{ if(document.getElementById('logsBody')) renderTimeLogs(); if(document.getElementById('todaySummary')) renderDashboard(); }catch(e){} }, 60000);
+
+
+/* ===== V259: Checkout must close existing open visit, never create a separate record ===== */
+(function(){
+  'use strict';
+  function safeMsgV259(text, type){ try{ if(typeof msg==='function') msg(text, type); else alert(text); }catch(e){ try{ alert(text); }catch(_){} } }
+  function currentSessionV259(){ try{ return typeof session==='function' ? session() : {}; }catch(e){ return {}; } }
+  function localTodayV259(){ try{ return typeof today==='function' ? today() : new Date().toISOString().slice(0,10); }catch(e){ return new Date().toISOString().slice(0,10); } }
+  function localNowTimeV259(){ try{ return typeof nowTime==='function' ? nowTime() : new Date().toTimeString().slice(0,5); }catch(e){ return new Date().toTimeString().slice(0,5); } }
+  function localDateTimeV259(dateStr, timeStr){ try{ return typeof dateTime==='function' ? dateTime(dateStr, timeStr) : new Date((dateStr||localTodayV259())+'T'+(timeStr||localNowTimeV259())+':00').toISOString(); }catch(e){ return new Date().toISOString(); } }
+  function dateOfLogV259(l){ return (l && (l.log_date || String(l.check_in||'').slice(0,10))) || localTodayV259(); }
+  function numV259(v){ const n=Number(v); return Number.isFinite(n)?n:null; }
+  async function findOpenVisitV259(projectId, supervisorId, dateStr){
+    const pid=String(projectId||''); const sid=String(supervisorId||''); const d=dateStr||localTodayV259();
+    // قاعدة البيانات هي المصدر الحقيقي، لأن data.logs قد يكون كاش قديم.
+    try{
+      if(window.sb && pid && sid){
+        const res = await sb.from('time_logs')
+          .select('*')
+          .eq('project_id', Number(pid))
+          .eq('supervisor_id', Number(sid))
+          .eq('log_date', d)
+          .is('check_out', null)
+          .order('check_in', {ascending:false})
+          .limit(1)
+          .maybeSingle();
+        if(!res.error && res.data) return res.data;
+      }
+    }catch(e){}
+    try{
+      const rows=(window.data&&Array.isArray(data.logs)?data.logs:[]).filter(l=>
+        String(l.project_id)===pid &&
+        String(l.supervisor_id)===sid &&
+        !l.check_out &&
+        dateOfLogV259(l)===d
+      ).sort((a,b)=>new Date(b.check_in||0)-new Date(a.check_in||0));
+      return rows[0]||null;
+    }catch(e){ return null; }
+  }
+  async function closeOpenVisitV259(open, photoDataUrl){
+    if(!open || !open.id) return {error:'لا يوجد تسجيل دخول مفتوح لهذا المشروع اليوم'};
+    const d=dateOfLogV259(open);
+    const outIso=localDateTimeV259(d, localNowTimeV259());
+    const actual=(typeof minutesBetween==='function') ? minutesBetween(open.check_in, outIso) : Math.max(0, Math.round((new Date(outIso)-new Date(open.check_in))/60000));
+    const required=(typeof logRequiredMinutes==='function') ? logRequiredMinutes(open) : (numV259(open.required_minutes)||0);
+    const ts=(typeof calcTimeStatus==='function') ? calcTimeStatus(actual, required) : {diff:actual-required, status:(actual<required?'under':actual>required?'over':'ok')};
+    const row={
+      check_out: outIso,
+      duration_minutes: actual,
+      required_minutes: required,
+      time_difference_minutes: ts.diff,
+      time_status: ts.status,
+      log_date: d
+    };
+    if(photoDataUrl){ row.check_out_photo=photoDataUrl; row.check_out_photo_at=new Date().toISOString(); }
+    let res = await sb.from('time_logs').update(row).eq('id', open.id).select('*').maybeSingle();
+    if(res.error && String(res.error.message||'').toLowerCase().includes('photo')){
+      delete row.check_out_photo; delete row.check_out_photo_at;
+      res = await sb.from('time_logs').update(row).eq('id', open.id).select('*').maybeSingle();
+    }
+    if(res.error) return {error:res.error.message};
+    return {row:res.data || Object.assign({}, open, row)};
+  }
+  window.supervisorCheckOut = async function(){
+    const u=currentSessionV259();
+    const pid=document.getElementById('logProject')?.value;
+    if(!pid) return safeMsgV259('اختر المشروع أولًا','err');
+    const d=localTodayV259();
+    const sid=u.id;
+    const open=await findOpenVisitV259(pid, sid, d);
+    if(!open){
+      return safeMsgV259('لا يوجد تسجيل دخول مفتوح لهذا المشروع اليوم. يجب تسجيل دخول أولًا، ولن يتم إنشاء سجل خروج منفصل.','err');
+    }
+    let photo=null;
+    try{
+      if(typeof capturePhotoV72==='function'){
+        const pName=(typeof projectName==='function')?projectName(pid):'';
+        photo=await capturePhotoV72({title:'صورة انصراف / خروج', supervisorName:u?.full_name||u?.username||'مشرف', projectName:pName});
+        if(!photo) return safeMsgV259('تم إلغاء التصوير، لم يتم تسجيل الخروج','err');
+      }
+    }catch(e){}
+    const saved=await closeOpenVisitV259(open, photo);
+    if(saved.error) return safeMsgV259(saved.error,'err');
+    try{ if(typeof playAppSound==='function') playAppSound('checkout'); }catch(e){}
+    safeMsgV259('تم تسجيل الخروج وربطه بنفس سجل الدخول بنجاح');
+    try{
+      if(typeof attendanceWhatsappTextV72==='function' && typeof sharePhotoAndWhatsappV72==='function'){
+        const text=attendanceWhatsappTextV72('out', saved.row);
+        await sharePhotoAndWhatsappV72(photo, text, 'tasneef-checkout-'+Date.now()+'.jpg');
+      }
+    }catch(e){}
+    try{ if(typeof clearLogForm==='function') clearLogForm(); }catch(e){}
+    try{ if(typeof invalidateRuntimeCachesV251==='function') invalidateRuntimeCachesV251(); }catch(e){}
+    try{ if(typeof initSupervisor==='function') await initSupervisor(); else if(typeof refreshAll==='function') await refreshAll(); }catch(e){}
+  };
 })();
