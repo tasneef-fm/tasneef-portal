@@ -17051,3 +17051,160 @@ function financePrintReport(kind){
   };
   document.addEventListener('DOMContentLoaded', function(){ if($('orders')){ ensureStyle(); hydrateOrdersForm(); hydrateOrdersFilters(); renderOrdersSummaryV233(getOrders()); } });
 })();
+
+/* ===== TASNEEF V280 REAL SPEED + SAVE FIX ===== */
+(function(){
+  const FIX_VERSION = 'v280-fast-save-monthly';
+  const PAGE_SIZE = 1000;
+  const $x = (id)=>document.getElementById(id);
+  function ymd(d){ return d.toISOString().slice(0,10); }
+  function monthRange(month){
+    month = month || ($x('monthlyMonth')?.value || $x('attendanceMatrixMonth')?.value || new Date().toISOString().slice(0,7));
+    const start = month + '-01';
+    const endDate = new Date(start + 'T00:00:00');
+    endDate.setMonth(endDate.getMonth()+1);
+    return {month,start,end:ymd(endDate)};
+  }
+  async function selectAllPaged(query){
+    let out=[], from=0;
+    while(true){
+      const res = await query.range(from, from + PAGE_SIZE - 1);
+      if(res.error) return res;
+      const rows = res.data || [];
+      out = out.concat(rows);
+      if(rows.length < PAGE_SIZE) return {data:out,error:null};
+      from += PAGE_SIZE;
+      if(from > 20000) return {data:out,error:null};
+    }
+  }
+  async function safeSelect(name, query){
+    const r = await query;
+    if(r.error) console.warn('[Tasneef '+FIX_VERSION+'] '+name, r.error.message);
+    return r.data || [];
+  }
+
+  async function loadAllV280(){
+    const r = monthRange();
+    const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
+      safeSelect('app_users', sb.from('app_users').select('id,full_name,username,password,role,is_active').order('id')),
+      safeSelect('projects', sb.from('projects').select('*').order('id')),
+      safeSelect('workers', sb.from('workers').select('*').order('id')),
+      selectAllPaged(sb.from('attendance').select('*').gte('attendance_date', r.start).lt('attendance_date', r.end).order('attendance_date',{ascending:false})),
+      selectAllPaged(sb.from('time_logs').select('*').gte('log_date', r.start).lt('log_date', r.end).order('check_in',{ascending:false})),
+      safeSelect('tickets', sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(300))
+    ]);
+    let contractServices = {data:[],error:null};
+    try{ contractServices = await sb.from('contract_services').select('*').order('id', { ascending:false }).limit(500); }catch(e){ console.warn(e); }
+    data.users = users || [];
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.projects = projects || [];
+    data.workers = workers || [];
+    data.attendance = attendance.data || [];
+    data.logs = logs.data || [];
+    data.tickets = tickets || [];
+    data.contractServices = contractServices.data || [];
+    data.__loadedMonth = r.month;
+    data.__fixVersion = FIX_VERSION;
+  }
+
+  try{ loadAll = loadAllV280; window.loadAll = loadAllV280; }catch(e){ window.loadAll = loadAllV280; }
+
+  async function refreshAllV280(){ await loadAllV280(); hydrateForms(); renderAll(); showFixBadge(); }
+  try{ refreshAll = refreshAllV280; window.refreshAll = refreshAllV280; }catch(e){ window.refreshAll = refreshAllV280; }
+
+  function firstProjectForSupervisor(sid){
+    return (data.projects||[]).find(p=>String(p.supervisor_id||'')===String(sid||''));
+  }
+  window.onWorkerSupervisorChange = function(){
+    const sid=$x('workerSupervisor')?.value;
+    const el=$x('workerProject');
+    if(!el) return;
+    let rows=(data.projects||[]).filter(p=>!sid || String(p.supervisor_id||'')===String(sid));
+    fillSelect('workerProject', rows, 'name', 'اختر المشروع');
+    if(sid && rows.length){ el.value = rows[0].id; }
+  };
+  try{ onWorkerSupervisorChange = window.onWorkerSupervisorChange; }catch(e){}
+
+  window.saveWorker = async function(){
+    const id=$x('workerId')?.value;
+    const supId=Number($x('workerSupervisor')?.value)||null;
+    let projectId=Number($x('workerProject')?.value)||null;
+    if(supId && !projectId){ const p=firstProjectForSupervisor(supId); if(p) projectId=Number(p.id); }
+    const row={
+      name:($x('workerName')?.value||'').trim(),
+      phone:($x('workerPhone')?.value||'').trim(),
+      salary:Number($x('workerSalary')?.value||1500),
+      supervisor_id:supId,
+      app_supervisor_id:supId,
+      project_id:projectId,
+      worker_type:$x('workerType')?.value||'primary',
+      status:$x('workerStatus')?.value||'active',
+      notes:$x('workerNotes')?.value||''
+    };
+    if(!row.name) return msg('اسم العامل مطلوب','err');
+    if(!row.supervisor_id) return msg('اختر المشرف المسؤول عن العامل','err');
+    if(!row.project_id) return msg('لا يوجد مشروع مربوط بهذا المشرف. اربط مشروع بالمشرف أولاً','err');
+    const res = id ? await sb.from('workers').update(row).eq('id',id).select('*').maybeSingle() : await sb.from('workers').insert(row).select('*').single();
+    if(res.error) return msg(res.error.message,'err');
+    const saved = res.data || Object.assign({id:Number(id)}, row);
+    const i=(data.workers||[]).findIndex(w=>String(w.id)===String(saved.id));
+    if(i>=0) data.workers[i]=Object.assign({}, data.workers[i], saved); else data.workers.unshift(saved);
+    msg(id?'تم تحويل العامل وحفظ التعديل':'تم حفظ العامل');
+    clearWorkerForm(); hydrateForms(); renderWorkers(); renderAttendanceWorkersQuick();
+  };
+  try{ saveWorker = window.saveWorker; }catch(e){}
+
+  window.saveAttendance = async function(){
+    const id=$x('attendanceId')?.value;
+    const workerId=Number($x('attendanceWorker')?.value);
+    const ds=$x('attendanceDate')?.value || new Date().toISOString().slice(0,10);
+    const row={attendance_date:ds, worker_id:workerId, supervisor_id:Number($x('attendanceSupervisor')?.value)||null, project_id:Number($x('attendanceProject')?.value)||null, status:$x('attendanceStatus')?.value||'present', notes:$x('attendanceNotes')?.value||'', created_by:session()?.id||null};
+    if(!row.worker_id) return msg('اختر العامل','err');
+    let res;
+    if(id){
+      res = await sb.from('attendance').update(row).eq('id',id).select('*').maybeSingle();
+    }else{
+      const existing = await sb.from('attendance').select('id').eq('attendance_date', ds).eq('worker_id', workerId).maybeSingle();
+      if(existing.error && existing.error.code!=='PGRST116') return msg(existing.error.message,'err');
+      if(existing.data?.id) res = await sb.from('attendance').update(row).eq('id', existing.data.id).select('*').maybeSingle();
+      else res = await sb.from('attendance').insert(row).select('*').single();
+    }
+    if(res.error) return msg(res.error.message,'err');
+    const saved=res.data || row;
+    const key = x=>String(x.worker_id) + '|' + String(x.attendance_date);
+    data.attendance = (data.attendance||[]).filter(a=>key(a)!==key(saved));
+    data.attendance.unshift(saved);
+    msg('تم حفظ الحضور بدون تكرار'); clearAttendanceForm(); renderAttendance(); window.renderAttendanceMonthly && window.renderAttendanceMonthly();
+  };
+  try{ saveAttendance = window.saveAttendance; }catch(e){}
+
+  const oldRenderAttendance = window.renderAttendance || (typeof renderAttendance==='function'?renderAttendance:null);
+  window.renderAttendance = function(){
+    if(Array.isArray(data.attendance)){
+      const map=new Map();
+      data.attendance.forEach(a=>{ const k=String(a.worker_id)+'|'+String(a.attendance_date); if(!map.has(k)) map.set(k,a); });
+      data.attendance=[...map.values()];
+    }
+    if(typeof oldRenderAttendance==='function') return oldRenderAttendance();
+  };
+  try{ renderAttendance = window.renderAttendance; }catch(e){}
+
+  async function reloadForSelectedMonth(){
+    const btn=document.activeElement; if(btn) btn.disabled=true;
+    try{ await refreshAllV280(); }
+    finally{ if(btn) btn.disabled=false; }
+  }
+  document.addEventListener('change', function(e){
+    if(e.target && (e.target.id==='monthlyMonth' || e.target.id==='attendanceMatrixMonth')) reloadForSelectedMonth();
+  });
+
+  function showFixBadge(){
+    if(document.getElementById('tasneefFixBadgeV280')) return;
+    const b=document.createElement('div'); b.id='tasneefFixBadgeV280';
+    b.textContent='Tasneef '+FIX_VERSION;
+    b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.88';
+    document.body.appendChild(b);
+  }
+  document.addEventListener('DOMContentLoaded', showFixBadge);
+})();
