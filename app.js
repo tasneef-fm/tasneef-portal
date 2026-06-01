@@ -17208,3 +17208,112 @@ function financePrintReport(kind){
   }
   document.addEventListener('DOMContentLoaded', showFixBadge);
 })();
+
+/* ===== TASNEEF V281 MONTHLY LOGS REAL FIX: read by log_date OR check_in ===== */
+(function(){
+  const FIX_VERSION = 'v281-monthly-logdate-checkin';
+  const PAGE_SIZE = 1000;
+  const $id = id => document.getElementById(id);
+  function todayMonth(){ return new Date().toISOString().slice(0,7); }
+  function ymd(d){ return d.toISOString().slice(0,10); }
+  function monthRange(month){
+    month = month || ($id('monthlyMonth')?.value || $id('attendanceMatrixMonth')?.value || todayMonth());
+    const start = month + '-01';
+    const e = new Date(start + 'T00:00:00');
+    e.setMonth(e.getMonth()+1);
+    return {month,start,end:ymd(e)};
+  }
+  async function pageAll(q){
+    let out=[], from=0;
+    while(true){
+      const r = await q.range(from, from + PAGE_SIZE - 1);
+      if(r.error) return r;
+      const rows = r.data || [];
+      out = out.concat(rows);
+      if(rows.length < PAGE_SIZE) return {data:out,error:null};
+      from += PAGE_SIZE;
+      if(from > 50000) return {data:out,error:null};
+    }
+  }
+  async function safe(name, q){
+    try{ const r=await q; if(r.error) console.warn('[Tasneef '+FIX_VERSION+'] '+name, r.error.message); return r.data || []; }
+    catch(e){ console.warn('[Tasneef '+FIX_VERSION+'] '+name, e?.message||e); return []; }
+  }
+  function mergeById(a,b){
+    const m = new Map();
+    (a||[]).concat(b||[]).forEach(x=>{ if(x && x.id!=null) m.set(String(x.id), x); });
+    return [...m.values()].sort((x,y)=>String(y.check_in||y.log_date||y.created_at||'').localeCompare(String(x.check_in||x.log_date||x.created_at||'')));
+  }
+  async function loadTimeLogsMonthV281(r){
+    // بعض سجلاتكم محفوظة بتاريخ check_in وبعضها بتاريخ log_date، لذلك نقرأ الاثنين ونقوم بدمجهم بدون تكرار.
+    const byLogDate = await pageAll(
+      sb.from('time_logs').select('*')
+        .gte('log_date', r.start)
+        .lt('log_date', r.end)
+        .order('check_in', {ascending:false})
+    );
+    const byCheckIn = await pageAll(
+      sb.from('time_logs').select('*')
+        .gte('check_in', r.start + 'T00:00:00')
+        .lt('check_in', r.end + 'T00:00:00')
+        .order('check_in', {ascending:false})
+    );
+    if(byLogDate.error) console.warn('[Tasneef '+FIX_VERSION+'] time_logs/log_date', byLogDate.error.message);
+    if(byCheckIn.error) console.warn('[Tasneef '+FIX_VERSION+'] time_logs/check_in', byCheckIn.error.message);
+    return mergeById(byLogDate.data || [], byCheckIn.data || []);
+  }
+  async function loadAllV281(){
+    const r = monthRange();
+    const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
+      safe('app_users', sb.from('app_users').select('id,full_name,username,password,role,is_active').order('id')),
+      safe('projects', sb.from('projects').select('*').order('id')),
+      safe('workers', sb.from('workers').select('*').order('id')),
+      pageAll(sb.from('attendance').select('*').gte('attendance_date', r.start).lt('attendance_date', r.end).order('attendance_date',{ascending:false})),
+      loadTimeLogsMonthV281(r),
+      safe('tickets', sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(300))
+    ]);
+    let contractServices = {data:[],error:null};
+    try{ contractServices = await sb.from('contract_services').select('*').order('id', { ascending:false }).limit(500); }catch(e){ console.warn(e); }
+    data.users = users || [];
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.projects = projects || [];
+    data.workers = workers || [];
+    data.attendance = attendance.data || [];
+    data.logs = logs || [];
+    data.tickets = tickets || [];
+    data.contractServices = contractServices.data || [];
+    data.__loadedMonth = r.month;
+    data.__fixVersion = FIX_VERSION;
+  }
+  async function refreshAllV281(){
+    await loadAllV281();
+    try{ hydrateForms(); }catch(e){ console.warn(e); }
+    try{ renderAll(); }catch(e){ console.warn(e); }
+    showBadge();
+  }
+  window.loadAll = loadAllV281;
+  window.refreshAll = refreshAllV281;
+  try{ loadAll = loadAllV281; refreshAll = refreshAllV281; }catch(e){}
+
+  async function reloadSelectedMonthV281(){
+    const active = document.activeElement;
+    if(active) active.disabled = true;
+    try{ await refreshAllV281(); }
+    finally{ if(active) active.disabled = false; }
+  }
+  document.addEventListener('change', function(e){
+    if(e.target && (e.target.id==='monthlyMonth' || e.target.id==='attendanceMatrixMonth')){
+      setTimeout(reloadSelectedMonthV281, 80);
+    }
+  });
+  function showBadge(){
+    const old=document.getElementById('tasneefFixBadgeV280'); if(old) old.remove();
+    let b=document.getElementById('tasneefFixBadgeV281');
+    if(!b){ b=document.createElement('div'); b.id='tasneefFixBadgeV281'; document.body.appendChild(b); }
+    b.textContent='Tasneef '+FIX_VERSION;
+    b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.9';
+  }
+  document.addEventListener('DOMContentLoaded', function(){ showBadge(); setTimeout(()=>{ if(document.body) refreshAllV281(); }, 300); });
+  console.log('Tasneef '+FIX_VERSION+' loaded');
+})();
