@@ -1,117 +1,23 @@
 /* TASNEEF BUILD V230 - inventory schema safe + hide warehouse cost info - 2026-05-20 */
-/* V154 Smart Loading Branding */
+/* V305: Loading screen removed + fast mode */
 (function(){
-  if(window.__tasneefLoadingV154) return;
   window.__tasneefLoadingV154 = true;
-  const LOGO = 'tasneef_logo_print.png';
-  let pending = 0;
-  let showTimer = null;
-  let visibleSince = 0;
-  const MIN_VISIBLE = 520;
-  const DELAY = 280;
-
-  function injectStyle(){
-    if(document.getElementById('tasneefLoadingStyleV154')) return;
-    const st = document.createElement('style');
-    st.id = 'tasneefLoadingStyleV154';
-    st.textContent = `
-      :root{--tl-brand:#064c3f;--tl-brand2:#0b705d;--tl-gold:#c5a45b;--tl-bg:#f4f8f6}
-      .tasneef-splash-v154,.tasneef-loading-v154{position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;direction:rtl;font-family:Tahoma,Arial,sans-serif;transition:opacity .38s ease,visibility .38s ease;}
-      .tasneef-splash-v154.hidden,.tasneef-loading-v154.hidden{opacity:0;visibility:hidden;pointer-events:none}
-      .tasneef-splash-v154{background:radial-gradient(circle at 25% 15%,rgba(9,92,75,.13),transparent 34%),linear-gradient(135deg,#ffffff 0%,#f5faf8 58%,rgba(197,164,91,.10) 100%)}
-      .tasneef-loading-v154{background:rgba(244,248,246,.74);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
-      .tasneef-load-card-v154{min-width:260px;max-width:min(390px,88vw);background:rgba(255,255,255,.94);border:1px solid rgba(6,76,63,.16);border-radius:26px;box-shadow:0 26px 70px rgba(6,76,63,.18);padding:28px 30px;text-align:center;color:#0d332b;position:relative;overflow:hidden}
-      .tasneef-load-card-v154:before{content:"";position:absolute;inset:-60px auto auto -60px;width:155px;height:155px;background:rgba(197,164,91,.13);border-radius:50%}
-      .tasneef-logo-box-v154{width:112px;height:112px;margin:0 auto 14px;border-radius:32px;background:linear-gradient(145deg,#fff,#eff8f5);border:1px solid rgba(6,76,63,.13);display:grid;place-items:center;box-shadow:inset 0 0 0 6px rgba(8,89,73,.04),0 14px 30px rgba(6,76,63,.12);animation:tasneefPulseV154 1.7s ease-in-out infinite}
-      .tasneef-loading-v154 .tasneef-logo-box-v154{width:82px;height:82px;border-radius:24px;margin-bottom:12px}
-      .tasneef-logo-box-v154 img{max-width:82%;max-height:82%;object-fit:contain;display:block}
-      .tasneef-load-card-v154 h2{margin:4px 0 4px;color:var(--tl-brand);font-size:22px;font-weight:900;letter-spacing:-.3px}
-      .tasneef-loading-v154 h2{font-size:18px}.tasneef-load-card-v154 p{margin:0;color:#667a73;font-size:13px;line-height:1.8}
-      .tasneef-ring-v154{width:42px;height:42px;border-radius:50%;border:4px solid #e3eee9;border-top-color:var(--tl-brand);margin:18px auto 2px;animation:tasneefSpinV154 .85s linear infinite}
-      .tasneef-dots-v154{display:flex;gap:6px;justify-content:center;margin-top:14px}.tasneef-dots-v154 i{width:7px;height:7px;border-radius:50%;background:var(--tl-brand);opacity:.4;animation:tasneefDotsV154 1.05s ease-in-out infinite}.tasneef-dots-v154 i:nth-child(2){animation-delay:.15s}.tasneef-dots-v154 i:nth-child(3){animation-delay:.3s}
-      @keyframes tasneefSpinV154{to{transform:rotate(360deg)}}
-      @keyframes tasneefPulseV154{0%,100%{transform:scale(1);box-shadow:inset 0 0 0 6px rgba(8,89,73,.04),0 14px 30px rgba(6,76,63,.12)}50%{transform:scale(1.035);box-shadow:inset 0 0 0 6px rgba(8,89,73,.07),0 22px 44px rgba(6,76,63,.18)}}
-      @keyframes tasneefDotsV154{0%,100%{transform:translateY(0);opacity:.35}50%{transform:translateY(-5px);opacity:1}}
-      @media(max-width:600px){.tasneef-load-card-v154{padding:24px 22px;border-radius:22px}.tasneef-logo-box-v154{width:96px;height:96px}.tasneef-load-card-v154 h2{font-size:19px}}
-    `;
-    document.head.appendChild(st);
-  }
-
-  function ensureNodes(){
-    if(!document.body) return null;
-    injectStyle();
-    let loading = document.getElementById('tasneefLoadingV154');
-    if(!loading){
-      loading = document.createElement('div');
-      loading.id = 'tasneefLoadingV154';
-      loading.className = 'tasneef-loading-v154 hidden';
-      loading.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>شركة تصنيف لإدارة المرافق</h2><p id="tasneefLoadingMsgV154">جاري تحميل البيانات...</p><div class="tasneef-ring-v154"></div></div>`;
-      document.body.appendChild(loading);
-    }
-    return loading;
-  }
-
-  function show(message){
-    pending++;
-    if(showTimer) clearTimeout(showTimer);
-    showTimer = setTimeout(function(){
-      const node = ensureNodes();
-      if(!node) return;
-      const msg = document.getElementById('tasneefLoadingMsgV154');
-      if(msg) msg.textContent = message || 'جاري تحميل البيانات...';
-      visibleSince = Date.now();
-      node.classList.remove('hidden');
-    }, DELAY);
-  }
-
-  function hide(){
-    pending = Math.max(0, pending-1);
-    if(pending>0) return;
-    if(showTimer){clearTimeout(showTimer);showTimer=null;}
-    const node = document.getElementById('tasneefLoadingV154');
-    if(!node) return;
-    const wait = Math.max(0, MIN_VISIBLE - (Date.now()-visibleSince));
-    setTimeout(()=>{ if(pending===0) node.classList.add('hidden'); }, wait);
-  }
-
-  window.showTasneefLoading = show;
-  window.hideTasneefLoading = hide;
-  window.withTasneefLoading = async function(promiseOrFn, message){
-    show(message);
-    try{return await (typeof promiseOrFn==='function' ? promiseOrFn() : promiseOrFn);} finally{hide();}
+  window.showTasneefLoading = function(){};
+  window.hideTasneefLoading = function(){};
+  window.withTasneefLoading = async function(promiseOrFn){
+    return await (typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn);
   };
-
-  function splash(){
-    if(!document.body || document.getElementById('tasneefSplashV154')) return;
-    injectStyle();
-    const s = document.createElement('div');
-    s.id = 'tasneefSplashV154';
-    s.className = 'tasneef-splash-v154';
-    s.innerHTML = `<div class="tasneef-load-card-v154"><div class="tasneef-logo-box-v154"><img src="${LOGO}" alt="Tasneef"></div><h2>شركة تصنيف لإدارة المرافق</h2><p>جاري تحميل النظام...</p><div class="tasneef-dots-v154"><i></i><i></i><i></i></div></div>`;
-    document.body.appendChild(s);
-    const close = ()=>setTimeout(()=>s.classList.add('hidden'), 650);
-    if(document.readyState==='complete') close(); else window.addEventListener('load', close, {once:true});
-    setTimeout(()=>s.classList.add('hidden'), 2400);
-    setTimeout(()=>{try{s.remove()}catch(e){}}, 3400);
+  function removeLoading(){
+    try{
+      document.querySelectorAll('#tasneefSplashV154,#tasneefLoadingV154,.tasneef-splash-v154,.tasneef-loading-v154').forEach(function(x){x.remove();});
+      document.documentElement.classList.add('tasneef-fast-v305');
+      document.body && document.body.classList.add('tasneef-fast-v305');
+    }catch(e){}
   }
-
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', splash); else splash();
-
-  // عرض شاشة تحميل خفيفة مع طلبات Supabase الطويلة فقط
-  const oldFetch = window.fetch;
-  if(oldFetch && !oldFetch.__tasneefPatchedV154){
-    const patched = function(input, init){
-      const url = (typeof input==='string') ? input : (input && input.url ? input.url : '');
-      const isSupabase = /supabase\.co|\/rest\/v1\//i.test(String(url));
-      if(isSupabase){
-        show('جاري تحميل البيانات...');
-        return oldFetch.apply(this, arguments).finally(hide);
-      }
-      return oldFetch.apply(this, arguments);
-    };
-    patched.__tasneefPatchedV154 = true;
-    window.fetch = patched;
-  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', removeLoading); else removeLoading();
+  window.addEventListener('load', removeLoading, {once:true});
+  setTimeout(removeLoading, 50);
+  setTimeout(removeLoading, 500);
 })();
 
 // Tasneef HTML App V86 - Contract Services Cloud View Fix
@@ -17314,7 +17220,7 @@ function financePrintReport(kind){
     b.textContent='Tasneef '+FIX_VERSION;
     b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.9';
   }
-  document.addEventListener('DOMContentLoaded', function(){ showBadge(); setTimeout(()=>{ if(document.body) refreshAllV281(); }, 300); });
+  document.addEventListener('DOMContentLoaded', function(){ showBadge(); if(!document.getElementById('supTitle')) setTimeout(()=>{ if(document.body) refreshAllV281(); }, 300); });
   console.log('Tasneef '+FIX_VERSION+' loaded');
 })();
 
@@ -17487,7 +17393,7 @@ function financePrintReport(kind){
     b.textContent='Tasneef '+FIX_VERSION;
     b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.9';
   }
-  document.addEventListener('DOMContentLoaded', function(){ showBadgeV282(); setTimeout(()=>refreshAllV282(), 500); });
+  document.addEventListener('DOMContentLoaded', function(){ showBadgeV282(); if(!document.getElementById('supTitle')) setTimeout(()=>refreshAllV282(), 500); });
   console.log('Tasneef '+FIX_VERSION+' loaded');
 })();
 
@@ -17981,4 +17887,90 @@ function financePrintReport(kind){
   const oldRefreshV299=window.refreshAll;
   if(typeof oldRefreshV299==='function') window.refreshAll=async function(){ const r=await oldRefreshV299.apply(this,arguments); await loadSmart(); return r; };
   window.__contractSmartV299={loadSmart,getSmart,persistSmart};
+})();
+
+/* ===== V305: No loading screen + supervisor fast mode ===== */
+(function(){
+  const FIX_VERSION = 'v305-no-loader-fast-mode';
+  function hardRemoveLoader(){
+    try{
+      document.querySelectorAll('#tasneefSplashV154,#tasneefLoadingV154,.tasneef-splash-v154,.tasneef-loading-v154').forEach(function(n){ n.remove(); });
+      if(!document.getElementById('tasneefNoLoaderV305')){
+        const st=document.createElement('style'); st.id='tasneefNoLoaderV305';
+        st.textContent='#tasneefSplashV154,#tasneefLoadingV154,.tasneef-splash-v154,.tasneef-loading-v154{display:none!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important} *{scroll-behavior:auto!important}';
+        document.head.appendChild(st);
+      }
+    }catch(e){}
+  }
+  window.showTasneefLoading=function(){};
+  window.hideTasneefLoading=function(){};
+  window.withTasneefLoading=async function(promiseOrFn){ return await (typeof promiseOrFn==='function'?promiseOrFn():promiseOrFn); };
+  hardRemoveLoader();
+  document.addEventListener('DOMContentLoaded', hardRemoveLoader);
+  window.addEventListener('load', hardRemoveLoader);
+  setInterval(hardRemoveLoader, 1200);
+
+  function normId(v){ return v==null ? '' : String(v); }
+  async function safeData(q){ try{ const r=await q; if(r.error){ console.warn('[Tasneef '+FIX_VERSION+']', r.error.message); return []; } return r.data||[]; }catch(e){ console.warn('[Tasneef '+FIX_VERSION+']', e?.message||e); return []; } }
+  function dateBack(days){ const d=new Date(); d.setDate(d.getDate()-days); return d.toISOString().slice(0,10); }
+
+  window.initSupervisor = async function(){
+    const u = requireRole('supervisor'); if(!u) return;
+    hardRemoveLoader();
+    const since = dateBack(45);
+    const [users, projects, workers, assignments, logs, tickets] = await Promise.all([
+      safeData(sb.from('app_users').select('*').order('id')),
+      safeData(sb.from('projects').select('*').eq('supervisor_id', u.id).order('name')),
+      safeData(sb.from('workers').select('*').order('name')),
+      safeData(sb.from('worker_project_assignments').select('*').eq('is_active', true).order('id')),
+      safeData(sb.from('time_logs').select('*').gte('log_date', since).order('check_in',{ascending:false}).limit(250)),
+      safeData(sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(250))
+    ]);
+    data.users = users;
+    data.supervisors = users.filter(x=>x.role==='supervisor' && x.is_active!==false);
+    data.technicians = users.filter(x=>x.role==='technician' && x.is_active!==false);
+    data.projects = projects;
+    data.workerAssignments = assignments;
+    const supProjectIds = new Set(projects.map(p=>normId(p.id)));
+    data.workers = workers.filter(function(w){
+      if(normId(w.app_supervisor_id||w.supervisor_id)===normId(u.id)) return true;
+      const directProject = normId((typeof workerProjectId==='function') ? workerProjectId(w) : (w.project_id||w.assigned_project_id));
+      if(directProject && supProjectIds.has(directProject)) return true;
+      return assignments.some(a=>normId(a.worker_id)===normId(w.id) && supProjectIds.has(normId(a.project_id)));
+    });
+    data.logs = logs.filter(l=>normId(l.supervisor_id)===normId(u.id) || supProjectIds.has(normId(l.project_id)));
+    data.tickets = tickets.filter(t=>normId(t.supervisor_id)===normId(u.id) || normId(t.created_by)===normId(u.id) || supProjectIds.has(normId(t.project_id)));
+    if($('supTitle')) $('supTitle').textContent = `لوحة المشرف - ${u.full_name||u.username||''}`;
+    if(typeof fillSelect==='function'){
+      fillSelect('logProject', data.projects, 'name', 'اختر المشروع');
+      fillSelect('attendanceProject', data.projects, 'name', 'اختر المشروع');
+      fillSelect('ticketProject', data.projects, 'name', 'اختر المشروع');
+      fillSelect('supTicketFilterProject', data.projects, 'name', 'كل المشاريع');
+    }
+    if($('logDate')) $('logDate').value=today();
+    if($('attendanceDate')) $('attendanceDate').value=today();
+    try{ renderSupervisorAttendanceList(); }catch(e){ console.warn(e); }
+    try{ renderTimeLogs(); }catch(e){ console.warn(e); }
+    try{ renderTickets(); }catch(e){ console.warn(e); }
+    hardRemoveLoader();
+  };
+  try{ initSupervisor = window.initSupervisor; }catch(e){}
+
+  // تحميل المخزون فقط عند فتح تبويب المخزون وليس مع بداية لوحة المشرف.
+  const oldShowSupervisorWindow = window.showSupervisorWindow;
+  window.showSupervisorWindow = function(id, btn){
+    if(typeof oldShowSupervisorWindow === 'function') oldShowSupervisorWindow(id, btn);
+    if(id==='supInventory' && typeof supervisorInventoryLoad==='function') setTimeout(supervisorInventoryLoad, 50);
+  };
+  try{ showSupervisorWindow = window.showSupervisorWindow; }catch(e){}
+
+  // منع إعادة تحميل ثقيلة في صفحة المشرف.
+  const oldRefreshAll = window.refreshAll;
+  window.refreshAll = async function(){
+    if(document.getElementById('supTitle')) return window.initSupervisor();
+    if(typeof oldRefreshAll === 'function') return oldRefreshAll();
+  };
+  try{ refreshAll = window.refreshAll; }catch(e){}
+
+  console.log('Tasneef '+FIX_VERSION+' loaded');
 })();

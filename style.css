@@ -151,3 +151,15 @@ td.row-actions{width:180px!important;max-width:none!important}
 .contract-smart-head h2{margin:0;color:#fff}.contract-smart-head small{color:#d6eee6}.contract-smart-actions{display:flex;gap:8px;flex-wrap:wrap}.contract-smart-actions .light{background:#fff;color:#0A4033}.contract-smart-actions .danger{background:#b83232;color:#fff}
 .contract-smart-tabs{display:flex;gap:8px;padding:14px 18px;border-bottom:1px solid #dce8e4;background:#f8fcfa;position:sticky;top:75px;z-index:4}.contract-smart-tabs button{background:#eef6f3;color:#0A4033;border:1px solid #dce8e4}.contract-smart-tabs button.active{background:#0A4033;color:#fff}
 .contract-smart-tab-body{padding:18px}.smart-grid{display:grid;gap:12px}.smart-grid.three{grid-template-columns:repeat(3,1fr)}.smart-grid.four{grid-template-columns:2fr 2fr 1fr auto}.smart-box{background:#fbfdfc;border:1px solid #dce8e4;border-radius:20px;padding:16px;margin-bottom:14px}.smart-box h3{margin:0 0 12px;color:#0A4033}.smart-end{display:flex;align-items:end}.muted{color:#60706a}.core-service-card{border:1px solid #dce8e4;border-radius:20px;padding:14px;background:#fff;box-shadow:0 8px 22px rgba(10,64,51,.05)}.core-service-card h3{margin:0 0 10px;color:#0A4033;display:flex;align-items:center;justify-content:space-between}.toggle-row{display:flex;gap:10px;align-items:center;margin:8px 0}.toggle-row input{width:auto}.visit-boxes{display:flex;gap:6px;flex-wrap:wrap}.visit-chip{border:1px solid #dce8e4;background:#f2f8f6;color:#0A4033;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}.visit-chip.done{background:#0A4033;color:#fff;border-color:#0A4033}.visit-chip[disabled]{opacity:.65;cursor:not-allowed}.smart-report-table{width:100%;border-collapse:collapse;background:#fff;border-radius:16px;overflow:hidden}.smart-report-table th,.smart-report-table td{border:1px solid #dce8e4;padding:10px;text-align:center}.smart-report-table th{background:#0A4033;color:#fff}.smart-report-table td:first-child,.smart-report-table th:first-child{text-align:right}.smart-alert{background:#fff8e1;border:1px solid #f0d48a;color:#6f4d00;border-radius:14px;padding:10px;margin:8px 0}.smart-alert.danger{background:#fdecec;border-color:#f2b7b7;color:#922}.smart-progress{height:9px;background:#edf5f2;border-radius:99px;overflow:hidden}.smart-progress span{display:block;height:100%;background:#0A4033;border-radius:99px}@media(max-width:900px){.contract-smart-head{display:block}.contract-smart-actions{margin-top:12px}.smart-grid.three,.smart-grid.four{grid-template-columns:1fr}.contract-smart-tabs{top:110px;overflow:auto}.smart-end{align-items:stretch}}
+
+/* V305: remove startup loading overlay and reduce UI delays */
+#tasneefSplashV154,
+#tasneefLoadingV154,
+.tasneef-splash-v154,
+.tasneef-loading-v154{
+  display:none!important;
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+*{scroll-behavior:auto!important;}
