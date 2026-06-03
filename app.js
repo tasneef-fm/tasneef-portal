@@ -18240,3 +18240,131 @@ function financePrintReport(kind){
   window.addEventListener('load',()=>setTimeout(boot,1200));
   console.log('Tasneef '+FIX_VERSION+' loaded');
 })();
+
+/* ===== TASNEEF V331 - Monthly safe previous month + manual edit/add/delete rows ===== */
+(function(){
+  'use strict';
+  const VERSION='v331-monthly-safe-manual';
+  const $=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const S=v=>String(v??'').trim();
+  const sid=v=>v==null?'':String(v);
+  const N=v=>{const n=Number(String(v??0).replace(/,/g,''));return Number.isFinite(n)?n:0;};
+  const d=()=>window.data||{};
+  const todayMonth=()=>new Date().toISOString().slice(0,7);
+  const monthVal=()=>$('monthlyMonth')?.value||todayMonth();
+  const LS='tasneef_monthly_manual_v331';
+  const OLD_LS='tasneef_monthly_manual_v330';
+  function getStore(){
+    try{
+      let v=JSON.parse(localStorage.getItem(LS)||'null');
+      if(!v){ v={overrides:{}, rows:[]}; const old=JSON.parse(localStorage.getItem(OLD_LS)||'{}'); v.overrides=old||{}; localStorage.setItem(LS,JSON.stringify(v)); }
+      v.overrides=v.overrides||{}; v.rows=Array.isArray(v.rows)?v.rows:[]; return v;
+    }catch(e){return {overrides:{}, rows:[]};}
+  }
+  function setStore(v){try{localStorage.setItem(LS,JSON.stringify(v||{overrides:{},rows:[]}));}catch(e){}}
+  function key(m,s,p){return [m,sid(s),sid(p)].join('|');}
+  function override(m,s,p){return getStore().overrides[key(m,s,p)]||{};}
+  function saveOverride(m,s,p,patch){const st=getStore(), k=key(m,s,p); st.overrides[k]=Object.assign({},st.overrides[k]||{},patch||{}); setStore(st);}
+  function deleteOverride(m,s,p){const st=getStore(); delete st.overrides[key(m,s,p)]; st.rows=(st.rows||[]).filter(r=>!(r.month===m && sid(r.s)===sid(s) && sid(r.p)===sid(p))); setStore(st);}
+  function supName(id){try{return window.supervisorName(id)||'-';}catch(e){return (d().users||[]).find(u=>sid(u.id)===sid(id))?.full_name||'-';}}
+  function projName(id){try{return window.projectName(id)||'-';}catch(e){return (d().projects||[]).find(p=>sid(p.id)===sid(id))?.name||'-';}}
+  function projectSup(pid){return (d().projects||[]).find(p=>sid(p.id)===sid(pid))?.supervisor_id||'';}
+  function minsBetweenSafe(a,b){try{if(typeof window.minutesBetween==='function')return N(window.minutesBetween(a,b));}catch(e){} if(!a||!b)return 0; const x=new Date(a),y=new Date(b),z=(y-x)/60000; return Number.isFinite(z)&&z>0?Math.round(z):0;}
+  function actualMins(l){return N(l.duration_minutes)||minsBetweenSafe(l.check_in,l.check_out)||0;}
+  function minsTxt(m){try{if(typeof window.minsToText==='function')return window.minsToText(N(m));}catch(e){} return Math.floor(N(m)/60)+' ساعة '+(N(m)%60)+' دقيقة';}
+  function pct(v){return (Number(v||0).toFixed(1).replace(/\.0$/,''))+'%';}
+  function inMonth(v,m){const s=String(v||''); if(!s)return false; if(s.slice(0,7)===m)return true; try{return new Date(s).toISOString().slice(0,7)===m;}catch(e){return false;}}
+  function ymd(dt){return dt.toISOString().slice(0,10);}
+  function range(m){const [y,mo]=String(m).split('-').map(Number);return {start:m+'-01', end:ymd(new Date(y,mo,1))};}
+  function workersForProject(pid){
+    const set=new Set();
+    (d().workers||[]).forEach(w=>{if(sid(w.project_id)===sid(pid) && String(w.status||'active')!=='inactive' && w.name)set.add(w.name);});
+    (d().workerAssignments||[]).forEach(a=>{if(a&&a.is_active!==false&&sid(a.project_id)===sid(pid)){const w=(d().workers||[]).find(x=>sid(x.id)===sid(a.worker_id)); if(w?.name)set.add(w.name);}});
+    return [...set].join('، ')||'-';
+  }
+  function timeoutPromise(ms){return new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms));}
+  async function safeFetchMonthLogs(m){
+    // Do not freeze the page. If the database is slow, keep local data and allow manual monthly edits.
+    if(!window.sb || !m) return [];
+    const r=range(m);
+    try{
+      const q=window.sb.from('time_logs').select('id,supervisor_id,project_id,log_date,check_in,check_out,duration_minutes,travel_minutes,required_minutes').gte('check_in',r.start+'T00:00:00').lt('check_in',r.end+'T00:00:00').limit(1500);
+      const res=await Promise.race([q, timeoutPromise(6500)]);
+      if(res && !res.error){
+        const existing=(d().logs||[]).filter(l=>!inMonth(l.log_date||l.check_in||l.created_at,m));
+        const map=new Map(); existing.forEach(l=>map.set('old_'+(l.id||Math.random()),l)); (res.data||[]).forEach(l=>map.set('new_'+(l.id||Math.random()),l));
+        if(!window.data) window.data={}; window.data.logs=[...map.values()]; window.data.__monthlyLoadedV331=m;
+        return res.data||[];
+      }
+    }catch(e){
+      console.warn('Monthly safe fetch skipped:', e.message||e);
+    }
+    return [];
+  }
+  function monthlyRowsV331(){
+    const m=monthVal(), selected=$('monthlySupervisor')?.value||'';
+    const map=new Map();
+    (d().logs||[]).filter(l=>inMonth(l.log_date||l.check_in||l.created_at,m)).forEach(l=>{
+      const pid=l.project_id; if(!pid)return; const sup=l.supervisor_id||projectSup(pid)||''; if(selected&&sid(sup)!==sid(selected))return;
+      const k=key(m,sup,pid); if(!map.has(k))map.set(k,{manualOnly:false,s:sup,p:pid,a:0,c:0,t:0});
+      const r=map.get(k); r.a+=actualMins(l); r.c+=1; r.t+=N(l.travel_minutes);
+    });
+    const st=getStore();
+    (st.rows||[]).filter(r=>r.month===m).forEach(r=>{if(selected&&sid(r.s)!==sid(selected))return; const k=key(m,r.s,r.p); if(!map.has(k))map.set(k,{manualOnly:true,s:r.s,p:r.p,a:N(r.actual_minutes),c:N(r.count),t:N(r.travel_minutes)});});
+    const vals=[...map.values()]; const totals={}; vals.forEach(r=>totals[sid(r.s)]=(totals[sid(r.s)]||0)+N(r.a));
+    return vals.map(r=>{
+      const o=override(m,r.s,r.p); const calc=totals[sid(r.s)]?r.a/totals[sid(r.s)]*100:0;
+      return Object.assign({},r,{workers:o.workers!==undefined?o.workers:workersForProject(r.p), percent:o.percent!==undefined&&o.percent!==''?N(o.percent):calc, calcPercent:calc});
+    }).sort((a,b)=>String(supName(a.s)).localeCompare(String(supName(b.s)),'ar')||String(projName(a.p)).localeCompare(String(projName(b.p)),'ar'));
+  }
+  function ensureManualPanel(){
+    const page=$('monthly'); if(!page||$('monthlyManualPanelV331'))return;
+    const card=page.querySelector('.card')||page;
+    const panel=document.createElement('div'); panel.id='monthlyManualPanelV331'; panel.className='card'; panel.style.margin='10px 0';
+    panel.innerHTML=`<h3>تعديل يدوي للأوقات الشهرية</h3><div class="filters"><select id="monthlyAddSupervisorV331"><option value="">اختر المشرف</option></select><select id="monthlyAddProjectV331"><option value="">اختر المشروع</option></select><input id="monthlyAddWorkersV331" placeholder="أسماء العمال - يمكن الإضافة والحذف"><input id="monthlyAddPercentV331" type="number" step="0.1" placeholder="النسبة %"><input id="monthlyAddMinutesV331" type="number" placeholder="الدقائق الفعلية اختياري"><button onclick="addMonthlyManualRowV331()">إضافة / تحديث صف</button></div><div class="footer-note">هذا القسم يعطيك صلاحية إضافة مشروع يدويًا للشهر السابق أو تعديل أسماء العمال والنسبة بدون الاعتماد على السجلات اليومية إذا كانت قاعدة البيانات بطيئة.</div>`;
+    const before=card.querySelector('.table-wrap'); card.insertBefore(panel,before||card.children[1]||null);
+    fillMonthlyManualSelects();
+  }
+  function fillMonthlyManualSelects(){
+    const s=$('monthlyAddSupervisorV331'), p=$('monthlyAddProjectV331');
+    if(s&&!s.dataset.done){s.innerHTML='<option value="">اختر المشرف</option>'+(d().supervisors||d().users||[]).filter(u=>!u.role||u.role==='supervisor'||u.role==='operations_manager'||u.full_name).map(u=>`<option value="${esc(u.id)}">${esc(u.full_name||u.name||u.username||u.id)}</option>`).join(''); s.dataset.done='1';}
+    if(p&&!p.dataset.done){p.innerHTML='<option value="">اختر المشروع</option>'+(d().projects||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name||x.id)}</option>`).join(''); p.dataset.done='1';}
+  }
+  window.addMonthlyManualRowV331=function(){
+    const m=monthVal(), s=$('monthlyAddSupervisorV331')?.value||'', p=$('monthlyAddProjectV331')?.value||''; if(!s||!p) return alert('اختر المشرف والمشروع');
+    const st=getStore(); st.rows=(st.rows||[]).filter(r=>!(r.month===m&&sid(r.s)===sid(s)&&sid(r.p)===sid(p)));
+    st.rows.push({month:m,s,p,actual_minutes:N($('monthlyAddMinutesV331')?.value),count:N($('monthlyAddMinutesV331')?.value)?1:0,travel_minutes:0}); setStore(st);
+    saveOverride(m,s,p,{workers:$('monthlyAddWorkersV331')?.value||workersForProject(p), percent:$('monthlyAddPercentV331')?.value||''});
+    if(typeof msg==='function')msg('تم إضافة / تحديث الصف اليدوي'); renderMonthlyV331();
+  };
+  window.saveMonthlyManualV331=function(m,s,p){
+    const tr=[...document.querySelectorAll('#monthlyBody tr')].find(x=>sid(x.dataset.s)===sid(s)&&sid(x.dataset.p)===sid(p)); if(!tr)return;
+    saveOverride(m,s,p,{workers:tr.querySelector('.monthly-workers-edit-v331')?.value||'', percent:tr.querySelector('.monthly-percent-edit-v331')?.value||''});
+    if(typeof msg==='function')msg('تم حفظ التعديل');
+  };
+  window.deleteMonthlyManualV331=function(m,s,p){
+    if(!confirm('حذف التعديل اليدوي لهذا الصف؟'))return; deleteOverride(m,s,p); renderMonthlyV331();
+  };
+  async function renderMonthlyV331(){
+    const body=$('monthlyBody'); if(!body)return; ensureManualPanel(); fillMonthlyManualSelects();
+    const m=monthVal(); body.innerHTML='<tr><td colspan="9">جاري تجهيز بيانات الشهر...</td></tr>';
+    await safeFetchMonthLogs(m);
+    const table=body.closest('table'); if(table?.tHead)table.tHead.innerHTML='<tr><th>المشرف</th><th>المشروع</th><th>أسماء العمال</th><th>عدد السجلات</th><th>الساعات الفعلية</th><th>وقت الانتقال</th><th>النسبة %</th><th>مصدر</th><th>إجراء</th></tr>';
+    const rows=monthlyRowsV331();
+    if(!rows.length){body.innerHTML='<tr><td colspan="9">لا توجد بيانات لهذا الشهر. يمكنك إضافة صف يدوي من النموذج بالأعلى.</td></tr>'; updateSummary([]); return;}
+    body.innerHTML=rows.map(r=>`<tr data-s="${esc(r.s)}" data-p="${esc(r.p)}"><td>${esc(supName(r.s))}</td><td>${esc(projName(r.p))}</td><td><input class="monthly-workers-edit-v331" value="${esc(r.workers||'')}" style="min-width:260px" placeholder="أضف أو احذف أسماء العمال"></td><td>${N(r.c)}</td><td>${esc(minsTxt(r.a))}</td><td>${N(r.t)} دقيقة</td><td><input class="monthly-percent-edit-v331" type="number" step="0.1" value="${Number(r.percent||0).toFixed(1).replace(/\.0$/,'')}" style="width:100px;text-align:center"></td><td>${r.manualOnly?'يدوي':'سجلات'}</td><td><button class="light" onclick="saveMonthlyManualV331('${esc(m)}','${esc(r.s)}','${esc(r.p)}')">حفظ</button><button class="danger" onclick="deleteMonthlyManualV331('${esc(m)}','${esc(r.s)}','${esc(r.p)}')">حذف التعديل</button></td></tr>`).join('');
+    updateSummary(rows);
+  }
+  function updateSummary(rows){
+    const total=rows.reduce((a,r)=>a+N(r.a),0), supCount=new Set(rows.map(r=>sid(r.s))).size;
+    const box=$('monthlySummary'); if(box)box.innerHTML=`<div class="kpi"><small>إجمالي الوقت</small><b>${esc(minsTxt(total))}</b></div><div class="kpi"><small>عدد المشرفين</small><b>${supCount}</b></div><div class="kpi"><small>عدد المشاريع</small><b>${rows.length}</b></div><div class="kpi"><small>الشهر</small><b>${esc(monthVal())}</b></div>`;
+  }
+  window.renderMonthly=renderMonthlyV331; window.monthlyRowsV60=monthlyRowsV331; window.monthlyRowsV284=monthlyRowsV331; window.monthlyBaseRowsV59=monthlyRowsV331; window.monthlyReportRowsV58=monthlyRowsV331;
+  function downloadFile(filename, content, type){const blob=new Blob([content],{type:type||'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1500);}
+  window.exportMonthlyCSV=async function(){await renderMonthlyV331(); const rows=monthlyRowsV331(); const lines=[['الشهر','المشرف','المشروع','أسماء العمال','عدد السجلات','الساعات الفعلية','وقت الانتقال','النسبة','المصدر'],...rows.map(r=>[monthVal(),supName(r.s),projName(r.p),r.workers,N(r.c),minsTxt(r.a),N(r.t)+' دقيقة',pct(r.percent),r.manualOnly?'يدوي':'سجلات'])]; downloadFile('monthly_times_'+monthVal()+'.csv','\ufeff'+lines.map(row=>row.map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(',')).join('\n'))};
+  window.printMonthlyReportV57=async function(){await renderMonthlyV331(); const rows=monthlyRowsV331(); const trs=rows.map(r=>`<tr><td>${esc(supName(r.s))}</td><td>${esc(projName(r.p))}</td><td>${esc(r.workers)}</td><td>${N(r.c)}</td><td>${esc(minsTxt(r.a))}</td><td>${N(r.t)} دقيقة</td><td>${esc(pct(r.percent))}</td><td>${r.manualOnly?'يدوي':'سجلات'}</td></tr>`).join(''); const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>الأوقات الشهرية</title><style>body{font-family:Tahoma,Arial,sans-serif;padding:20px;color:#103d32}.head{display:flex;justify-content:space-between;border-bottom:3px solid #0a4033;margin-bottom:14px}.logo{font-weight:900;font-size:22px;color:#0a4033}table{width:100%;border-collapse:collapse}th{background:#0a4033;color:white}td,th{border:1px solid #dce6e2;padding:8px;text-align:center}tr:nth-child(even)td{background:#f7fbfa}@media print{button{display:none}}</style></head><body><button onclick="print()">طباعة</button><div class="head"><div class="logo">شركة تصنيف لإدارة المرافق</div><div><h1>تقرير الأوقات الشهرية</h1><p>الشهر: ${esc(monthVal())}</p></div></div><table><thead><tr><th>المشرف</th><th>المشروع</th><th>العمال</th><th>عدد السجلات</th><th>الساعات الفعلية</th><th>الانتقال</th><th>النسبة</th><th>المصدر</th></tr></thead><tbody>${trs||'<tr><td colspan="8">لا توجد بيانات</td></tr>'}</tbody></table><script>setTimeout(()=>print(),500)<\/script></body></html>`; const w=window.open('','_blank'); if(w){w.document.write(html); w.document.close();}};
+  function boot(){const m=$('monthlyMonth'), s=$('monthlySupervisor'); if(m&&!m.dataset.v331){m.dataset.v331='1'; m.addEventListener('change',()=>renderMonthlyV331());} if(s&&!s.dataset.v331){s.dataset.v331='1'; s.addEventListener('change',()=>renderMonthlyV331());} if($('monthlyBody')) renderMonthlyV331();}
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,900)); window.addEventListener('load',()=>setTimeout(boot,1400));
+  console.log('Tasneef '+VERSION+' loaded');
+})();
