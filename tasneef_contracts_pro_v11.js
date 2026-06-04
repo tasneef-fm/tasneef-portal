@@ -120,9 +120,9 @@
   function statusFor(x){
     if (!x.onUs) return {text:'غير مفعل', cls:'idle'};
     const miss = missingFields(x);
-    if (miss.length) return {text:'ناقص', cls:'warn'};
+    if (miss.length) return {text:'العقد علينا - ناقص', cls:'warn'};
     if (A(x.done).length >= N(x.visits)) return {text:'مكتمل', cls:'good'};
-    return {text:'موجود', cls:'good'};
+    return {text:'العقد علينا', cls:'good'};
   }
   function collect(){
     const r = emptyRecord();
@@ -202,16 +202,22 @@
   function renderPanels(){
     const r = getRecord(currentProjectId);
     renderContracts(r); renderAnnual(r); renderReport(r);
+    bindLiveInputs();
   }
   function renderContracts(r){
     const host = $('contractProContracts'); if (!host) return;
     host.innerHTML = `<div class="contract-pro-grid">${CONTRACTS.map(c => {
       const x = r.contracts[c.key]; const st = statusFor(x); const disabled = currentMode === 'view' ? 'disabled' : '';
+      const miss = missingFields(x);
       return `<article class="pro-card ${st.cls}" data-pro-contract="${c.key}">
         <div class="pro-card-title">
           <div class="pro-icon">${esc(c.icon)}</div>
           <div><h3>${esc(c.label)}</h3><span class="pro-pill ${st.cls}">${esc(st.text)}</span></div>
-          <label class="pro-switch"><input type="checkbox" data-field="onUs" ${x.onUs?'checked':''} ${disabled} onchange="contractProRefresh()"> العقد علينا</label>
+          <label class="pro-switch ${x.onUs ? 'active' : ''}"><input type="checkbox" data-field="onUs" ${x.onUs?'checked':''} ${disabled} onchange="contractProRefresh()"> <span>${x.onUs ? 'العقد علينا' : 'ليس علينا'}</span></label>
+        </div>
+        <div class="pro-contract-state ${x.onUs ? (miss.length ? 'missing' : 'ok') : 'idle'}">
+          <span>${x.onUs ? (miss.length ? 'العقد ناقص' : 'العقد موجود ومكتمل البيانات') : 'العقد غير مفعل'}</span>
+          ${currentMode === 'view' ? `<button type="button" class="light" onclick="contractProSetMode('edit')">تفعيل التعديل</button>` : `<button type="button" class="${miss.length ? 'danger' : 'light'}" onclick="contractProToggleMissing('${c.key}')">${miss.length ? 'تحديد كناقص' : 'مكتمل'}</button>`}
         </div>
         <div class="pro-fields ${x.onUs ? '' : 'off'}">
           <label>اسم الشركة<input data-field="company" value="${esc(x.company)}" ${disabled}></label>
@@ -222,7 +228,7 @@
           <label>ملاحظات<input data-field="notes" value="${esc(x.notes)}" ${disabled}></label>
         </div>
         <div class="pro-visits">${visitButtons('contractProToggleCore', c.key, x.visits, x.done)}</div>
-        ${x.onUs && missingFields(x).length ? `<div class="pro-warning">البيانات الناقصة: ${esc(missingFields(x).join('، '))}</div>` : ''}
+        ${x.onUs && miss.length ? `<div class="pro-warning">تنبيه: العقد علينا ولا تظهر بياناته كاملة في السجلات. الناقص: ${esc(miss.join('، '))}</div>` : ''}
       </article>`;
     }).join('')}</div>`;
   }
@@ -255,7 +261,26 @@
     cache[S(currentProjectId)] = collect();
     writeLS();
   }
+  function bindLiveInputs(){
+    document.querySelectorAll('#contractSmartModal input, #contractSmartModal select').forEach(el => {
+      if (el.dataset.proBound) return;
+      el.dataset.proBound = '1';
+      el.addEventListener('change', () => { if (currentMode !== 'view') keepDraft(); });
+      el.addEventListener('input', () => { if (currentMode !== 'view') keepDraft(); });
+    });
+  }
   window.contractProRefresh = function(){ keepDraft(); renderPanels(); };
+  window.contractProToggleMissing = function(key){
+    if (currentMode === 'view') return;
+    const r = collect();
+    const x = r.contracts[key];
+    if (!x) return;
+    x.onUs = true;
+    if (!N(x.visits)) x.visits = 1;
+    cache[S(currentProjectId)] = r;
+    writeLS();
+    renderPanels();
+  };
   window.contractProToggleCore = function(key,no){
     if (currentMode === 'view') return;
     const r = collect(); const x = r.contracts[key]; const set = new Set(A(x.done).map(Number));
@@ -317,10 +342,11 @@
       CONTRACTS.forEach(c => {
         const x = r.contracts[c.key]; if (!x.onUs) return;
         const miss = missingFields(x);
-        if (miss.length) rows.push(`<div class="alert-item warn"><b>${esc(c.label)} - ${esc(p.name)}</b><br>بيانات ناقصة: ${esc(miss.join('، '))}</div>`);
+        if (miss.length) rows.push(`<div class="alert-item warn"><b>${esc(c.label)} - ${esc(p.name)}</b><br>العقد علينا، لكن بيانات العقد/الشركة ناقصة: ${esc(miss.join('، '))}</div>`);
       });
     });
     if (rows.length) host.innerHTML = rows.join('');
+    else host.innerHTML = '<div class="alert-item">لا توجد عقود ناقصة حاليا</div>';
   }
   function renderContractsTable(){
     const body = $('contractsBody'); if (!body) return;
@@ -352,7 +378,9 @@
       .contract-pro-head{position:sticky;top:0;z-index:5;display:flex;justify-content:space-between;gap:16px;align-items:flex-start;padding:18px;background:#fff;border-bottom:1px solid #dce8e4}.contract-pro-kicker{color:#60706a;font-weight:800;font-size:12px}.contract-pro-head h2{margin:4px 0 8px;color:#063f32}.contract-pro-meta{display:flex;gap:8px;flex-wrap:wrap;color:#60706a;font-size:12px}.contract-pro-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.contract-pro-tools select{min-width:220px}
       .pro-pill{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;font-weight:800;background:#eef6f3;color:#064c3b}.pro-pill.warn{background:#fff4d7;color:#8a6400}.pro-pill.bad{background:#ffe3e3;color:#9b2424}.pro-pill.idle{background:#eef1f0;color:#60706a}
       .contract-pro-tabs{display:flex;gap:8px;padding:12px 18px;background:#f8fbfa;position:sticky;top:84px;z-index:4}.contract-pro-tabs button.active{background:#064c3b!important;color:#fff!important}.contract-pro-body{padding:18px}.contract-pro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px}
-      .pro-card,.pro-annual-item,.pro-annual-add,.pro-report-card{background:#fff;border:1px solid #dce8e4;border-radius:16px;padding:14px}.pro-card.good{border-color:#9ad8bf}.pro-card.warn{border-color:#f0d28a}.pro-card-title{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center}.pro-icon{width:42px;height:42px;border-radius:14px;background:#e9f6f1;display:grid;place-items:center;font-weight:900;color:#064c3b}.pro-card-title h3{margin:0;color:#063f32}.pro-switch{display:flex;gap:6px;align-items:center;font-weight:800;color:#063f32}.pro-switch input{width:auto}.pro-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pro-fields.off{opacity:.45}.pro-visits{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.pro-visit{min-width:34px;height:34px;padding:0 8px!important;border-radius:10px!important;background:#eef6f3!important;color:#064c3b!important;border:1px solid #d7e8e1!important}.pro-visit.done{background:#064c3b!important;color:#fff!important}.pro-warning{margin-top:10px;background:#fff4d7;border:1px solid #f0d28a;color:#805b00;border-radius:12px;padding:8px;font-weight:800}.pro-empty{border:1px dashed #d7e8e1;border-radius:12px;padding:8px;color:#60706a;background:#fbfdfc}.pro-empty.wide{padding:16px;text-align:center}.pro-annual-add{display:grid;grid-template-columns:1fr 1fr 160px auto;gap:10px;align-items:end;margin-bottom:14px}.pro-annual-list{display:grid;gap:10px}.pro-annual-item{display:grid;grid-template-columns:220px 1fr auto;gap:10px;align-items:center}.pro-report-card table{width:100%;border-collapse:collapse}.pro-report-card th,.pro-report-card td{border-bottom:1px solid #edf1ef;padding:10px;text-align:right}.pro-report-card th{background:#064c3b;color:#fff}
+      .pro-card,.pro-annual-item,.pro-annual-add,.pro-report-card{background:#fff;border:1px solid #dce8e4;border-radius:16px;padding:14px}.pro-card.good{border-color:#9ad8bf}.pro-card.warn{border-color:#f0d28a}.pro-card-title{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center}.pro-icon{width:42px;height:42px;border-radius:14px;background:#e9f6f1;display:grid;place-items:center;font-weight:900;color:#064c3b}.pro-card-title h3{margin:0;color:#063f32}.pro-switch{display:flex;gap:7px;align-items:center;font-weight:900;color:#60706a;border:1px solid #d7e8e1;background:#f4f7f6;border-radius:999px;padding:7px 10px;margin:0}.pro-switch.active{background:#064c3b;color:#fff;border-color:#064c3b}.pro-switch input{width:auto;accent-color:#064c3b}.pro-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pro-fields.off{opacity:.45}.pro-visits{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.pro-visit{min-width:34px;height:34px;padding:0 8px!important;border-radius:10px!important;background:#eef6f3!important;color:#064c3b!important;border:1px solid #d7e8e1!important}.pro-visit.done{background:#064c3b!important;color:#fff!important}.pro-warning{margin-top:10px;background:#fff4d7;border:1px solid #f0d28a;color:#805b00;border-radius:12px;padding:8px;font-weight:800}.pro-empty{border:1px dashed #d7e8e1;border-radius:12px;padding:8px;color:#60706a;background:#fbfdfc}.pro-empty.wide{padding:16px;text-align:center}.pro-annual-add{display:grid;grid-template-columns:1fr 1fr 160px auto;gap:10px;align-items:end;margin-bottom:14px}.pro-annual-list{display:grid;gap:10px}.pro-annual-item{display:grid;grid-template-columns:220px 1fr auto;gap:10px;align-items:center}.pro-report-card table{width:100%;border-collapse:collapse}.pro-report-card th,.pro-report-card td{border-bottom:1px solid #edf1ef;padding:10px;text-align:right}.pro-report-card th{background:#064c3b;color:#fff}
+      .pro-contract-state{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;border-radius:12px;padding:8px 10px;font-weight:900}.pro-contract-state.ok{background:#e7f6ef;color:#07533f}.pro-contract-state.missing{background:#fff4d7;color:#805b00}.pro-contract-state.idle{background:#eef1f0;color:#60706a}.pro-contract-state button{padding:7px 10px!important;border-radius:10px!important}
+      .contract-pro-panel input:not([type="checkbox"]),.contract-pro-panel select{min-height:38px}.contract-pro-panel input:disabled,.contract-pro-panel select:disabled{background:#f7faf9!important;color:#879893!important;cursor:not-allowed}
       @media(max-width:820px){.contract-pro-head{display:block}.contract-pro-tools{margin-top:12px}.contract-pro-tabs{top:128px}.pro-fields,.pro-annual-add,.pro-annual-item{grid-template-columns:1fr}.pro-card-title{grid-template-columns:42px 1fr}}
     `;
     document.head.appendChild(s);
