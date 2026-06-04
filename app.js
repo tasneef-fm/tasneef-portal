@@ -19309,3 +19309,249 @@ function financePrintReport(kind){
   window.TASNEEF_BUILD=BUILD;
   console.log('Tasneef '+BUILD+' loaded');
 })();
+
+/* ===== V343: Beautiful attendance workflow - daily source of truth ===== */
+(function(){
+  const BUILD='v343-attendance-beautiful-daily-records';
+  if(window.__tasneefV343AttendanceBeautiful) return;
+  window.__tasneefV343AttendanceBeautiful = true;
+  const S=v=>String(v??'').trim();
+  const N=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+  const A=v=>Array.isArray(v)?v:[];
+  const $id=id=>document.getElementById(id);
+  const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ds=()=> (typeof data!=='undefined'?data:(window.data||{}));
+  const todayStr=()=> (typeof today==='function'?today():new Date().toISOString().slice(0,10));
+  const currentUser=()=>{try{return typeof session==='function'?(session()||{}):JSON.parse(localStorage.getItem('tasneef_user')||'{}')}catch(_){return {}}};
+  function message(t,type){try{ if(typeof msg==='function') msg(t,type||'ok'); else alert(t); }catch(_){alert(t)}}
+  function addStyle(){
+    if($id('tasneefAttendanceV343Style')) return;
+    const st=document.createElement('style'); st.id='tasneefAttendanceV343Style';
+    st.textContent=`
+      .att-v343-toolbar{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:10px;align-items:end;margin:12px 0}
+      .att-v343-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+      .att-v343-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:12px}
+      .att-v343-card{border:1px solid var(--line,#dce6e2);background:#fff;border-radius:18px;padding:12px;box-shadow:0 6px 18px rgba(10,64,51,.04)}
+      .att-v343-name{font-weight:900;color:var(--brand,#0A4033);font-size:16px;margin-bottom:6px}.att-v343-meta{color:var(--muted,#60706a);font-size:12px;line-height:1.7;margin-bottom:8px}
+      .att-v343-row{display:grid;grid-template-columns:1fr;gap:7px}.att-v343-note{font-size:12px;padding:8px!important;border-radius:10px!important;min-height:38px!important}
+      .att-v343-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.att-v343-summary .kpi b{font-size:26px!important}
+      .att-cell.att-leave{background:#fff8e4;color:#8a6700;border:1px solid #eed797}.att-cell.att-transfer{background:#eaf0ff;color:#2444a7;border:1px solid #c8d3ff}
+      .att-v343-print-title{display:none}.attendance-matrix-v343 th,.attendance-matrix-v343 td{text-align:center}.attendance-matrix-v343 th:first-child,.attendance-matrix-v343 td:first-child{position:sticky;right:0;background:#fff;z-index:3;text-align:right;min-width:170px}
+      @media(max-width:800px){.att-v343-toolbar,.att-v343-summary{grid-template-columns:1fr}.att-v343-grid{grid-template-columns:1fr}}
+      @media print{body{background:#fff!important}.side,.nav,.actions,.filters button,.att-v343-actions,#globalMsg{display:none!important}.att-v343-print-title{display:block!important;text-align:center;margin:0 0 14px;color:#0A4033}.attendance-matrix-wrap{max-height:none!important;overflow:visible!important;border:0!important}.attendance-matrix-v343{font-size:10px!important}.attendance-matrix-v343 th,.attendance-matrix-v343 td{padding:5px!important}.card{box-shadow:none!important;border:0!important}.att-cell{width:20px!important;height:20px!important;border-radius:7px!important;font-size:10px!important}}
+    `;
+    document.head.appendChild(st);
+  }
+  function normId(v){ return S(v); }
+  function workerRow(id){ return A(ds().workers).find(w=>normId(w.id)===normId(id)) || {}; }
+  function projectRow(id){ return A(ds().projects).find(p=>normId(p.id)===normId(id)) || {}; }
+  function userRow(id){ return A(ds().users).find(u=>normId(u.id)===normId(id)) || A(ds().supervisors).find(u=>normId(u.id)===normId(id)) || {}; }
+  function wName(id,rec){ const w=workerRow(id); return w.name||w.full_name||rec?.worker_name||rec?.name||'-'; }
+  function pName(id){ const p=projectRow(id); try{return (typeof projectName==='function'?projectName(id):'') || p.name || '-'}catch(_){return p.name||'-'} }
+  function sName(id,rec){ const u=userRow(id); try{return (typeof supervisorName==='function'?supervisorName(id):'') || u.full_name || u.name || u.username || rec?.supervisor_name || '-'}catch(_){return u.full_name||u.name||u.username||rec?.supervisor_name||'-'} }
+  function workerProjectIds(w){
+    const out=[]; ['project_id','assigned_project_id','current_project_id'].forEach(k=>{if(w&&w[k]) out.push(w[k])});
+    ['project_ids','assigned_project_ids','projects'].forEach(k=>{const v=w&&w[k]; if(Array.isArray(v)) v.forEach(x=>out.push(typeof x==='object'?(x.id||x.project_id):x)); else if(typeof v==='string') v.split(/[,،\s]+/).forEach(x=>x&&out.push(x));});
+    return [...new Set(out.map(normId).filter(Boolean))];
+  }
+  function workerSupervisorIds(w){
+    const out=[]; ['app_supervisor_id','supervisor_id','assigned_supervisor_id'].forEach(k=>{if(w&&w[k]) out.push(w[k])});
+    workerProjectIds(w).forEach(pid=>{const p=projectRow(pid); if(p.supervisor_id) out.push(p.supervisor_id);});
+    return [...new Set(out.map(normId).filter(Boolean))];
+  }
+  function mainProjectIdForWorker(w, selectedProject){
+    const ids=workerProjectIds(w); if(selectedProject && ids.includes(normId(selectedProject))) return selectedProject;
+    return ids[0] || w.project_id || w.assigned_project_id || '';
+  }
+  function statusInfo(st){
+    st=S(st)||'not_recorded';
+    if(['present','حاضر','حضور'].includes(st)) return {label:'حاضر',short:'ح',cls:'green',cell:'att-present'};
+    if(['absent','غائب','غياب'].includes(st)) return {label:'غائب',short:'غ',cls:'red',cell:'att-absent'};
+    if(['leave','vacation','إجازة','اجازة'].includes(st)) return {label:'إجازة',short:'ج',cls:'amber',cell:'att-leave'};
+    if(['transferred','transfer','نقل','منقول'].includes(st)) return {label:'نقل',short:'ن',cls:'',cell:'att-transfer'};
+    return {label:'لم يسجل',short:'-',cls:'',cell:'att-empty'};
+  }
+  function statusOptions(selected){
+    const opts=[['present','حاضر'],['absent','غائب'],['leave','إجازة'],['transferred','نقل لمشروع آخر']];
+    return opts.map(([v,l])=>`<option value="${v}" ${S(selected||'present')===v?'selected':''}>${l}</option>`).join('');
+  }
+  function recordDate(a){return S(a.attendance_date||a.date||a.created_at).slice(0,10)}
+  function recordMonth(a){return recordDate(a).slice(0,7)}
+  function daysInMonth(m){const [y,mo]=S(m||todayStr().slice(0,7)).split('-').map(Number); return new Date(y,mo,0).getDate();}
+  function dateOf(m,d){return `${m}-${String(d).padStart(2,'0')}`;}
+  function extractShift(note){ const m=S(note).match(/الفترة\s*:\s*([^|\n]+)/); return m?m[1].trim():''; }
+  function cleanNote(note){ return S(note).replace(/الفترة\s*:\s*[^|\n]+\s*\|?\s*/,'').trim(); }
+  function recordSupervisorId(a){
+    if(a.supervisor_id) return a.supervisor_id;
+    const w=workerRow(a.worker_id); const sids=workerSupervisorIds(w); if(sids[0]) return sids[0];
+    const p=projectRow(a.project_id || mainProjectIdForWorker(w,'')); return p.supervisor_id||'';
+  }
+  function recordProjectId(a){ const w=workerRow(a.worker_id); return a.project_id || mainProjectIdForWorker(w,'') || ''; }
+  function recordMatchesSupervisor(a, sid){
+    if(!sid) return true;
+    if(normId(a.supervisor_id)===normId(sid)) return true;
+    if(normId(recordSupervisorId(a))===normId(sid)) return true;
+    const w=workerRow(a.worker_id); if(workerSupervisorIds(w).includes(normId(sid))) return true;
+    const p=projectRow(recordProjectId(a)); return normId(p.supervisor_id)===normId(sid);
+  }
+  function supervisorRows(){
+    const rows=[...A(ds().supervisors),...A(ds().users).filter(u=>S(u.role)==='supervisor')]; const seen=new Set();
+    return rows.filter(r=>r&&r.id!=null&&!seen.has(normId(r.id))&&(seen.add(normId(r.id)),true));
+  }
+  function setSupervisorSelect(id, keep=true){
+    const el=$id(id); if(!el) return;
+    const old=keep?el.value:'';
+    el.innerHTML='<option value="">كل المشرفين</option>'+supervisorRows().map(s=>`<option value="${E(s.id)}">${E(s.full_name||s.name||s.username||s.id)}</option>`).join('');
+    if(old && [...el.options].some(o=>o.value===old)) el.value=old;
+  }
+  function fillProjectsSelect(el, projects, allLabel){
+    if(!el) return; const old=el.value;
+    el.innerHTML=`<option value="">${E(allLabel||'كل المشاريع')}</option>`+A(projects).map(p=>`<option value="${E(p.id)}">${E(p.name||p.title||p.id)}</option>`).join('');
+    if(old && [...el.options].some(o=>o.value===old)) el.value=old;
+  }
+  function setupSupervisorAttendanceUI(){
+    const list=$id('supervisorAttendanceList'); if(!list) return; addStyle();
+    const card=list.closest('.card'); if(!card || card.dataset.v343Ready) return;
+    card.dataset.v343Ready='1';
+    const oldDate=$id('attendanceDate')?.value || todayStr();
+    card.innerHTML=`
+      <h2>تحضير اليوم</h2>
+      <div class="sup-help">اختر المشروع والفترة، ثم حدّد حالة كل عامل. عند الحفظ يتم تحديث السجل الموجود لنفس اليوم والعامل بدل التكرار.</div>
+      <div class="att-v343-toolbar">
+        <div><label>التاريخ</label><input type="date" id="attendanceDate" value="${E(oldDate)}" onchange="renderSupervisorAttendanceList()"></div>
+        <div><label>المشروع</label><select id="attendanceProject" onchange="renderSupervisorAttendanceList()"><option value="">كل مشاريع المشرف</option></select></div>
+        <div><label>الفترة</label><select id="attendanceShiftType"><option value="زيارة يومية">زيارة يومية</option><option value="دوام كامل">دوام كامل</option><option value="صباح">صباح</option><option value="مساء">مساء</option></select></div>
+        <div><label>بحث العامل</label><input id="attendanceWorkerSearchV343" oninput="renderSupervisorAttendanceList()" placeholder="اسم العامل"></div>
+      </div>
+      <div class="att-v343-actions">
+        <button type="button" class="light" onclick="attendanceMarkAllV343('present')">اعتماد الكل حاضر</button>
+        <button type="button" class="light" onclick="attendanceMarkAllV343('absent')">اعتماد الكل غائب</button>
+        <button type="button" class="light" onclick="renderSupervisorAttendanceList()">تحديث الأسماء</button>
+      </div>
+      <div id="supervisorAttendanceList" class="att-v343-grid"></div>
+      <div class="actions"><button onclick="saveSupervisorAttendance()">حفظ تحضير اليوم</button></div>
+    `;
+  }
+  function supervisorContext(){
+    const u=currentUser(); const allProjects=A(ds().projects); const supProjects=allProjects.filter(p=>normId(p.supervisor_id)===normId(u.id)); const pids=new Set(supProjects.map(p=>normId(p.id)));
+    const workers=A(ds().workers).filter(w=>workerSupervisorIds(w).includes(normId(u.id)) || workerProjectIds(w).some(pid=>pids.has(normId(pid))));
+    return {u,projects:supProjects,workers};
+  }
+  window.attendanceMarkAllV343=function(st){ document.querySelectorAll('#supervisorAttendanceList select.att-status-v343').forEach(s=>s.value=st); };
+  window.renderSupervisorAttendanceList=function(){
+    setupSupervisorAttendanceUI(); addStyle();
+    const list=$id('supervisorAttendanceList'); if(!list) return;
+    const {projects,workers}=supervisorContext(); fillProjectsSelect($id('attendanceProject'),projects,'كل مشاريع المشرف');
+    const selectedProject=$id('attendanceProject')?.value||''; const q=S($id('attendanceWorkerSearchV343')?.value).toLowerCase();
+    const date=$id('attendanceDate')?.value||todayStr();
+    const todays=A(ds().attendance).filter(a=>recordDate(a)===date); const recByWorker=new Map(todays.map(a=>[normId(a.worker_id),a]));
+    let rows=workers.filter(w=>!selectedProject || workerProjectIds(w).includes(normId(selectedProject)) || normId(w.project_id)===normId(selectedProject));
+    if(q) rows=rows.filter(w=>S(w.name||w.full_name).toLowerCase().includes(q));
+    rows.sort((a,b)=>S(a.name||a.full_name).localeCompare(S(b.name||b.full_name),'ar'));
+    list.innerHTML=rows.map(w=>{
+      const rec=recByWorker.get(normId(w.id))||{}; const pid=rec.project_id || mainProjectIdForWorker(w,selectedProject); const st=rec.status||'present';
+      return `<div class="att-v343-card" data-worker="${E(w.id)}" data-project="${E(pid)}">
+        <div class="att-v343-name">${E(w.name||w.full_name||('عامل '+w.id))}</div>
+        <div class="att-v343-meta">المشروع: <b>${E(pName(pid))}</b>${rec.id?`<br>آخر حالة محفوظة: <b>${E(statusInfo(rec.status).label)}</b>`:''}</div>
+        <div class="att-v343-row"><select class="att-status-v343" data-worker="${E(w.id)}" data-project="${E(pid)}">${statusOptions(st)}</select><input class="att-v343-note" data-worker="${E(w.id)}" placeholder="ملاحظة اختيارية" value="${E(cleanNote(rec.notes||''))}"></div>
+      </div>`;
+    }).join('') || '<div class="sup-help">لا توجد أسماء مرتبطة بهذا المشروع أو المشرف. راجع ربط العمال بالمشرف أو المشروع.</div>';
+  };
+  window.saveSupervisorAttendance=async function(){
+    const u=currentUser(); if(!u.id) return message('سجّل الدخول أولاً','err');
+    const date=$id('attendanceDate')?.value||todayStr(); const shift=$id('attendanceShiftType')?.value||'زيارة يومية'; const selectedProject=$id('attendanceProject')?.value||'';
+    const cards=[...document.querySelectorAll('#supervisorAttendanceList .att-v343-card')]; if(!cards.length) return message('لا توجد أسماء للحفظ','err');
+    let ok=0, fail=0, last='';
+    for(const c of cards){
+      const wid=N(c.dataset.worker); if(!wid) continue;
+      const st=c.querySelector('select.att-status-v343')?.value||'present'; const note= c.querySelector('.att-v343-note')?.value||'';
+      const w=workerRow(wid); const pid=selectedProject || c.dataset.project || mainProjectIdForWorker(w,'');
+      const row={attendance_date:date,worker_id:wid,supervisor_id:N(u.id)||u.id,project_id:pid?(N(pid)||pid):null,status:st,notes:`الفترة: ${shift}${note?' | '+note:''}`,created_by:N(u.id)||u.id};
+      try{
+        const found=await sb.from('attendance').select('id').eq('attendance_date',date).eq('worker_id',wid).limit(1);
+        if(found.error) throw found.error;
+        const res=(found.data&&found.data.length)? await sb.from('attendance').update(row).eq('id',found.data[0].id) : await sb.from('attendance').insert([row]);
+        if(res.error) throw res.error; ok++;
+      }catch(e){ fail++; last=e?.message||String(e); console.error('attendance v343 save failed',row,e); }
+    }
+    if(fail) return message(`تم حفظ ${ok} اسم وفشل ${fail}: ${last}`,'err');
+    message(`تم حفظ تحضير اليوم لعدد ${ok} اسم`);
+    try{ await loadAll(); }catch(e){ console.warn(e); }
+    try{ window.renderSupervisorAttendanceList(); }catch(_){ }
+    try{ window.renderAttendance && window.renderAttendance(); }catch(_){ }
+    try{ window.renderAttendanceMonthly && window.renderAttendanceMonthly(); }catch(_){ }
+  };
+  const oldInitSupervisor=window.initSupervisor || (typeof initSupervisor==='function'?initSupervisor:null);
+  window.initSupervisor=async function(){
+    const u=(typeof requireRole==='function'?requireRole('supervisor'):currentUser()); if(!u) return;
+    try{ await loadAll(); }catch(e){ console.error(e); }
+    const allWorkers=[...A(ds().workers)], allProjects=[...A(ds().projects)], allLogs=[...A(ds().logs)], allTickets=[...A(ds().tickets)];
+    const supProjects=allProjects.filter(p=>normId(p.supervisor_id)===normId(u.id)); const pids=new Set(supProjects.map(p=>normId(p.id)));
+    const supWorkers=allWorkers.filter(w=>workerSupervisorIds(w).includes(normId(u.id)) || workerProjectIds(w).some(pid=>pids.has(normId(pid))));
+    try{ data.projects=supProjects; data.workers=supWorkers; data.logs=allLogs.filter(l=>normId(l.supervisor_id)===normId(u.id)); data.tickets=allTickets.filter(t=>normId(t.supervisor_id)===normId(u.id)||normId(t.created_by)===normId(u.id)||pids.has(normId(t.project_id))); }catch(_){ }
+    if($id('supTitle')) $id('supTitle').textContent=`لوحة المشرف - ${u.full_name||u.name||u.username||''}`;
+    try{ if(typeof fillSelect==='function'){ fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','كل مشاريع المشرف'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); fillSelect('supTicketFilterProject',data.projects,'name','كل المشاريع'); } }catch(_){ }
+    if($id('logDate')&&!$id('logDate').value) $id('logDate').value=todayStr(); if($id('attendanceDate')&&!$id('attendanceDate').value) $id('attendanceDate').value=todayStr();
+    setupSupervisorAttendanceUI();
+    try{ renderSupervisorAttendanceList(); }catch(e){ console.warn(e); }
+    try{ renderTimeLogs(); }catch(_){ }
+    try{ renderTickets(); }catch(_){ }
+    try{ if(typeof supervisorInventoryLoad==='function') await supervisorInventoryLoad(); }catch(_){ }
+  };
+  try{ initSupervisor=window.initSupervisor; }catch(_){ }
+  window.renderAttendance=function(){
+    addStyle();
+    const b=$id('attendanceBody'); if(!b) return;
+    const date=$id('attendanceFilterDate')?.value||''; const sid=$id('attendanceFilterSupervisor')?.value||''; const q=S($id('attendanceSearch')?.value).toLowerCase();
+    setSupervisorSelect('attendanceFilterSupervisor');
+    const table=b.closest('table'); const thead=table?.querySelector('thead'); if(thead) thead.innerHTML='<tr><th>التاريخ</th><th>العامل</th><th>المشرف</th><th>المشروع</th><th>الحالة</th><th>الفترة</th><th>ملاحظات</th><th>إجراء</th></tr>';
+    let rows=A(ds().attendance).filter(a=>(!date||recordDate(a)===date) && recordMatchesSupervisor(a,sid));
+    if(q) rows=rows.filter(a=>[wName(a.worker_id,a),sName(recordSupervisorId(a),a),pName(recordProjectId(a)),S(a.notes)].join(' ').toLowerCase().includes(q));
+    rows.sort((a,b)=>S(recordDate(b)).localeCompare(S(recordDate(a))) || Number(b.id||0)-Number(a.id||0));
+    b.innerHTML=rows.map(a=>{const st=statusInfo(a.status); const sid2=recordSupervisorId(a), pid=recordProjectId(a); return `<tr><td>${E(recordDate(a))}</td><td><b>${E(wName(a.worker_id,a))}</b></td><td>${E(sName(sid2,a))}</td><td>${E(pName(pid))}</td><td><span class="badge ${st.cls}">${E(st.label)}</span></td><td>${E(extractShift(a.notes)||'-')}</td><td>${E(cleanNote(a.notes||''))}</td><td class="row-actions"><button onclick="editAttendance(${Number(a.id)})">تعديل</button><button class="danger" onclick="deleteRow('attendance',${Number(a.id)})">حذف</button></td></tr>`}).join('') || '<tr><td colspan="8">لا توجد سجلات حضور حسب الفلتر المختار</td></tr>';
+  };
+  try{ renderAttendance=window.renderAttendance; }catch(_){ }
+  window.renderAttendanceMonthly=function(){
+    addStyle();
+    const body=$id('attendanceMatrixBody'), head=$id('attendanceMatrixHead'); if(!body||!head) return;
+    const mEl=$id('attendanceMatrixMonth'); if(mEl&&!mEl.value) mEl.value=todayStr().slice(0,7);
+    const month=mEl?.value||todayStr().slice(0,7); setSupervisorSelect('attendanceMatrixSupervisor');
+    const sid=$id('attendanceMatrixSupervisor')?.value||''; const q=S($id('attendanceMatrixSearch')?.value).toLowerCase(); const days=daysInMonth(month);
+    let recs=A(ds().attendance).filter(a=>recordMonth(a)===month && recordMatchesSupervisor(a,sid));
+    if(q) recs=recs.filter(a=>[wName(a.worker_id,a),pName(recordProjectId(a)),sName(recordSupervisorId(a),a)].join(' ').toLowerCase().includes(q));
+    // group by actual attendance record identity: worker + project + supervisor. This keeps transfers/projects visible and matches records.
+    const groups=new Map();
+    recs.forEach(a=>{const key=[a.worker_id||wName(a.worker_id,a),recordProjectId(a),recordSupervisorId(a)].map(normId).join('|'); if(!groups.has(key)) groups.set(key,{sample:a,records:[]}); groups.get(key).records.push(a);});
+    const arr=[...groups.values()].sort((x,y)=>S(wName(x.sample.worker_id,x.sample)).localeCompare(S(wName(y.sample.worker_id,y.sample),'ar')));
+    head.innerHTML='<tr><th>الاسم</th><th>النوع</th><th>المشرف</th><th>المشروع</th><th>الفترة</th>'+Array.from({length:days},(_,i)=>`<th>${String(i+1).padStart(2,'0')}</th>`).join('')+'<th>حضور</th><th>غياب</th><th>إجازة</th><th>نقل</th><th>النسبة</th></tr>';
+    let totalP=0,totalA=0,totalL=0,totalT=0;
+    body.closest('table')?.classList.add('attendance-matrix-v343');
+    body.innerHTML=arr.map(g=>{
+      const latest=new Map(); g.records.forEach(r=>{const d=recordDate(r); const old=latest.get(d); if(!old||Number(r.id||0)>Number(old.id||0)) latest.set(d,r);});
+      let p=0,a=0,l=0,t=0; const cells=[];
+      for(let d=1; d<=days; d++){ const rec=latest.get(dateOf(month,d)); const inf=statusInfo(rec?.status); if(inf.short==='ح')p++; else if(inf.short==='غ')a++; else if(inf.short==='ج')l++; else if(inf.short==='ن')t++; cells.push(`<td title="${E(inf.label)}"><span class="att-cell ${inf.cell}">${E(inf.short)}</span></td>`); }
+      totalP+=p; totalA+=a; totalL+=l; totalT+=t; const denom=p+a+l+t; const pct=denom?(p/denom*100):0; const cls=pct>=90?'green':(pct>=70?'amber':'red');
+      const sample=g.sample, wid=sample.worker_id, sup=recordSupervisorId(sample), pid=recordProjectId(sample), shift=extractShift(sample.notes)||'-'; const w=workerRow(wid);
+      return `<tr><td><b>${E(wName(wid,sample))}</b></td><td>${E(w.worker_type==='support'?'بديل / مساند':'عامل')}</td><td>${E(sName(sup,sample))}</td><td>${E(pName(pid))}</td><td>${E(shift)}</td>${cells.join('')}<td><span class="badge green">${p}</span></td><td><span class="badge red">${a}</span></td><td><span class="badge amber">${l}</span></td><td><span class="badge">${t}</span></td><td><span class="badge ${cls}">${pct.toFixed(1)}%</span></td></tr>`;
+    }).join('') || `<tr><td colspan="${days+10}">لا توجد سجلات حضور مطابقة للفلاتر المختارة</td></tr>`;
+    const denom=totalP+totalA+totalL+totalT; const pct=denom?(totalP/denom*100):0;
+    const sum=$id('attendanceMatrixSummary'); if(sum) sum.innerHTML=`<div class="kpi"><small>عدد الصفوف من سجلات الحضور</small><b>${arr.length}</b></div><div class="kpi"><small>إجمالي الحضور</small><b>${totalP}</b></div><div class="kpi"><small>إجمالي الغياب</small><b>${totalA}</b></div><div class="kpi"><small>نسبة الحضور</small><b>${pct.toFixed(1)}%</b></div>`;
+    const card=body.closest('.card'); if(card && !$id('attV343PrintTitle')){ const title=document.createElement('h2'); title.id='attV343PrintTitle'; title.className='att-v343-print-title'; title.textContent='تقرير الحضور والغياب الشهري'; card.prepend(title); }
+  };
+  try{ renderAttendanceMonthly=window.renderAttendanceMonthly; }catch(_){ }
+  window.printAttendanceMonthlyV343=function(){ window.renderAttendanceMonthly&&window.renderAttendanceMonthly(); setTimeout(()=>window.print(),100); };
+  window.exportAttendanceMatrixCSV=function(){
+    const month=$id('attendanceMatrixMonth')?.value||todayStr().slice(0,7); const rows=[];
+    const heads=[...document.querySelectorAll('#attendanceMatrixHead th')].map(th=>'"'+th.textContent.trim().replace(/"/g,'""')+'"').join(','); rows.push(heads);
+    document.querySelectorAll('#attendanceMatrixBody tr').forEach(tr=>rows.push([...tr.children].map(td=>'"'+td.textContent.trim().replace(/"/g,'""')+'"').join(',')));
+    try{ if(typeof download==='function') download(`attendance-${month}.csv`, rows.join('\n')); else { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8'})); a.download=`attendance-${month}.csv`; a.click(); } }catch(e){console.error(e)}
+  };
+  function enhanceAdminButtons(){
+    const sum=$id('attendanceMatrixSummary'); if(!sum) return; const actions=sum.nextElementSibling; if(actions && !actions.querySelector('[data-v343-print]')){ const btn=document.createElement('button'); btn.className='light'; btn.dataset.v343Print='1'; btn.textContent='طباعة PDF'; btn.onclick=window.printAttendanceMonthlyV343; actions.appendChild(btn); }
+  }
+  document.addEventListener('DOMContentLoaded',()=>{ addStyle(); setTimeout(()=>{ try{setupSupervisorAttendanceUI();}catch(_){ } try{enhanceAdminButtons();}catch(_){ } try{ if($id('attendanceMatrixBody')) window.renderAttendanceMonthly(); }catch(e){console.warn(e)} },800); });
+  document.addEventListener('change',e=>{ if(e.target && ['attendanceMatrixMonth','attendanceMatrixSupervisor','attendanceFilterSupervisor','attendanceFilterDate'].includes(e.target.id)){ setTimeout(()=>{try{window.renderAttendance(); window.renderAttendanceMonthly();}catch(_){ }},20); } });
+  document.addEventListener('input',e=>{ if(e.target && ['attendanceMatrixSearch','attendanceSearch'].includes(e.target.id)){ setTimeout(()=>{try{window.renderAttendance(); window.renderAttendanceMonthly();}catch(_){ }},20); } });
+  window.TASNEEF_ATTENDANCE_BUILD=BUILD;
+  console.log('Tasneef '+BUILD+' loaded');
+})();
