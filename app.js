@@ -16946,6 +16946,41 @@ function financePrintReport(kind){
     renderOrdersV233();
   };
 
+  function orderFieldV361(r, idx){
+    const key = visibleHeaders[idx];
+    return key ? r[key] : '';
+  }
+  function orderCardHtmlV361(r,i){
+    const no=orderFieldV361(r,0)||'-', group=orderFieldV361(r,1)||'-', date=displayDate(orderFieldV361(r,2))||'-';
+    const sender=orderFieldV361(r,4)||'-', project=orderFieldV361(r,5)||'-', client=orderFieldV361(r,8)||'-', phone=orderFieldV361(r,9)||'-';
+    const executor=orderFieldV361(r,10)||'-', details=orderFieldV361(r,11)||'', status=orderFieldV361(r,16)||'-';
+    const price=orderFieldV361(r,18), profit=orderFieldV361(r,22), pay=orderFieldV361(r,23)||'-', bill=orderFieldV361(r,25)||'-';
+    const st=String(status), py=String(pay);
+    const cls=(st.includes('لم ينفذ')||st.includes('ملغي'))?'cancel':((py.includes('آجل')||py.includes('جزئي'))?'due':(st.includes('تم التنفيذ')?'done':''));
+    return `<article class="order-card-v360 ${cls}">
+      <div class="order-card-head-v360"><div><h3>${esc2(no)}</h3><small>رقم القروب: ${esc2(group)} | ${esc2(date)}</small></div><span class="order-chip-v360">${esc2(project)}</span></div>
+      <div class="order-chip-row-v360"><span class="order-chip-v360 ${cls==='cancel'?'bad':'ops'}">التشغيل: ${esc2(status)}</span><span class="order-chip-v360 ${cls==='due'?'finance':''}">المالية: ${esc2(pay)}</span><span class="order-chip-v360">الفوترة: ${esc2(bill)}</span></div>
+      <div class="order-meta-v360"><div><small>العميل</small><b>${esc2(client)}</b></div><div><small>الجوال</small><b>${esc2(phone)}</b></div><div><small>المنفذ</small><b>${esc2(executor)}</b></div><div><small>مرسل الطلب</small><b>${esc2(sender)}</b></div><div><small>السعر شامل الضريبة</small><b>${esc2(price!==''&&price!=null?money2(price):'-')}</b></div><div><small>الربح</small><b>${esc2(profit!==''&&profit!=null?money2(profit):'-')}</b></div></div>
+      <div class="order-details-v360">${esc2(shortOrderTextV360(details)) || 'لا توجد تفاصيل'}</div>
+      <div class="order-card-actions-v360"><button onclick="editOrderV233(${i})">تعديل</button><button class="light" onclick="sendOrderWhatsappV233(${i})">واتساب</button><button class="danger" onclick="deleteOrderV233(${i})">حذف</button></div>
+    </article>`;
+  }
+  window.renderOrdersV233 = function(){
+    ensureStyle(); hydrateOrdersForm(); hydrateOrdersFilters();
+    const cards=$('ordersCardsV360'), pager=$('ordersPagerV360');
+    if(!cards) return;
+    const list=filteredOrders();
+    const pages=Math.max(1, Math.ceil(list.length/ORDER_PAGE_SIZE_V360));
+    window.__ordersPageV360 = Math.min(Math.max(1, window.__ordersPageV360||1), pages);
+    const start=(window.__ordersPageV360-1)*ORDER_PAGE_SIZE_V360;
+    const pageRows=list.slice(start,start+ORDER_PAGE_SIZE_V360);
+    cards.innerHTML = pageRows.map(({r,i})=>orderCardHtmlV361(r,i)).join('') || '<div class="orders-empty-v360">لا توجد أوردرات حسب الفلتر الحالي</div>';
+    if(pager){
+      pager.innerHTML = `<div>عرض ${list.length ? start+1 : 0}-${Math.min(start+ORDER_PAGE_SIZE_V360,list.length)} من ${list.length} أوردر | صفحة ${window.__ordersPageV360} من ${pages}</div><div class="pager-actions-v360"><button class="light" onclick="changeOrdersPageV360(-1)" ${window.__ordersPageV360<=1?'disabled':''}>السابق</button><button class="light" onclick="changeOrdersPageV360(1)" ${window.__ordersPageV360>=pages?'disabled':''}>التالي</button></div>`;
+    }
+    renderOrdersSummaryV233(list.map(x=>x.r));
+  };
+
   window.renderOrdersSummaryV233 = function(rows){
     rows = rows || getOrders();
     const total=rows.length;
@@ -16957,6 +16992,32 @@ function financePrintReport(kind){
     const vat=rows.reduce((a,r)=>a+n2(r['الضريبة 15%']),0);
     const cost=rows.reduce((a,r)=>a+n2(r['التكلفة']),0);
     const profit=rows.reduce((a,r)=>a+n2(r['الربح']),0);
+    if($('ordersTotalKpiV233')) $('ordersTotalKpiV233').textContent=total;
+    if($('ordersDoneKpiV233')) $('ordersDoneKpiV233').textContent=done;
+    if($('ordersDueKpiV233')) $('ordersDueKpiV233').textContent=due;
+    if($('ordersProfitKpiV233')) $('ordersProfitKpiV233').textContent=money2(profit).replace(' ر.س','');
+    const box=$('ordersSummaryV233');
+    if(box) box.innerHTML = [
+      ['إجمالي الإيرادات شامل الضريبة', money2(revenue)],
+      ['إجمالي الضريبة 15%', money2(vat)],
+      ['إجمالي التكلفة', money2(cost)],
+      ['صافي الربح', money2(profit)],
+      ['تم السداد', paid+' أوردر'],
+      ['لم ينفذ / ملغي', notDone+' أوردر']
+    ].map(x=>`<div class="summary-item"><b>${esc2(x[0])}</b><br>${esc2(x[1])}</div>`).join('');
+  };
+
+  window.renderOrdersSummaryV233 = function(rows){
+    rows = rows || getOrders();
+    const total=rows.length;
+    const done=rows.filter(r=>String(orderFieldV361(r,16)||'').includes('تم التنفيذ')).length;
+    const notDone=rows.filter(r=>String(orderFieldV361(r,16)||'').includes('لم ينفذ') || String(orderFieldV361(r,16)||'').includes('ملغي')).length;
+    const paid=rows.filter(r=>String(orderFieldV361(r,23)||'').includes('تم السداد')).length;
+    const due=rows.filter(r=>String(orderFieldV361(r,23)||'').includes('آجل') || String(orderFieldV361(r,23)||'').includes('جزئي') || (!orderFieldV361(r,23) && n2(orderFieldV361(r,18))>0)).length;
+    const revenue=rows.reduce((a,r)=>a+n2(orderFieldV361(r,18)),0);
+    const vat=rows.reduce((a,r)=>a+n2(orderFieldV361(r,19)),0);
+    const cost=rows.reduce((a,r)=>a+n2(orderFieldV361(r,21)),0);
+    const profit=rows.reduce((a,r)=>a+n2(orderFieldV361(r,22)),0);
     if($('ordersTotalKpiV233')) $('ordersTotalKpiV233').textContent=total;
     if($('ordersDoneKpiV233')) $('ordersDoneKpiV233').textContent=done;
     if($('ordersDueKpiV233')) $('ordersDueKpiV233').textContent=due;
