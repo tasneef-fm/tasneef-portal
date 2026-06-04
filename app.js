@@ -19618,3 +19618,70 @@ function financePrintReport(kind){
   window.addEventListener('load', install, {once:true});
   setTimeout(install, 1200);
 })();
+
+/* V359: fast admin start. Shows the dashboard first, then warms the rest. */
+(function(){
+  if(window.__tasneefFastAdminV359) return;
+  window.__tasneefFastAdminV359 = true;
+
+  function safeRows(res){ return res && !res.error && Array.isArray(res.data) ? res.data : []; }
+  function schedule(fn){
+    if('requestIdleCallback' in window) requestIdleCallback(fn, {timeout: 1800});
+    else setTimeout(fn, 700);
+  }
+
+  async function fastLoadAdminData(){
+    const d = today();
+    const [users, projects, workers, tickets, services, logs] = await Promise.all([
+      sb.from('app_users').select('*').order('id'),
+      sb.from('projects').select('*').order('id'),
+      sb.from('workers').select('*').order('id'),
+      sb.from('tickets').select('*').order('id', {ascending:false}).limit(300),
+      sb.from('contract_services').select('*').order('id', {ascending:false}).limit(300),
+      sb.from('time_logs').select('id,user_id,supervisor_id,project_id,check_in,check_out,duration_minutes,travel_minutes,visit_type,required_minutes,time_difference_minutes,time_status,notes,created_at,updated_at,log_date').gte('log_date', d).lte('log_date', d).order('id', {ascending:false}).limit(500)
+    ]);
+
+    data.users = safeRows(users);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.projects = safeRows(projects);
+    data.workers = safeRows(workers);
+    data.tickets = safeRows(tickets);
+    data.contractServices = safeRows(services);
+    data.logs = safeRows(logs);
+    if(!Array.isArray(data.attendance)) data.attendance = [];
+  }
+
+  const fullInitAdminV359 = window.initAdmin || (typeof initAdmin === 'function' ? initAdmin : null);
+  let started = false;
+  window.initAdmin = async function(){
+    if(started) return window.__tasneefAdminWarmupPromise;
+    started = true;
+    const u = requireRole('admin');
+    if(!u) return;
+    try{
+      await fastLoadAdminData();
+      try{ hydrateForms(); }catch(e){ console.warn('fast hydrate failed', e); }
+      try{ renderDashboard(); renderAlerts(); }catch(e){ console.warn('fast dashboard render failed', e); }
+    }catch(e){
+      console.warn('fast admin start failed, falling back to full start', e);
+      if(typeof fullInitAdminV359 === 'function') return fullInitAdminV359.apply(this, arguments);
+    }
+
+    if(!window.__tasneefAdminWarmupPromise){
+      schedule(function(){
+        window.__tasneefAdminWarmupPromise = (window.loadAll ? window.loadAll() : loadAll())
+          .then(function(){
+            try{ hydrateForms(); }catch(_){}
+            try{ renderDashboard(); renderAlerts(); }catch(_){}
+          })
+          .catch(function(e){ console.warn('admin background warmup failed', e); });
+      });
+    }
+  };
+  try{ initAdmin = window.initAdmin; }catch(_){}
+  if(document.getElementById('dashboard')){
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ window.initAdmin(); }, {once:true});
+    else setTimeout(function(){ window.initAdmin(); }, 0);
+  }
+})();
