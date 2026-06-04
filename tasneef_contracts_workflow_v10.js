@@ -39,6 +39,32 @@
   };
   const esc = v => S(v).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const today = () => new Date().toISOString().slice(0, 10);
+  function parseDate(value){
+    const text = S(value);
+    if (!text) return null;
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? null : new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+  function daysLeftLocal(end){
+    const endDate = parseDate(end);
+    if (!endDate) return null;
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.ceil((endDate - start) / 86400000);
+  }
+  function contractInfoLocal(project){
+    const days = daysLeftLocal(project && project.contract_end);
+    if (days === null) return { key: 'missing', text: 'بيانات ناقصة', cls: 'amber', days: '-' };
+    if (days < 0) return { key: 'expired', text: 'منتهي', cls: 'red', days };
+    if (days <= 30) return { key: 'soon', text: 'قريب الانتهاء', cls: 'amber', days };
+    return { key: 'active', text: 'نشط', cls: 'green', days };
+  }
+  function isoDateLocal(value){
+    const text = S(value);
+    return text ? text.slice(0, 10) : '';
+  }
   const say = (text, type) => {
     try {
       if (typeof window.msg === 'function') window.msg(text, type);
@@ -119,7 +145,11 @@
     cache = readLS();
     try {
       if (window.sb) {
-        const res = await window.sb.from('project_contract_smart').select('*');
+        const query = window.sb.from('project_contract_smart').select('*');
+        const res = await Promise.race([
+          query,
+          new Promise(resolve => setTimeout(() => resolve({ error: { message: 'timeout' }, data: null }), 1800))
+        ]);
         if (!res.error && Array.isArray(res.data)) {
           res.data.forEach(row => { cache[S(row.project_id)] = normalize(row.payload); });
           writeLS();
@@ -328,8 +358,27 @@
     document.querySelectorAll('.contract-smart-tabs button').forEach(btn => btn.classList.remove('active'));
     document.querySelector('.contract-smart-tabs button')?.classList.add('active');
     ['Main', 'Annual', 'Report'].forEach(name => $('contractSmart' + name + 'Tab')?.classList.toggle('hidden', name !== 'Main'));
-    $('contractSmartModal')?.classList.remove('hidden');
+    const modal = $('contractSmartModal');
+    if (modal) {
+      document.body.appendChild(modal);
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
     document.body.style.overflow = 'hidden';
+  };
+
+  window.closeContractSmartModal = function(){
+    const modal = $('contractSmartModal');
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.style.display = '';
+    }
+    document.body.style.overflow = '';
+    currentProjectId = '';
+  };
+
+  window.contractSmartBackdrop = function(event){
+    if (event && event.target && event.target.id === 'contractSmartModal') window.closeContractSmartModal();
   };
 
   window.contractSmartTab = function(tab, btn){
@@ -422,20 +471,20 @@
     const status = S($('contractFilterStatus')?.value);
     let rows = projects();
     if (q) rows = rows.filter(p => [p.name, p.location].join(' ').includes(q));
-    if (status && typeof window.contractInfo === 'function') rows = rows.filter(p => window.contractInfo(p).key === status);
+    if (status) rows = rows.filter(p => contractInfoLocal(p).key === status);
     rows.sort((a, b) => {
-      const da = typeof window.daysLeft === 'function' ? window.daysLeft(a.contract_end) : 999999;
-      const db = typeof window.daysLeft === 'function' ? window.daysLeft(b.contract_end) : 999999;
+      const da = daysLeftLocal(a.contract_end);
+      const db = daysLeftLocal(b.contract_end);
       return (da ?? 999999) - (db ?? 999999);
     });
     body.innerHTML = rows.map(p => {
-      const info = typeof window.contractInfo === 'function' ? window.contractInfo(p) : { days: '-', cls: 'green', text: '-' };
-      return `<tr><td><b>${esc(p.name)}</b></td><td>${N(p.buildings_count)}</td><td>${N(p.units_count)}</td><td>${esc((typeof window.isoDate === 'function' ? window.isoDate(p.contract_start) : p.contract_start) || '-')}</td><td>${esc((typeof window.isoDate === 'function' ? window.isoDate(p.contract_end) : p.contract_end) || '-')}</td><td>${esc(info.days)}</td><td><span class="badge ${esc(info.cls)}">${esc(info.text)}</span></td><td class="row-actions"><button class="light" onclick="openContractSmartModal(${Number(p.id)||0},'view')">عرض</button><button onclick="openContractSmartModal(${Number(p.id)||0},'edit')">تعديل</button></td></tr>`;
+      const info = contractInfoLocal(p);
+      return `<tr><td><b>${esc(p.name)}</b></td><td>${N(p.buildings_count)}</td><td>${N(p.units_count)}</td><td>${esc(isoDateLocal(p.contract_start) || '-')}</td><td>${esc(isoDateLocal(p.contract_end) || '-')}</td><td>${esc(info.days)}</td><td><span class="badge ${esc(info.cls)}">${esc(info.text)}</span></td><td class="row-actions"><button class="light" onclick="openContractSmartModal(${Number(p.id)||0},'view')">عرض</button><button onclick="openContractSmartModal(${Number(p.id)||0},'edit')">تعديل</button></td></tr>`;
     }).join('') || '<tr><td colspan="8">لا توجد بيانات</td></tr>';
-    if ($('contractsActiveCount') && typeof window.contractInfo === 'function') $('contractsActiveCount').textContent = projects().filter(p => window.contractInfo(p).key === 'active').length;
-    if ($('contractsSoonCount') && typeof window.contractInfo === 'function') $('contractsSoonCount').textContent = projects().filter(p => window.contractInfo(p).key === 'soon').length;
-    if ($('contractsExpiredCount') && typeof window.contractInfo === 'function') $('contractsExpiredCount').textContent = projects().filter(p => window.contractInfo(p).key === 'expired').length;
-    if ($('contractsMissingCount') && typeof window.contractInfo === 'function') $('contractsMissingCount').textContent = projects().filter(p => window.contractInfo(p).key === 'missing').length;
+    if ($('contractsActiveCount')) $('contractsActiveCount').textContent = projects().filter(p => contractInfoLocal(p).key === 'active').length;
+    if ($('contractsSoonCount')) $('contractsSoonCount').textContent = projects().filter(p => contractInfoLocal(p).key === 'soon').length;
+    if ($('contractsExpiredCount')) $('contractsExpiredCount').textContent = projects().filter(p => contractInfoLocal(p).key === 'expired').length;
+    if ($('contractsMissingCount')) $('contractsMissingCount').textContent = projects().filter(p => contractInfoLocal(p).key === 'missing').length;
     renderSmartAlerts();
   };
 
@@ -457,6 +506,7 @@
 
   const oldShowPage = window.showPage;
   window.showPage = function(id, btn){
+    if (id !== 'contracts') window.closeContractSmartModal();
     const result = oldShowPage ? oldShowPage.apply(this, arguments) : undefined;
     if (id === 'contracts') {
       hideOldServices();
@@ -480,6 +530,9 @@
     style.id = 'contractWorkflowV10Css';
     style.textContent = `
       #servicesSubTab{display:none!important}
+      #contractSmartModal.contract-smart-modal{position:fixed!important;inset:0!important;z-index:999999!important;display:flex;align-items:center;justify-content:center;background:rgba(8,31,25,.62)!important;padding:18px!important}
+      #contractSmartModal.contract-smart-modal.hidden{display:none!important}
+      #contractSmartModal .contract-smart-panel{width:min(1260px,96vw)!important;max-height:92vh!important;overflow:auto!important;background:#fff!important;border-radius:24px!important;box-shadow:0 30px 90px rgba(0,0,0,.28)!important}
       .contract-grid-v10{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(270px,1fr))!important;gap:12px!important}
       .contract-card-v10{border:1px solid #d9e8e1;border-radius:14px;background:#fff;padding:12px}
       .contract-card-v10.on-us{border-color:#86cdb5;background:#fbfffd}
