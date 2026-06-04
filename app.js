@@ -18772,3 +18772,172 @@ function financePrintReport(kind){
   window.TASNEEF_BUILD='V339_CONTRACT_ROLE_VISITS_2026_06_04';
   console.log('Tasneef V339 contract role/visit workflow loaded');
 })();
+
+/* ===== Tasneef v340 - Fix monthly attendance supervisor filter + supervisor attendance missing workers ===== */
+(function(){
+  const FIX_VERSION='v340-attendance-supervisor-filter-save';
+  const $ = id => document.getElementById(id);
+  const S = v => String(v ?? '').trim();
+  const N = v => Number(v || 0);
+  const esc = s => S(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ds = () => window.data || {workers:[],projects:[],attendance:[],supervisors:[],users:[],workerAssignments:[]};
+  const todayStr = () => (typeof today==='function' ? today() : new Date().toISOString().slice(0,10));
+  const monthNow = () => todayStr().slice(0,7);
+  const sid = v => v==null ? '' : String(v);
+  function supName(id){ try{return supervisorName(id)||'-';}catch(_){ const s=(ds().supervisors||ds().users||[]).find(x=>sid(x.id)===sid(id)); return s?.full_name||s?.username||'-'; } }
+  function projName(id){ try{return projectName(id)||'-';}catch(_){ const p=(ds().projects||[]).find(x=>sid(x.id)===sid(id)); return p?.name||'-'; } }
+  function workerNameSafe(id){ try{return workerName(id)||'';}catch(_){ const w=(ds().workers||[]).find(x=>sid(x.id)===sid(id)); return w?.name||w?.full_name||''; } }
+  function directWorkerSup(w){ try{return workerSupId(w)||'';}catch(_){ return w?.app_supervisor_id || w?.supervisor_id || ''; } }
+  function directWorkerProject(w){ try{return workerProjectId(w)||'';}catch(_){ return w?.project_id || w?.assigned_project_id || ''; } }
+  function projectRow(pid){ return (ds().projects||[]).find(p=>sid(p.id)===sid(pid)) || {}; }
+  function activeWorker(w){ return !['inactive','deleted','موقوف'].includes(S(w?.status || 'active').toLowerCase()); }
+  function assignmentsForWorker(wid){ return (ds().workerAssignments||[]).filter(a=>sid(a.worker_id)===sid(wid) && a.is_active!==false); }
+  function workerProjectIds(w){
+    const ids=new Set(); const primary=directWorkerProject(w); if(primary) ids.add(sid(primary));
+    assignmentsForWorker(w?.id).forEach(a=>{ if(a.project_id) ids.add(sid(a.project_id)); });
+    return [...ids];
+  }
+  function workerSupervisorIds(w){
+    const ids=new Set(); const direct=directWorkerSup(w); if(direct) ids.add(sid(direct));
+    workerProjectIds(w).forEach(pid=>{ const p=projectRow(pid); if(p.supervisor_id) ids.add(sid(p.supervisor_id)); });
+    return [...ids];
+  }
+  function attendanceProject(a){ return a?.project_id || directWorkerProject((ds().workers||[]).find(w=>sid(w.id)===sid(a?.worker_id))) || ''; }
+  function attendanceSupervisor(a){
+    if(a?.supervisor_id) return a.supervisor_id;
+    const w=(ds().workers||[]).find(x=>sid(x.id)===sid(a?.worker_id));
+    if(w){ const d=directWorkerSup(w); if(d) return d; }
+    const p=projectRow(attendanceProject(a));
+    return p.supervisor_id || '';
+  }
+  function workerMatchesSupervisor(w, supervisorId){
+    if(!supervisorId) return true;
+    if(workerSupervisorIds(w).includes(sid(supervisorId))) return true;
+    return (ds().attendance||[]).some(a=>sid(a.worker_id)===sid(w.id) && sid(attendanceSupervisor(a))===sid(supervisorId));
+  }
+  function firstProjectForWorkerAndSupervisor(w, supervisorId){
+    const ids=workerProjectIds(w);
+    const bySup=ids.find(pid=>sid(projectRow(pid).supervisor_id)===sid(supervisorId));
+    return bySup || ids[0] || '';
+  }
+  function daysInMonth(month){ const [y,m]=S(month||monthNow()).split('-').map(Number); return new Date(y, m, 0).getDate(); }
+  function dsOf(month,d){ return `${month}-${String(d).padStart(2,'0')}`; }
+  function monthOf(a){ return S(a?.attendance_date).slice(0,7); }
+  function setSupervisorOptionsKeep(){
+    const el=$('attendanceMatrixSupervisor'); if(!el) return '';
+    const old=el.value || '';
+    const base=(ds().supervisors&&ds().supervisors.length?ds().supervisors:(ds().users||[]).filter(u=>u.role==='supervisor'))||[];
+    const seen=new Set();
+    const opts=base.filter(x=>x&&x.id!=null&&!seen.has(sid(x.id))&&(seen.add(sid(x.id)),true))
+      .map(s=>`<option value="${esc(s.id)}">${esc(s.full_name||s.username||s.name||s.id)}</option>`).join('');
+    el.innerHTML='<option value="">كل المشرفين</option>'+opts;
+    if([...el.options].some(o=>o.value===old)) el.value=old;
+    return el.value || '';
+  }
+  function monthlyWorkers(month, supervisorId, q){
+    const map=new Map();
+    (ds().workers||[]).filter(activeWorker).forEach(w=>{
+      if(supervisorId && !workerMatchesSupervisor(w, supervisorId)) return;
+      const name=S(w.name||w.full_name); if(q && !name.includes(q)) return;
+      map.set(sid(w.id), {id:w.id, name:name||('عامل '+w.id), source:w});
+    });
+    (ds().attendance||[]).filter(a=>monthOf(a)===month).forEach(a=>{
+      if(supervisorId && sid(attendanceSupervisor(a))!==sid(supervisorId)) return;
+      const name=workerNameSafe(a.worker_id) || ('عامل رقم '+a.worker_id);
+      if(q && !name.includes(q)) return;
+      if(!map.has(sid(a.worker_id))){
+        const w=(ds().workers||[]).find(x=>sid(x.id)===sid(a.worker_id));
+        map.set(sid(a.worker_id), {id:a.worker_id, name, source:w||{id:a.worker_id,name}});
+      }
+    });
+    return [...map.values()].sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
+  }
+  function recordFor(wid, date, supervisorId){
+    const rows=(ds().attendance||[]).filter(a=>sid(a.worker_id)===sid(wid) && S(a.attendance_date)===S(date));
+    return rows.find(a=>!supervisorId || sid(attendanceSupervisor(a))===sid(supervisorId)) || rows[0] || null;
+  }
+
+  window.renderAttendanceMonthly = function(){
+    const body=$('attendanceMatrixBody'); if(!body) return;
+    const monthEl=$('attendanceMatrixMonth'); if(monthEl && !monthEl.value) monthEl.value=monthNow();
+    const month=monthEl?.value || monthNow();
+    const supervisorId=setSupervisorOptionsKeep();
+    const q=S($('attendanceMatrixSearch')?.value);
+    const days=daysInMonth(month);
+    const workers=monthlyWorkers(month, supervisorId, q);
+    const head=$('attendanceMatrixHead');
+    if(head){ head.innerHTML='<tr><th>الاسم</th><th>النوع</th><th>المشرف</th><th>'+Array.from({length:days},(_,i)=>String(i+1).padStart(2,'0')).join('</th><th>')+'</th><th>حضور</th><th>غياب</th><th>النسبة</th></tr>'; }
+    let totalPresent=0,totalAbsent=0;
+    body.innerHTML=workers.map(wr=>{
+      const w=wr.source||{}; let present=0, absent=0; const cells=[];
+      for(let d=1; d<=days; d++){
+        const rec=recordFor(wr.id, dsOf(month,d), supervisorId);
+        if(rec?.status==='present'){ present++; cells.push('<td><span class="att-cell att-present">حاضر</span></td>'); }
+        else if(rec?.status==='absent'){ absent++; cells.push('<td><span class="att-cell att-absent">غائب</span></td>'); }
+        else cells.push('<td><span class="att-cell att-empty">لم يسجل</span></td>');
+      }
+      totalPresent+=present; totalAbsent+=absent;
+      const pct=(present+absent)?present/(present+absent)*100:0;
+      const supId=supervisorId || attendanceSupervisor((ds().attendance||[]).find(a=>sid(a.worker_id)===sid(wr.id)&&monthOf(a)===month)) || workerSupervisorIds(w)[0] || '';
+      const type=(w.worker_type||'primary')==='support'?'بديل / مساند':'العامل فقط';
+      return `<tr><td><b>${esc(wr.name)}</b></td><td>${esc(type)}</td><td>${esc(supName(supId))}</td>${cells.join('')}<td><b>${present}</b></td><td><b>${absent}</b></td><td><b>${pct.toFixed(1)}%</b></td></tr>`;
+    }).join('') || `<tr><td colspan="${days+6}">لا توجد بيانات حسب الفلاتر المختارة</td></tr>`;
+    const recorded=totalPresent+totalAbsent; const pct=recorded?totalPresent/recorded*100:0;
+    const sum=$('attendanceMatrixSummary');
+    if(sum) sum.innerHTML=`<div class="kpi"><small>عدد الأسماء</small><b>${workers.length}</b></div><div class="kpi"><small>إجمالي الحضور</small><b>${totalPresent}</b></div><div class="kpi"><small>إجمالي الغياب</small><b>${totalAbsent}</b></div><div class="kpi"><small>نسبة الحضور</small><b>${pct.toFixed(1)}%</b></div>`;
+  };
+
+  window.renderSupervisorAttendanceList = function(){
+    const div=$('supervisorAttendanceList'); if(!div) return;
+    const u=(typeof session==='function'?session():null) || {};
+    const supId=u.id;
+    const workers=(ds().workers||[]).filter(w=>activeWorker(w) && workerMatchesSupervisor(w, supId));
+    const seen=new Set();
+    const unique=workers.filter(w=>{ const k=sid(w.id); if(seen.has(k)) return false; seen.add(k); return true; }).sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
+    div.innerHTML=unique.map(w=>`<div class="quick-item"><b>${esc(w.name||w.full_name)}</b><small>${esc(projName(firstProjectForWorkerAndSupervisor(w,supId)))}</small><select data-worker="${esc(w.id)}" data-project="${esc(firstProjectForWorkerAndSupervisor(w,supId))}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('') || '<div class="quick-item">لا يوجد عمال مرتبطين بك. راجع ربط العامل بالمشروع أو المشرف من الإدارة.</div>';
+  };
+
+  window.saveSupervisorAttendance = async function(){
+    const u=(typeof session==='function'?session():null) || {};
+    const date=$('attendanceDate')?.value || todayStr();
+    const selectedProject=$('attendanceProject')?.value || '';
+    const rows=[...document.querySelectorAll('#supervisorAttendanceList select')].map(s=>{
+      const wid=N(s.dataset.worker);
+      const w=(ds().workers||[]).find(x=>sid(x.id)===sid(wid)) || {};
+      const pid=selectedProject || s.dataset.project || firstProjectForWorkerAndSupervisor(w,u.id) || null;
+      return {attendance_date:date, worker_id:wid, supervisor_id:u.id, project_id:pid?N(pid):null, status:s.value, created_by:u.id};
+    }).filter(r=>r.worker_id);
+    if(!rows.length) return (typeof msg==='function'?msg('لا توجد أسماء للحفظ','err'):alert('لا توجد أسماء للحفظ'));
+    const {error}=await sb.from('attendance').upsert(rows,{onConflict:'attendance_date,worker_id'});
+    if(error) return (typeof msg==='function'?msg(error.message,'err'):alert(error.message));
+    if(typeof msg==='function') msg('تم حفظ التحضير لكل الأسماء الظاهرة');
+    try{ await loadAll(); }catch(_){ }
+    try{ renderSupervisorAttendanceList(); }catch(_){ }
+  };
+
+  const oldInitSupervisorV340=window.initSupervisor;
+  window.initSupervisor = async function(){
+    const u=(typeof requireRole==='function'?requireRole('supervisor'):session()); if(!u) return;
+    try{ await loadAll(); }catch(e){ console.warn(e); if(typeof oldInitSupervisorV340==='function') return oldInitSupervisorV340(); }
+    const supProjectIds=new Set((ds().projects||[]).filter(p=>sid(p.supervisor_id)===sid(u.id)).map(p=>sid(p.id)));
+    data.projects=(ds().projects||[]).filter(p=>supProjectIds.has(sid(p.id)));
+    data.workers=(ds().workers||[]).filter(w=>activeWorker(w) && (workerMatchesSupervisor(w,u.id) || workerProjectIds(w).some(pid=>supProjectIds.has(sid(pid)))));
+    data.logs=(ds().logs||[]).filter(l=>sid(l.supervisor_id)===sid(u.id) || supProjectIds.has(sid(l.project_id)));
+    data.attendance=(ds().attendance||[]).filter(a=>sid(attendanceSupervisor(a))===sid(u.id) || supProjectIds.has(sid(attendanceProject(a))));
+    data.tickets=(ds().tickets||[]).filter(t=>sid(t.supervisor_id)===sid(u.id) || sid(t.created_by)===sid(u.id) || supProjectIds.has(sid(t.project_id)));
+    if($('supTitle')) $('supTitle').textContent=`لوحة المشرف - ${u.full_name||u.username||''}`;
+    try{ if(typeof fillSelect==='function'){ fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','اختر المشروع'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); } }catch(_){ }
+    if($('logDate')) $('logDate').value=todayStr(); if($('attendanceDate')) $('attendanceDate').value=todayStr();
+    try{ renderSupervisorAttendanceList(); }catch(e){ console.warn(e); }
+    try{ renderTimeLogs(); }catch(e){ console.warn(e); }
+    try{ await supervisorInventoryLoad(); }catch(_){ }
+  };
+
+  const oldShowPageV340=window.showPage;
+  window.showPage=function(id,btn){ if(typeof oldShowPageV340==='function') oldShowPageV340(id,btn); if(id==='attendance') setTimeout(()=>window.renderAttendanceMonthly&&window.renderAttendanceMonthly(),80); };
+  document.addEventListener('change', e=>{ if(e.target && ['attendanceMatrixMonth','attendanceMatrixSupervisor'].includes(e.target.id)) setTimeout(()=>window.renderAttendanceMonthly&&window.renderAttendanceMonthly(),20); });
+  document.addEventListener('input', e=>{ if(e.target && e.target.id==='attendanceMatrixSearch') setTimeout(()=>window.renderAttendanceMonthly&&window.renderAttendanceMonthly(),20); });
+
+  window.TASNEEF_BUILD='V340_ATTENDANCE_SUPERVISOR_FILTER_SAVE_2026_06_04';
+  console.log('Tasneef '+FIX_VERSION+' loaded');
+})();
