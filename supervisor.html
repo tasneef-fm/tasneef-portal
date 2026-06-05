@@ -115,7 +115,9 @@
     <section class="card"><h2>الملخص اليومي</h2><div class="date-filter-row"><div><label>فلتر الأيام</label><select id="summaryRange" onchange="renderSupervisorDailySummary()"><option value="today">اليوم</option><option value="yesterday">أمس</option><option value="week">هذا الأسبوع</option><option value="custom">تاريخ محدد</option></select></div><div><label>تاريخ محدد</label><input type="date" id="summaryDate" onchange="renderSupervisorDailySummary()"></div></div><div id="supervisorSummaryCards" class="summary-card-grid" style="margin-top:12px"></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>البند</th><th>العدد / الوقت</th></tr></thead><tbody id="supervisorSummaryBody"></tbody></table></div></section>
   </section>
 </div>
+<script src="orders_seed.js?v=337" defer></script>
 <script src="app.js?v=359" defer></script>
+<script src="tasneef_orders_workflow_v8.js?v=8" defer></script>
 <script src="tasneef_supervisor_fast_fix_v9.js?v=9" defer></script>
 <script src="tasneef_attendance_status_fix_v16.js?v=16" defer></script>
 </body>

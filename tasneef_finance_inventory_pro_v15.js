@@ -26,6 +26,29 @@
   const money = (v)=>`${N(v).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})} ر.س`;
   const itemCode = (i)=>S(i.product_code || i.serial_number || i.barcode || i.supplier_barcode || i.code || '');
   const itemCost = (i)=>N(i.unit_cost || i.cost || i.price || i.purchase_price);
+  const currentUserV15 = ()=>{
+    try{ return JSON.parse(localStorage.getItem('tasneef_user') || 'null') || {}; }
+    catch(e){ return {}; }
+  };
+  const currentRoleV15 = ()=>S(currentUserV15().role);
+  const isWarehouseOnlyV15 = ()=>currentRoleV15()==='warehouse_manager';
+  const canSeeFinancePricesV15 = ()=>!isWarehouseOnlyV15();
+  function financeTabsV15(){
+    const all = [
+      ['summary','ملخص'],
+      ['products','منتجات'],
+      ['suppliers','الموردين'],
+      ['add','إضافة إلى المخزون'],
+      ['movement','حركة المخزون'],
+      ['cost','مركز تكلفة'],
+      ['reports','تقارير']
+    ];
+    return isWarehouseOnlyV15() ? all.filter(t=>['products','movement'].includes(t[0])) : all;
+  }
+  function ensureAllowedFinanceTabV15(){
+    const ids=financeTabsV15().map(t=>t[0]);
+    if(!ids.includes(state.tab)) state.tab=ids[0] || 'products';
+  }
   const activeUsers = ()=>state.users.filter(u=>S(u.status || 'active') !== 'inactive');
   const supervisors = ()=>activeUsers().filter(u=>['supervisor','manager','operational_manager','مشرف','مدير تشغيلي','مدير عام'].includes(S(u.role)));
   const technicians = ()=>activeUsers().filter(u=>['technician','فني'].includes(S(u.role)));
