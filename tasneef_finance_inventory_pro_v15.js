@@ -204,6 +204,7 @@
 
   function renderShell(){
     keepLegacyFinanceShortcutsHidden();
+    ensureAllowedFinanceTabV15();
     const page=ensurePage();
     page.innerHTML = `
       <div class="fin-shell" dir="rtl">
@@ -215,15 +216,7 @@
           <div class="fin-actions"><button class="light" onclick="financeProLoadV15(true)">تحديث البيانات</button></div>
         </div>
         <div class="fin-tabs" id="finTabsV15">
-          ${[
-            ['summary','ملخص'],
-            ['products','منتجات'],
-            ['suppliers','الموردين'],
-            ['add','إضافة إلى المخزون'],
-            ['movement','حركة المخزون'],
-            ['cost','مركز تكلفة'],
-            ['reports','تقارير']
-          ].map(([id,label])=>`<button class="${state.tab===id?'active':''}" onclick="financeProTabV15('${id}')">${label}</button>`).join('')}
+          ${financeTabsV15().map(([id,label])=>`<button class="${state.tab===id?'active':''}" onclick="financeProTabV15('${id}')">${label}</button>`).join('')}
         </div>
         <div id="finBodyV15"></div>
       </div>`;
@@ -304,6 +297,7 @@
 
   function renderBody(){
     const body=$('finBodyV15'); if(!body) return;
+    ensureAllowedFinanceTabV15();
     if(!state.loaded){ body.innerHTML='<div class="fin-card">جاري تحميل بيانات المالية والمخزون...</div>'; return; }
     if(state.tab==='summary') return renderSummary(body);
     if(state.tab==='products') return renderProducts(body);

@@ -60,10 +60,22 @@
       });
     });
   }
+  function hideLegacyShortcuts(){
+    const blocked=[
+      'الأصناف','الموردين','تقليل التكلفة','تعديل التكلفة',
+      'ط§ظ„ط£طµظ†ط§ظپ','ط§ظ„ظ…ظˆط±ط¯ظٹظ†','طھظ‚ظ„ظٹظ„ ط§ظ„طھظƒظ„ظپط©','طھط¹ط¯ظٹظ„ ط§ظ„طھظƒظ„ظپط©'
+    ];
+    document.querySelectorAll('button,a').forEach(el=>{
+      if(el.closest('.fin-shell')) return;
+      const text=S(el.textContent).replace(/\s+/g,' ');
+      if(blocked.some(x=>text===x || text.includes(x))) el.style.display='none';
+    });
+  }
   function apply(){
     style();
     normalizeTabs();
     markMoney();
+    hideLegacyShortcuts();
   }
   function wrap(name){
     const old=window[name];
