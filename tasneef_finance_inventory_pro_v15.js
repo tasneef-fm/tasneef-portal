@@ -216,7 +216,7 @@
           <div class="fin-actions"><button class="light" onclick="financeProLoadV15(true)">تحديث البيانات</button></div>
         </div>
         <div class="fin-tabs" id="finTabsV15">
-          ${financeTabsV15().map(([id,label])=>`<button class="${state.tab===id?'active':''}" onclick="financeProTabV15('${id}')">${label}</button>`).join('')}
+          ${financeTabsV15().map(([id,label])=>`<button type="button" data-fin-tab-v15="${id}" class="${state.tab===id?'active':''}" onclick="return financeProTabV15('${id}')">${label}</button>`).join('')}
         </div>
         <div id="finBodyV15"></div>
       </div>`;
@@ -299,13 +299,26 @@
     const body=$('finBodyV15'); if(!body) return;
     ensureAllowedFinanceTabV15();
     if(!state.loaded){ body.innerHTML='<div class="fin-card">جاري تحميل بيانات المالية والمخزون...</div>'; return; }
-    if(state.tab==='summary') return renderSummary(body);
-    if(state.tab==='products') return renderProducts(body);
-    if(state.tab==='suppliers') return renderSuppliers(body);
-    if(state.tab==='add') return renderAddStock(body);
-    if(state.tab==='movement') return renderMovement(body);
-    if(state.tab==='cost') return renderCostCenter(body);
-    if(state.tab==='reports') return renderReports(body);
+    const renderers={
+      summary:renderSummary,
+      products:renderProducts,
+      suppliers:renderSuppliers,
+      add:renderAddStock,
+      movement:renderMovement,
+      cost:renderCostCenter,
+      reports:renderReports
+    };
+    const fn=renderers[state.tab] || renderSummary;
+    try{
+      return fn(body);
+    }catch(e){
+      console.warn('finance pro tab render failed', state.tab, e);
+      body.innerHTML=`<div class="fin-card">
+        <h3>تعذر فتح هذا التبويب</h3>
+        <p class="fin-soft">حدث خطأ في هذا التبويب فقط، وتم منع انهيار قسم المالية. اضغط تحديث البيانات ثم افتح التبويب مرة أخرى.</p>
+        <div class="fin-actions"><button type="button" onclick="financeProLoadV15(true)">تحديث البيانات</button><button type="button" class="light" onclick="financeProTabV15('summary')">العودة للملخص</button></div>
+      </div>`;
+    }
   }
 
   function renderSummary(body){
@@ -738,8 +751,16 @@
   }
 
   window.financeProTabV15 = async function(tab){
-    state.tab=tab;
-    renderShell();
+    const allowed=financeTabsV15().map(t=>t[0]);
+    state.tab=allowed.includes(tab) ? tab : (allowed[0] || 'summary');
+    try{
+      renderShell();
+    }catch(e){
+      console.warn('finance pro shell failed', state.tab, e);
+      state.tab='summary';
+      renderShell();
+    }
+    return false;
   };
   window.financeProReportTabV15 = function(tab){
     state.reportTab = tab || 'products';
@@ -1164,9 +1185,23 @@
     try{ showPage=window.showPage; }catch(e){}
   }
 
+  function patchFinanceTabClicks(){
+    if(window.__financeProTabClicksPatchedV15) return;
+    window.__financeProTabClicksPatchedV15=true;
+    document.addEventListener('click', function(ev){
+      const btn=ev.target && ev.target.closest ? ev.target.closest('#finTabsV15 button[data-fin-tab-v15]') : null;
+      if(!btn) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation();
+      window.financeProTabV15(btn.getAttribute('data-fin-tab-v15') || 'summary');
+    }, true);
+  }
+
   function boot(){
     ensurePage();
     patchShowPage();
+    patchFinanceTabClicks();
     keepLegacyFinanceShortcutsHidden();
     if(!window.__financeProLegacyHideIntervalV15){
       let tries=0;
