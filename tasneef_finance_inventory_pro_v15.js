@@ -38,7 +38,7 @@
       ['summary','ملخص'],
       ['products','منتجات'],
       ['suppliers','الموردين'],
-      ['add','إضافة إلى المخزون'],
+      ['add','العمليات'],
       ['movement','حركة المخزون'],
       ['cost','مركز تكلفة'],
       ['reports','تقارير']
@@ -75,6 +75,41 @@
     const txt = S(value);
     if(!txt.startsWith('finance_pro_v15:')) return null;
     try{ return JSON.parse(txt.replace('finance_pro_v15:','')); }catch(e){ return null; }
+  }
+  function movementUnitCostV15(m){
+    const meta=safeJson(m?.notes)||{};
+    if(N(m?.unit_cost)>0) return N(m.unit_cost);
+    if(N(meta.beforeVat)>0 && N(m?.quantity)>0) return N(meta.beforeVat)/N(m.quantity);
+    const item=state.items.find(i=>String(i.id)===String(m?.item_id));
+    return item ? itemCost(item) : 0;
+  }
+  function movementNetValueV15(m){
+    const meta=safeJson(m?.notes)||{};
+    if(N(meta.beforeVat)>0) return N(meta.beforeVat);
+    return N(m?.quantity)*movementUnitCostV15(m);
+  }
+  function movementVatValueV15(m){
+    const meta=safeJson(m?.notes)||{};
+    if(N(meta.vat)>0) return N(meta.vat);
+    return movementNetValueV15(m)*VAT_RATE;
+  }
+  function movementGrossValueV15(m){
+    const meta=safeJson(m?.notes)||{};
+    if(N(meta.afterVat)>0) return N(meta.afterVat);
+    return movementNetValueV15(m)+movementVatValueV15(m);
+  }
+  function itemUnitCostV15(item){
+    const direct=itemCost(item);
+    if(direct>0) return direct;
+    const code=itemCode(item);
+    const moves=state.movements
+      .filter(m=>S(m.movement_type)==='in' && (
+        String(m.item_id)===String(item?.id) ||
+        (code && [m.product_code,m.barcode].map(S).includes(code)) ||
+        (!m.item_id && S(m.item_name)===S(item?.name))
+      ))
+      .sort((a,b)=>S(b.movement_date||b.created_at).localeCompare(S(a.movement_date||a.created_at)));
+    return moves.length ? movementUnitCostV15(moves[0]) : 0;
   }
   function movementTypeLabelV15(type){
     const map={in:'داخل',out:'صرف',consume:'مستهلك',waste:'هدر',damaged:'تالف',return:'مرتجع'};
@@ -252,7 +287,7 @@
     });
   }
   function stockValue(){
-    return state.items.reduce((s,i)=>s + Math.max(0,computedItemQtyV15(i))*itemCost(i),0);
+    return state.items.reduce((s,i)=>s + Math.max(0,computedItemQtyV15(i))*itemUnitCostV15(i),0);
   }
   function productType(i){
     const raw = S(i.item_type || i.type || i.category || '');
@@ -291,8 +326,9 @@
     return state.movements.reduce((acc,m)=>{
       const type=S(m.movement_type);
       if(type==='return' || type==='out') return acc;
-      const net=movementReportNetV15(m);
-      acc.net += net; acc.vat += net*VAT_RATE; acc.gross += net*(1+VAT_RATE);
+      const net=movementFinancialTypesV15().includes(type) ? movementReportNetV15(m) : movementNetValueV15(m);
+      const vat=type==='in' ? movementVatValueV15(m) : net*VAT_RATE;
+      acc.net += net; acc.vat += vat; acc.gross += net+vat;
       return acc;
     },{net:0,vat:0,gross:0});
   }
@@ -338,7 +374,7 @@
       <div class="fin-card">
         <h3>الأصناف التي سوف تنتهي (${lowItems().length})</h3>
         <div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>المتوفر</th><th>الحد الأدنى</th><th>التكلفة</th><th>الحالة</th></tr></thead><tbody>
-          ${lowItems().map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(itemCode(i)||'-')}</td><td>${N(computedItemQtyV15(i))}</td><td>${N(i.min_quantity || i.reorder_level || 1)}</td><td>${money(itemCost(i))}</td><td><span class="fin-badge warn">قارب الانتهاء</span></td></tr>`).join('') || '<tr><td colspan="6">لا توجد أصناف قاربت الانتهاء</td></tr>'}
+          ${lowItems().map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(itemCode(i)||'-')}</td><td>${N(computedItemQtyV15(i))}</td><td>${N(i.min_quantity || i.reorder_level || 1)}</td><td>${money(itemUnitCostV15(i))}</td><td><span class="fin-badge warn">قارب الانتهاء</span></td></tr>`).join('') || '<tr><td colspan="6">لا توجد أصناف قاربت الانتهاء</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="fin-grid three">
@@ -424,15 +460,17 @@
     const box=$('finSuppliersListV15'); if(!box) return;
     const q=S($('finSupplierSearchV15')?.value).toLowerCase();
     const suppliers=supplierList().filter(s=>!q || s.toLowerCase().includes(q));
-    box.innerHTML=`<div class="fin-table"><table><thead><tr><th>المورد</th><th>عدد المنتجات</th><th>إضافات المخزون</th><th>آخر تعامل</th><th>قيمة قبل الضريبة</th><th>بعد الضريبة</th><th>إجراء</th></tr></thead><tbody>
+    box.innerHTML=`<div class="fin-table"><table><thead><tr><th>المورد</th><th>عدد المنتجات</th><th>عدد العمليات</th><th>آخر تعامل</th><th>السعر قبل الضريبة</th><th>الضريبة</th><th>السعر شامل الضريبة</th><th>إجراء</th></tr></thead><tbody>
       ${suppliers.map(s=>{
         const items=state.items.filter(i=>S(i.supplier)===s);
         const moves=state.movements.filter(m=>S(m.receiver)===s && S(m.movement_type)==='in');
-        const net=moves.reduce((a,m)=>a+N(m.quantity)*N(m.unit_cost),0);
+        const net=moves.reduce((a,m)=>a+movementNetValueV15(m),0);
+        const vat=moves.reduce((a,m)=>a+movementVatValueV15(m),0);
+        const gross=moves.reduce((a,m)=>a+movementGrossValueV15(m),0);
         const last=moves.map(m=>S(m.movement_date||m.created_at).slice(0,10)).sort().pop() || '-';
         const key=encodeURIComponent(s);
-        return `<tr><td><b>${esc(s)}</b></td><td>${items.length}</td><td>${moves.length}</td><td>${esc(last)}</td><td>${money(net)}</td><td>${money(net*(1+VAT_RATE))}</td><td class="fin-actions"><button class="light" onclick="financeProShowSupplierV15(decodeURIComponent('${key}'))">عرض</button><button class="danger" onclick="financeProDeleteSupplierV15(decodeURIComponent('${key}'))">حذف</button></td></tr>`;
-      }).join('') || '<tr><td colspan="7">لا توجد موردين حتى الآن</td></tr>'}
+        return `<tr><td><b>${esc(s)}</b></td><td>${items.length}</td><td>${moves.length}</td><td>${esc(last)}</td><td>${money(net)}</td><td>${money(vat)}</td><td>${money(gross)}</td><td class="fin-actions"><button class="light" onclick="financeProShowSupplierV15(decodeURIComponent('${key}'))">عرض</button><button class="danger" onclick="financeProDeleteSupplierV15(decodeURIComponent('${key}'))">حذف</button></td></tr>`;
+      }).join('') || '<tr><td colspan="8">لا توجد موردين حتى الآن</td></tr>'}
     </tbody></table></div>`;
   }
 
@@ -473,13 +511,14 @@
   function renderAddStock(body){
     body.innerHTML=`
       <div class="fin-card">
-        <h3>فاتورة إضافة مخزون</h3>
+        <h3>فاتورة عمليات المخزون</h3>
         <div class="fin-grid three">
           <div><label>المورد</label><select id="finInvSupplierV15"><option value="">اختر المورد</option>${supplierList().map(s=>`<option>${esc(s)}</option>`).join('')}</select></div>
           <div><label>رقم الفاتورة</label><input id="finInvNoV15" placeholder="INV-001"></div>
           <div><label>تاريخ الفاتورة</label><input id="finInvDateV15" type="date" value="${today()}"></div>
         </div>
         <div class="fin-line">
+          <div><label>منتج موجود</label><select id="finExistingProductV15" onchange="financeProFillExistingProductV15(this.value)"><option value="">منتج جديد</option>${state.items.map(i=>`<option value="${esc(i.id)}">${esc(i.name)} - ${esc(itemCode(i)||'-')}</option>`).join('')}</select></div>
           <div><label>اسم المنتج</label><input id="finLineNameV15" placeholder="اسم المنتج"></div>
           <div><label>الكود الداخلي</label><input id="finLineCodeV15" value="${esc(nextInternalCode())}" readonly></div>
           <div><label>كود الموزع</label><input id="finLineDistributorCodeV15" placeholder="اكتب كود الموزع"></div>
@@ -693,7 +732,13 @@
     return ['out','consume','waste','damaged','scrap'];
   }
   function movementReportNetV15(m){
-    return movementFinancialTypesV15().includes(S(m.movement_type)) ? N(m.quantity)*N(m.unit_cost) : 0;
+    const type=S(m.movement_type);
+    if(type==='in') return movementNetValueV15(m);
+    if(movementFinancialTypesV15().includes(type)){
+      const unit=movementUnitCostV15(m) || itemUnitCostV15(state.items.find(i=>String(i.id)===String(m.item_id))||{});
+      return N(m.quantity)*unit;
+    }
+    return 0;
   }
   function movementPass(m, f){
     const dt=movementDate(m);
@@ -751,12 +796,17 @@
   }
   function reportTotalsForTab(tab){
     let rows=[];
-    if(tab==='products') rows=reportProducts().map(i=>({net:computedItemQtyV15(i)*itemCost(i)}));
-    else if(tab==='inventory') rows=reportInventory().map(i=>({net:computedItemQtyV15(i)*itemCost(i)}));
+    if(tab==='products') rows=reportProducts().map(i=>({net:computedItemQtyV15(i)*itemUnitCostV15(i)}));
+    else if(tab==='inventory') rows=reportInventory().map(i=>({net:computedItemQtyV15(i)*itemUnitCostV15(i)}));
     else if(tab==='cost') rows=reportCostRows().map(m=>({net:movementReportNetV15(m)}));
-    else rows=reportMovements().map(m=>({net:movementReportNetV15(m)}));
+    else rows=reportMovements().map(m=>{
+      const net=movementReportNetV15(m);
+      const vat=S(m.movement_type)==='in' ? movementVatValueV15(m) : net*VAT_RATE;
+      return {net, vat};
+    });
     const net=rows.reduce((a,r)=>a+N(r.net),0);
-    return {net, vat:net*VAT_RATE, gross:net*(1+VAT_RATE)};
+    const vat=tab==='movement' ? rows.reduce((a,r)=>a+N(r.vat),0) : net*VAT_RATE;
+    return {net, vat, gross:net+vat};
   }
   function reportWindowHtml(){
     if(state.reportTab==='products') return productsReportHtml();
@@ -772,7 +822,7 @@
       const consumed=moves.filter(m=>movementFinancialTypesV15().includes(S(m.movement_type)));
       const inQty=ins.reduce((a,m)=>a+N(m.quantity),0);
       const currentQty=computedItemQtyV15(i);
-      const unitCost=itemCost(i);
+      const unitCost=itemUnitCostV15(i);
       const consumedBy={};
       consumed.forEach(m=>{
         const key=S(m.receiver)||'غير محدد';
@@ -790,11 +840,11 @@
   }
   function movementReportHtml(){
     const rows=reportMovements();
-    return `<div class="fin-card"><h3>نافذة حركة المخزون</h3><p class="fin-soft">حركات الصرف العادي لا تظهر في هذا التقرير. التقرير يعرض الدخول والاستهلاك والتالف والمهدور والسكراب فقط.</p><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>المنتج</th><th>الكمية</th><th>المستلم/المورد</th><th>المشروع</th><th>قبل الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(m=>{const net=movementReportNetV15(m);return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${esc(m.item_name||'-')}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(m.project_name||'-')}</td><td>${money(net)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد حركات حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
+    return `<div class="fin-card"><h3>نافذة حركة المخزون</h3><p class="fin-soft">حركات الصرف العادي لا تظهر في هذا التقرير. التقرير يعرض الدخول والاستهلاك والتالف والمهدور والسكراب فقط.</p><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>المنتج</th><th>الكمية</th><th>المستلم/المورد</th><th>المشروع</th><th>قبل الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(m=>{const net=movementReportNetV15(m); const vat=S(m.movement_type)==='in'?movementVatValueV15(m):net*VAT_RATE;return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${esc(m.item_name||'-')}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(m.project_name||'-')}</td><td>${money(net)}</td><td>${money(net+vat)}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد حركات حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
   }
   function inventoryReportHtml(){
     const rows=reportInventory();
-    return `<div class="fin-card"><h3>نافذة جرد المخزن</h3><p class="fin-soft">أي منتج رصيده صفر لا يظهر في الجرد.</p><div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>الوحدة</th><th>النوع</th><th>الرصيد</th><th>قيمة قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(i=>{const qty=computedItemQtyV15(i); const net=qty*itemCost(i);return `<tr><td>${esc(i.name)}</td><td>${esc(itemCode(i)||'-')}</td><td>${esc(i.unit||'-')}</td><td>${esc(productType(i))}</td><td>${N(qty)}</td><td>${money(net)}</td><td>${money(net*VAT_RATE)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد منتجات برصيد متاح</td></tr>'}</tbody></table></div></div>`;
+    return `<div class="fin-card"><h3>نافذة جرد المخزن</h3><p class="fin-soft">أي منتج رصيده صفر لا يظهر في الجرد.</p><div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>الوحدة</th><th>النوع</th><th>الرصيد</th><th>قيمة قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(i=>{const qty=computedItemQtyV15(i); const net=qty*itemUnitCostV15(i);return `<tr><td>${esc(i.name)}</td><td>${esc(itemCode(i)||'-')}</td><td>${esc(i.unit||'-')}</td><td>${esc(productType(i))}</td><td>${N(qty)}</td><td>${money(net)}</td><td>${money(net*VAT_RATE)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد منتجات برصيد متاح</td></tr>'}</tbody></table></div></div>`;
   }
   function costReportHtml(){
     const rows=reportCostRows();
@@ -869,6 +919,23 @@
     reader.onload = () => { window.__financeProLineImageV15 = String(reader.result || ''); };
     reader.readAsDataURL(file);
   };
+  window.financeProFillExistingProductV15 = function(id){
+    const item=state.items.find(i=>String(i.id)===String(id));
+    if(!item){
+      if($('finLineNameV15')) $('finLineNameV15').value='';
+      if($('finLineCodeV15')) $('finLineCodeV15').value=nextInternalCode();
+      if($('finLineDistributorCodeV15')) $('finLineDistributorCodeV15').value='';
+      if($('finLineMinQtyV15')) $('finLineMinQtyV15').value='';
+      return;
+    }
+    if($('finLineNameV15')) $('finLineNameV15').value=S(item.name);
+    if($('finLineCodeV15')) $('finLineCodeV15').value=itemCode(item);
+    if($('finLineDistributorCodeV15')) $('finLineDistributorCodeV15').value=S(item.supplier_barcode || item.distributor_code || '');
+    if($('finLineUnitV15')) $('finLineUnitV15').value=S(item.unit||'حبة');
+    if($('finLineTypeV15')) $('finLineTypeV15').value=productType(item);
+    if($('finLineMinQtyV15')) $('finLineMinQtyV15').value=N(item.min_quantity || item.reorder_level || 1);
+    if($('finLinePriceV15') && !$('finLinePriceV15').value) $('finLinePriceV15').value=itemUnitCostV15(item) || '';
+  };
 
   window.financeProAddInvoiceLineV15 = function(){
     const line={ name:S($('finLineNameV15')?.value), code:S($('finLineCodeV15')?.value), distributor_code:S($('finLineDistributorCodeV15')?.value), supplier_invoice_no:S($('finLineSupplierInvoiceV15')?.value), qty:N($('finLineQtyV15')?.value), min_quantity:N($('finLineMinQtyV15')?.value)||1, price:N($('finLinePriceV15')?.value), tax_mode:S($('finLineTaxModeV15')?.value)||'before', unit:S($('finLineUnitV15')?.value)||'حبة', item_type:S($('finLineTypeV15')?.value)||'مادة', image:S(window.__financeProLineImageV15||'') };
@@ -877,6 +944,7 @@
     if(line.price<0) return alert('السعر غير صحيح');
     state.invoiceLines.push(line);
     ['finLineNameV15','finLineDistributorCodeV15','finLineSupplierInvoiceV15','finLineQtyV15','finLineMinQtyV15','finLinePriceV15'].forEach(id=>{ if($(id)) $(id).value=''; });
+    if($('finExistingProductV15')) $('finExistingProductV15').value='';
     if($('finLineCodeV15')) $('finLineCodeV15').value=nextInternalCode();
     if($('finLineImageV15')) $('finLineImageV15').value='';
     if($('finLineImageNameV15')) $('finLineImageNameV15').textContent='لم يتم اختيار صورة';
