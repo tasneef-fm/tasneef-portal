@@ -289,9 +289,9 @@
   }
   function movementsFinancial(){
     return state.movements.reduce((acc,m)=>{
-      const qty=N(m.quantity), cost=N(m.unit_cost), type=S(m.movement_type);
-      if(type==='return') return acc;
-      const net=qty*cost;
+      const type=S(m.movement_type);
+      if(type==='return' || type==='out') return acc;
+      const net=movementReportNetV15(m);
       acc.net += net; acc.vat += net*VAT_RATE; acc.gross += net*(1+VAT_RATE);
       return acc;
     },{net:0,vat:0,gross:0});
@@ -325,23 +325,26 @@
 
   function renderSummary(body){
     const fin=movementsFinancial();
+    const stockNet=stockValue();
+    const stockVat=stockNet*VAT_RATE;
+    const stockGross=stockNet*(1+VAT_RATE);
     body.innerHTML=`
       <div class="fin-grid">
         <div class="fin-card fin-kpi"><small>عدد المنتجات</small><b>${state.items.length}</b></div>
-        <div class="fin-card fin-kpi"><small>قيمة المخزون الحالية</small><b>${money(stockValue())}</b></div>
-        <div class="fin-card fin-kpi"><small>أصناف قاربت الانتهاء</small><b>${lowItems().length}</b></div>
-        <div class="fin-card fin-kpi"><small>إجمالي بعد الضريبة للحركات</small><b>${money(fin.gross)}</b></div>
+        <div class="fin-card fin-kpi"><small>السعر قبل الضريبة</small><b>${money(stockNet)}</b></div>
+        <div class="fin-card fin-kpi"><small>الضريبة</small><b>${money(stockVat)}</b></div>
+        <div class="fin-card fin-kpi"><small>السعر شامل الضريبة</small><b>${money(stockGross)}</b></div>
       </div>
       <div class="fin-card">
-        <h3>الأصناف التي سوف تنتهي</h3>
+        <h3>الأصناف التي سوف تنتهي (${lowItems().length})</h3>
         <div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>المتوفر</th><th>الحد الأدنى</th><th>التكلفة</th><th>الحالة</th></tr></thead><tbody>
           ${lowItems().map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(itemCode(i)||'-')}</td><td>${N(computedItemQtyV15(i))}</td><td>${N(i.min_quantity || i.reorder_level || 1)}</td><td>${money(itemCost(i))}</td><td><span class="fin-badge warn">قارب الانتهاء</span></td></tr>`).join('') || '<tr><td colspan="6">لا توجد أصناف قاربت الانتهاء</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="fin-grid three">
-        <div class="fin-card fin-kpi"><small>قبل الضريبة</small><b>${money(fin.net)}</b></div>
-        <div class="fin-card fin-kpi"><small>الضريبة 15%</small><b>${money(fin.vat)}</b></div>
-        <div class="fin-card fin-kpi"><small>بعد الضريبة</small><b>${money(fin.gross)}</b></div>
+        <div class="fin-card fin-kpi"><small>حركة المخزون قبل الضريبة</small><b>${money(fin.net)}</b></div>
+        <div class="fin-card fin-kpi"><small>ضريبة حركة المخزون</small><b>${money(fin.vat)}</b></div>
+        <div class="fin-card fin-kpi"><small>حركة المخزون بعد الضريبة</small><b>${money(fin.gross)}</b></div>
       </div>`;
   }
 
@@ -484,6 +487,8 @@
           <div><label>السعر</label><input id="finLinePriceV15" type="number" min="0" step="0.01"></div>
           <div><label>طريقة الضريبة</label><select id="finLineTaxModeV15"><option value="before">قبل الضريبة</option><option value="after">بعد الضريبة</option><option value="none">بدون ضريبة</option></select></div>
           <div><label>الوحدة</label><select id="finLineUnitV15"><option>حبة</option><option>كرتون</option><option>علبة</option><option>لتر</option><option>كيلو</option><option>متر</option><option>رول</option><option>طقم</option><option>غير</option></select></div>
+          <div><label>حد النفاد</label><input id="finLineMinQtyV15" type="number" min="0" step="0.01" placeholder="مثال 2"></div>
+          <div><label>رقم فاتورة المورد</label><input id="finLineSupplierInvoiceV15" placeholder="اختياري"></div>
           <button onclick="financeProAddInvoiceLineV15()">إضافة</button>
         </div>
         <div class="fin-grid three">
@@ -502,8 +507,8 @@
     const box=$('finInvoiceLinesV15'); if(!box) return;
     const total=state.invoiceLines.reduce((a,l)=>{ const c=rowVat(l.qty,l.price,l.tax_mode); a.net+=c.net; a.vat+=c.vat; a.gross+=c.gross; return a; },{net:0,vat:0,gross:0});
     box.innerHTML=`
-      <div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود الداخلي</th><th>كود الموزع</th><th>النوع</th><th>الكمية</th><th>الوحدة</th><th>طريقة الضريبة</th><th>قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th><th>إجراء</th></tr></thead><tbody>
-      ${state.invoiceLines.map((l,idx)=>{ const c=rowVat(l.qty,l.price,l.tax_mode); const modeLabel={before:'قبل الضريبة',after:'بعد الضريبة',none:'بدون ضريبة'}[S(l.tax_mode||'before')]||'قبل الضريبة'; return `<tr><td>${l.image?`<img src="${esc(l.image)}" style="width:34px;height:34px;object-fit:contain;border-radius:8px;border:1px solid #d9e7e2;background:#fff;margin-left:6px">`:''}${esc(l.name)}</td><td>${esc(l.code)}</td><td>${esc(l.distributor_code||'-')}</td><td>${esc(l.item_type||'مادة')}</td><td>${N(l.qty)}</td><td>${esc(l.unit||'حبة')}</td><td>${esc(modeLabel)}</td><td>${money(c.net)}</td><td>${money(c.vat)}</td><td>${money(c.gross)}</td><td><button class="danger" onclick="financeProRemoveInvoiceLineV15(${idx})">حذف</button></td></tr>`; }).join('') || '<tr><td colspan="11">أضف منتجات الفاتورة هنا.</td></tr>'}
+      <div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود الداخلي</th><th>كود الموزع</th><th>رقم فاتورة المورد</th><th>النوع</th><th>الكمية</th><th>حد النفاد</th><th>الوحدة</th><th>طريقة الضريبة</th><th>قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th><th>إجراء</th></tr></thead><tbody>
+      ${state.invoiceLines.map((l,idx)=>{ const c=rowVat(l.qty,l.price,l.tax_mode); const modeLabel={before:'قبل الضريبة',after:'بعد الضريبة',none:'بدون ضريبة'}[S(l.tax_mode||'before')]||'قبل الضريبة'; return `<tr><td>${l.image?`<img src="${esc(l.image)}" style="width:34px;height:34px;object-fit:contain;border-radius:8px;border:1px solid #d9e7e2;background:#fff;margin-left:6px">`:''}${esc(l.name)}</td><td>${esc(l.code)}</td><td>${esc(l.distributor_code||'-')}</td><td>${esc(l.supplier_invoice_no||'-')}</td><td>${esc(l.item_type||'مادة')}</td><td>${N(l.qty)}</td><td>${N(l.min_quantity||1)}</td><td>${esc(l.unit||'حبة')}</td><td>${esc(modeLabel)}</td><td>${money(c.net)}</td><td>${money(c.vat)}</td><td>${money(c.gross)}</td><td><button class="danger" onclick="financeProRemoveInvoiceLineV15(${idx})">حذف</button></td></tr>`; }).join('') || '<tr><td colspan="13">أضف منتجات الفاتورة هنا.</td></tr>'}
       </tbody></table></div>
       <div class="fin-grid three" style="margin-top:10px"><div class="fin-soft">قبل الضريبة: <b>${money(total.net)}</b></div><div class="fin-soft">الضريبة: <b>${money(total.vat)}</b></div><div class="fin-soft">بعد الضريبة: <b>${money(total.gross)}</b></div></div>`;
   }
@@ -866,12 +871,12 @@
   };
 
   window.financeProAddInvoiceLineV15 = function(){
-    const line={ name:S($('finLineNameV15')?.value), code:S($('finLineCodeV15')?.value), distributor_code:S($('finLineDistributorCodeV15')?.value), qty:N($('finLineQtyV15')?.value), price:N($('finLinePriceV15')?.value), tax_mode:S($('finLineTaxModeV15')?.value)||'before', unit:S($('finLineUnitV15')?.value)||'حبة', item_type:S($('finLineTypeV15')?.value)||'مادة', image:S(window.__financeProLineImageV15||'') };
+    const line={ name:S($('finLineNameV15')?.value), code:S($('finLineCodeV15')?.value), distributor_code:S($('finLineDistributorCodeV15')?.value), supplier_invoice_no:S($('finLineSupplierInvoiceV15')?.value), qty:N($('finLineQtyV15')?.value), min_quantity:N($('finLineMinQtyV15')?.value)||1, price:N($('finLinePriceV15')?.value), tax_mode:S($('finLineTaxModeV15')?.value)||'before', unit:S($('finLineUnitV15')?.value)||'حبة', item_type:S($('finLineTypeV15')?.value)||'مادة', image:S(window.__financeProLineImageV15||'') };
     if(!line.name) return alert('اسم المنتج مطلوب');
     if(line.qty<=0) return alert('الكمية مطلوبة');
     if(line.price<0) return alert('السعر غير صحيح');
     state.invoiceLines.push(line);
-    ['finLineNameV15','finLineDistributorCodeV15','finLineQtyV15','finLinePriceV15'].forEach(id=>{ if($(id)) $(id).value=''; });
+    ['finLineNameV15','finLineDistributorCodeV15','finLineSupplierInvoiceV15','finLineQtyV15','finLineMinQtyV15','finLinePriceV15'].forEach(id=>{ if($(id)) $(id).value=''; });
     if($('finLineCodeV15')) $('finLineCodeV15').value=nextInternalCode();
     if($('finLineImageV15')) $('finLineImageV15').value='';
     if($('finLineImageNameV15')) $('finLineImageNameV15').textContent='لم يتم اختيار صورة';
@@ -896,19 +901,19 @@
         if(old){
           const oldQty=N(old.quantity), oldCost=itemCost(old), newQty=oldQty+q;
           const avg=newQty>0 ? ((oldQty*oldCost)+(q*cost))/newQty : cost;
-          const upd={quantity:newQty, unit_cost:+avg.toFixed(4), supplier:supplier||old.supplier, unit:l.unit||old.unit, item_type:l.item_type||old.item_type, type:l.item_type||old.type, product_code:l.code||old.product_code, serial_number:l.code||old.serial_number, barcode:l.code||old.barcode, supplier_barcode:l.distributor_code||old.supplier_barcode};
+          const upd={quantity:newQty, unit_cost:+avg.toFixed(4), supplier:supplier||old.supplier, unit:l.unit||old.unit, item_type:l.item_type||old.item_type, type:l.item_type||old.type, product_code:l.code||old.product_code, serial_number:l.code||old.serial_number, barcode:l.code||old.barcode, supplier_barcode:l.distributor_code||old.supplier_barcode, min_quantity:N(l.min_quantity)||N(old.min_quantity)||1};
           if(l.image) upd.image_url = l.image;
           const res=await sb.from('inventory_items').update(upd).eq('id',old.id).select('*').single();
           if(res.error) throw res.error;
           item=res.data;
         }else{
-          const ins={name:l.name, product_code:l.code, serial_number:l.code, barcode:l.code, supplier_barcode:l.distributor_code||l.code, image_url:l.image||'', unit:l.unit||'حبة', item_type:l.item_type||'مادة', type:l.item_type||'مادة', quantity:q, min_quantity:1, unit_cost:+cost.toFixed(4), supplier, category:l.item_type||'عام', notes:'تمت الإضافة من فاتورة '+invoiceNo};
+          const ins={name:l.name, product_code:l.code, serial_number:l.code, barcode:l.code, supplier_barcode:l.distributor_code||l.code, image_url:l.image||'', unit:l.unit||'حبة', item_type:l.item_type||'مادة', type:l.item_type||'مادة', quantity:q, min_quantity:N(l.min_quantity)||1, unit_cost:+cost.toFixed(4), supplier, category:l.item_type||'عام', notes:'تمت الإضافة من فاتورة '+invoiceNo+(S(l.supplier_invoice_no)?' / فاتورة المورد '+S(l.supplier_invoice_no):'')};
           const res=await sb.from('inventory_items').insert(ins).select('*').single();
           if(res.error) throw res.error;
           item=res.data;
         }
         const c=rowVat(q,l.price,l.tax_mode);
-        const meta={module:VERSION, invoiceNo, supplier, taxMode:S(l.tax_mode||'before'), beforeVat:c.net, vat:c.vat, afterVat:c.gross};
+        const meta={module:VERSION, invoiceNo, supplier, supplierInvoiceNo:S(l.supplier_invoice_no), minQuantity:N(l.min_quantity)||1, taxMode:S(l.tax_mode||'before'), beforeVat:c.net, vat:c.vat, afterVat:c.gross};
         const mv={item_id:item.id,item_name:item.name,movement_type:'in',quantity:q,movement_date:date,receiver:supplier,reason:'إضافة مخزون - فاتورة '+invoiceNo,notes:'finance_pro_v15:'+JSON.stringify(meta),product_code:l.code,barcode:l.distributor_code||l.code,unit_cost:+cost.toFixed(4)};
         const mr=await sb.from('inventory_movements').insert(mv);
         if(mr.error) throw mr.error;
@@ -940,7 +945,7 @@
       const meta=safeJson(m.notes)||{};
       const mode=S(meta.taxMode||'before');
       const price=mode==='after' && N(m.quantity)>0 ? N(meta.afterVat)/N(m.quantity) : N(m.unit_cost);
-      return {name:S(m.item_name), code:S(m.product_code), distributor_code:S(m.barcode), qty:N(m.quantity), price, tax_mode:mode, unit:'حبة', item_type:'مادة', image:''};
+      return {name:S(m.item_name), code:S(m.product_code), distributor_code:S(m.barcode), supplier_invoice_no:S(meta.supplierInvoiceNo), qty:N(m.quantity), min_quantity:N(meta.minQuantity)||1, price, tax_mode:mode, unit:'حبة', item_type:'مادة', image:''};
     });
     renderShell();
     if($('finInvSupplierV15')) $('finInvSupplierV15').value=inv.supplier||'';

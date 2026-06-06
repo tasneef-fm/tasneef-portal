@@ -1,4 +1,4 @@
-(function(){
+﻿(function(){
   if(window.__tasneefOrdersCardsV6) return;
   window.__tasneefOrdersCardsV6 = true;
 
@@ -88,7 +88,7 @@
       '<div class="order-chip-row-v6"><b class="'+(cls==='cancel'?'bad':'ops')+'">التشغيل: '+esc(field(r,16)||'-')+'</b><b class="'+(cls==='due'?'finance':'')+'">المالية: '+esc(field(r,23)||'-')+'</b><b>الفوترة: '+esc(field(r,25)||'-')+'</b></div>' +
       '<div class="order-meta-v6"><div><small>العميل</small><strong>'+esc(field(r,8)||'-')+'</strong></div><div><small>الجوال</small><strong>'+esc(field(r,9)||'-')+'</strong></div><div><small>المنفذ</small><strong>'+esc(field(r,10)||'-')+'</strong></div><div><small>مرسل الطلب</small><strong>'+esc(field(r,4)||'-')+'</strong></div><div><small>السعر شامل الضريبة</small><strong>'+esc(price!==''&&price!=null?money(price):'-')+'</strong></div><div><small>الربح</small><strong>'+esc(profit!==''&&profit!=null?money(profit):'-')+'</strong></div></div>' +
       '<p class="order-details-v6">'+(esc(text(field(r,11),160)) || 'لا توجد تفاصيل')+'</p>' +
-      '<div class="order-actions-v6"><button onclick="editOrderV233('+i+')">تعديل</button><button class="light" onclick="sendOrderWhatsappV233('+i+')">واتساب</button><button class="danger" onclick="deleteOrderV233('+i+')">حذف</button></div>' +
+'<div class="order-actions-v6"><button class="light" onclick="showOrderDetailsV6('+i+')">عرض</button><button onclick="editOrderV233('+i+')">تعديل</button><button class="light" onclick="sendOrderWhatsappV233('+i+')">واتساب</button><button class="danger" onclick="deleteOrderV233('+i+')">حذف</button></div>' +
     '</article>';
   }
 
@@ -142,10 +142,24 @@
     document.head.appendChild(s);
   }
 
-  window.changeOrdersPageV6=function(delta){ page=Math.max(1,page+Number(delta||0)); window.renderOrdersV233(); };
-  window.renderOrdersFirstPageV6=function(){ page=1; window.renderOrdersV233(); };
+window.changeOrdersPageV6=function(delta){ page=Math.max(1,page+Number(delta||0)); window.renderOrdersV233(); };
+window.renderOrdersFirstPageV6=function(){ page=1; window.renderOrdersV233(); };
+window.showOrderDetailsV6=function(idx){
+  var rows=getOrders(); var r=rows[idx]; if(!r) return;
+  var labels=[
+    ['رقم الطلب',0],['رقم القروب',1],['التاريخ',2],['مرسل الطلب',4],['المشروع',5],['العميل',8],['الجوال',9],['المنفذ',10],
+    ['التفاصيل',11],['المبلغ شامل الضريبة',13],['قبل الضريبة',14],['الضريبة',15],['حالة التنفيذ',16],['التكلفة',17],
+    ['الربح',18],['حالة السداد',23],['الفاتورة',24],['الفوترة',25]
+  ];
+  var body=labels.map(function(x){
+    var val=field(r,x[1]);
+    if([13,14,15,17,18].indexOf(x[1])>-1 && val!=='' && val!=null) val=money(val);
+    return '<div><small>'+esc(x[0])+'</small><strong>'+esc(val||'-')+'</strong></div>';
+  }).join('');
+  document.body.insertAdjacentHTML('beforeend','<div class="modal-backdrop" onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;background:rgba(0,35,28,.45);z-index:99999;display:grid;place-items:center;padding:18px"><div class="card" style="width:min(920px,96vw);max-height:92vh;overflow:auto"><div class="fin-actions" style="justify-content:space-between"><h2>عرض الأوردر: '+esc(field(r,0)||'-')+'</h2><button class="danger" onclick="this.closest(&quot;.modal-backdrop&quot;).remove()">إغلاق</button></div><div class="order-meta-v6" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:12px">'+body+'</div></div></div>');
+};
 
-  window.renderOrdersV233=function(){
+window.renderOrdersV233=function(){
     style();
     ensureLayout();
     if(typeof window.hydrateOrdersForm === 'function') window.hydrateOrdersForm();
@@ -170,3 +184,4 @@
   document.addEventListener('change',function(e){ if(e.target && /^order.*V233$/.test(e.target.id||'')){ page=1; setTimeout(window.renderOrdersV233,0); } },true);
   document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ if($('orders')) window.renderOrdersV233(); },300); });
 })();
+
