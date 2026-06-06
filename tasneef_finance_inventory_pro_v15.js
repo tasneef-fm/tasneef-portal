@@ -720,7 +720,12 @@
   }
   function reportMovements(){
     const f=reportFilters();
-    return state.movements.filter(m=>S(m.movement_type)!=='return' && N(m.quantity)>0 && movementPass(m,f));
+    return state.movements.filter(m=>{
+      const type=S(m.movement_type);
+      if(type==='return' || type==='out') return false;
+      if(N(m.quantity)<=0) return false;
+      return movementPass(m,f);
+    });
   }
   function reportInventory(){
     const f=reportFilters();
@@ -756,11 +761,31 @@
   }
   function productsReportHtml(){
     const rows=reportProducts();
-    return `<div class="fin-card"><h3>نافذة تقرير المنتجات</h3><div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>الوحدة</th><th>النوع</th><th>الكمية</th><th>قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(i=>{const qty=computedItemQtyV15(i); const net=qty*itemCost(i);return `<tr><td>${esc(i.name)}</td><td>${esc(itemCode(i)||'-')}</td><td>${esc(i.unit||'-')}</td><td>${esc(productType(i))}</td><td>${N(qty)}</td><td>${money(net)}</td><td>${money(net*VAT_RATE)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد منتجات حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
+    const blocks=rows.map(i=>{
+      const moves=productActivityRowsV15(i);
+      const ins=moves.filter(m=>S(m.movement_type)==='in');
+      const consumed=moves.filter(m=>movementFinancialTypesV15().includes(S(m.movement_type)));
+      const inQty=ins.reduce((a,m)=>a+N(m.quantity),0);
+      const currentQty=computedItemQtyV15(i);
+      const unitCost=itemCost(i);
+      const consumedBy={};
+      consumed.forEach(m=>{
+        const key=S(m.receiver)||'غير محدد';
+        if(!consumedBy[key]) consumedBy[key]={receiver:key,qty:0,net:0,rows:0,projects:new Set()};
+        consumedBy[key].qty+=N(m.quantity);
+        consumedBy[key].net+=movementReportNetV15(m);
+        consumedBy[key].rows+=1;
+        if(S(m.project_name)) consumedBy[key].projects.add(S(m.project_name));
+      });
+      const consumerRows=Object.values(consumedBy).map(r=>`<tr><td>${esc(r.receiver)}</td><td>${r.rows}</td><td>${N(r.qty)}</td><td>${money(unitCost)}</td><td>${money(r.net)}</td><td>${esc([...r.projects].join(', ')||'-')}</td></tr>`).join('') || '<tr><td colspan="6">لا يوجد استهلاك مسجل لهذا المنتج</td></tr>';
+      const inRows=ins.map(m=>`<tr><td>${esc(movementDate(m)||'-')}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${money(N(m.unit_cost)||unitCost)}</td><td>${money((N(m.unit_cost)||unitCost)*N(m.quantity))}</td></tr>`).join('') || '<tr><td colspan="5">لا توجد حركات دخول</td></tr>';
+      return `<div class="fin-card"><h3>${esc(i.name||'-')}</h3><div class="fin-grid four"><div class="fin-soft">الكود: <b>${esc(itemCode(i)||'-')}</b></div><div class="fin-soft">مرات الدخول: <b>${ins.length}</b></div><div class="fin-soft">كمية الدخول: <b>${N(inQty)}</b></div><div class="fin-soft">الرصيد الحالي: <b>${N(currentQty)}</b></div></div><h3>الدخول للمخزن</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>الكمية</th><th>المورد/البيان</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${inRows}</tbody></table></div><h3>استهلاك المشرفين</h3><div class="fin-table"><table><thead><tr><th>المشرف / المستلم</th><th>عدد العمليات</th><th>كم حبة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>المشاريع</th></tr></thead><tbody>${consumerRows}</tbody></table></div></div>`;
+    }).join('');
+    return `<div class="fin-card"><h3>نافذة تقرير المنتجات</h3><p class="fin-soft">يعرض كل منتج: كم مرة دخل المخزن، ومن استهلكه من المشرفين، والكمية والسعر.</p></div>${blocks || '<div class="fin-card">لا توجد منتجات حسب الفلتر</div>'}`;
   }
   function movementReportHtml(){
     const rows=reportMovements();
-    return `<div class="fin-card"><h3>نافذة حركة المخزون: الداخل والخارج</h3><p class="fin-soft">الصرف يظهر كخروج من المخزون ولا يدخل في القيمة المالية. القيمة المالية تظهر عند مستهلك أو تالف أو مهدور أو سكراب.</p><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>المنتج</th><th>الكمية</th><th>المستلم/المورد</th><th>المشروع</th><th>قبل الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(m=>{const net=movementReportNetV15(m);return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${esc(m.item_name||'-')}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(m.project_name||'-')}</td><td>${money(net)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد حركات حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
+    return `<div class="fin-card"><h3>نافذة حركة المخزون</h3><p class="fin-soft">حركات الصرف العادي لا تظهر في هذا التقرير. التقرير يعرض الدخول والاستهلاك والتالف والمهدور والسكراب فقط.</p><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>الحركة</th><th>المنتج</th><th>الكمية</th><th>المستلم/المورد</th><th>المشروع</th><th>قبل الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(m=>{const net=movementReportNetV15(m);return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${esc(m.item_name||'-')}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(m.project_name||'-')}</td><td>${money(net)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="8">لا توجد حركات حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
   }
   function inventoryReportHtml(){
     const rows=reportInventory();
@@ -768,7 +793,18 @@
   }
   function costReportHtml(){
     const rows=reportCostRows();
-    return `<div class="fin-card"><h3>نافذة تقرير مراكز التكلفة</h3><p class="fin-soft">يعرض التقرير الاستهلاك والتالف والمهدور والسكراب فقط. الصرف العادي لا يدخل في تكلفة التقرير حتى يتم تحويله إلى استهلاك.</p><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>المنتج</th><th>نوع التوزيع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع</th><th>الأوردر</th><th>ملاحظة التوزيع</th><th>قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${rows.map(m=>{const net=movementReportNetV15(m);return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(m.item_name||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(movementCenter(m)||'-')}</td><td>${esc(m.project_name||'-')}</td><td>${esc(m.order_no||'-')}</td><td>${esc(m.distribution_note||'-')}</td><td>${money(net)}</td><td>${money(net*VAT_RATE)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('') || '<tr><td colspan="12">لا توجد بيانات مراكز تكلفة حسب الفلتر</td></tr>'}</tbody></table></div></div>`;
+    const groups={};
+    rows.forEach(m=>{
+      const name=S(m.project_name)||'بدون مشروع';
+      if(!groups[name]) groups[name]=[];
+      groups[name].push(m);
+    });
+    const groupHtml=Object.entries(groups).map(([project,items])=>{
+      const netTotal=items.reduce((a,m)=>a+movementReportNetV15(m),0);
+      const body=items.map(m=>{const net=movementReportNetV15(m);return `<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(m.item_name||'-')}</td><td>${esc(movementTypeLabelV15(m.movement_type))}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(movementCenter(m)||'-')}</td><td>${esc(m.order_no||'-')}</td><td>${esc(m.distribution_note||'-')}</td><td>${money(net)}</td><td>${money(net*VAT_RATE)}</td><td>${money(net*(1+VAT_RATE))}</td></tr>`;}).join('');
+      return `<div class="fin-card"><h3>المشروع: ${esc(project)}</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>المنتج</th><th>نوع الاستهلاك</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>الأوردر</th><th>ملاحظة</th><th>قبل الضريبة</th><th>الضريبة</th><th>بعد الضريبة</th></tr></thead><tbody>${body}<tr><th colspan="8">مجموع المشروع</th><th>${money(netTotal)}</th><th>${money(netTotal*VAT_RATE)}</th><th>${money(netTotal*(1+VAT_RATE))}</th></tr></tbody></table></div></div>`;
+    }).join('');
+    return `<div class="fin-card"><h3>نافذة تقرير مراكز التكلفة</h3><p class="fin-soft">المشاريع تظهر كمجموعات، وتحت كل مشروع مستهلكاته ومجموعه. الصرف العادي لا يدخل في تكلفة التقرير حتى يتحول إلى استهلاك.</p></div>${groupHtml || '<div class="fin-card">لا توجد بيانات مراكز تكلفة حسب الفلتر</div>'}`;
   }
 
   function findItem(line){
