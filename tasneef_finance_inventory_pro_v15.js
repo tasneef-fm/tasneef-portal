@@ -1037,7 +1037,9 @@
       alert('لم أجد أوردر بهذا الرقم: '+orderNo);
       return null;
     }
-    const amount = orderInventoryCostAmountV15(item, qty);
+    const rawAmount = orderInventoryCostAmountV15(item, qty);
+    const amount = S(type)==='return' ? -rawAmount : rawAmount;
+    const actionLabel = S(type)==='return' ? 'ستخصم من الأوردر' : 'ستضاف للأوردر';
     const ok = confirm(
       'هل هذا هو الأوردر؟\n\n' +
       'رقم الأوردر: '+found.orderNo+'\n' +
@@ -1047,7 +1049,7 @@
       'المنتج: '+(item ? item.name : '-')+'\n' +
       'نوع التوزيع: '+movementTypeLabelV15(type)+'\n' +
       'الكمية: '+N(qty)+'\n' +
-      'تكلفة المخزن التي ستضاف للأوردر: '+money(amount)
+      'تكلفة المخزن التي '+actionLabel+': '+money(Math.abs(amount))
     );
     if(!ok) return null;
     return {
@@ -1064,7 +1066,7 @@
     const addCost = typeof window.tasneefOrdersAddInventoryCostV8 === 'function' ? window.tasneefOrdersAddInventoryCostV8 : null;
     if(!addCost) return;
     A(distribution).forEach((d,idx)=>{
-      if(!d || !d.orderConfirmed || !S(d.orderNo) || N(d.orderInventoryCost)<=0) return;
+      if(!d || !d.orderConfirmed || !S(d.orderNo) || N(d.orderInventoryCost)===0) return;
       const key=[
         'inv-order-cost-v15',
         movementDate || today(),
@@ -1072,7 +1074,8 @@
         S(d.orderNo),
         idx,
         S(d.type || movementType),
-        N(d.qty)
+        N(d.qty),
+        N(d.orderInventoryCost)
       ].join('|');
       addCost(d.orderNo, N(d.orderInventoryCost), {
         key,
@@ -1099,7 +1102,7 @@
     const orderNo=S($('finDistOrderV15')?.value);
     const item=selectedMoveItemV15();
     let orderLink=null;
-    if(orderNo && type !== 'return'){
+    if(orderNo){
       if(!item) return alert('اختر المنتج أولاً حتى يتم حساب تكلفة المخزن للأوردر');
       orderLink = confirmOrderForDistributionV15(orderNo, item, qty, type, pid?projectName(pid):'');
     }

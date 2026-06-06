@@ -38,6 +38,50 @@
     return row ? num(row.amount) : 0;
   }
 
+  function currentFormOrderNoV8(){
+    var edit=document.getElementById('orderEditIndexV233');
+    var no=document.getElementById('orderNoV233');
+    if(no && no.value) return no.value;
+    var idx=edit && edit.value !== '' ? Number(edit.value) : -1;
+    var rows=getOrders();
+    return rows[idx] ? orderNoForRow(rows[idx]) : '';
+  }
+
+  function ensureInventoryCostFormFieldV8(){
+    var box=document.getElementById('orderFormFieldsV233');
+    if(!box || document.getElementById('orderInventoryCostV8')) return;
+    var div=document.createElement('div');
+    div.className='order-inventory-cost-field-v8';
+    div.innerHTML='<label>تكلفة المخزون <span class="orders-hidden-col-v233">(تلقائي)</span></label><input id="orderInventoryCostV8" type="number" readonly value="0">';
+    var labels=[].slice.call(box.querySelectorAll('label'));
+    var costLabel=labels.find(function(l){
+      var t=(l.textContent||'').replace(/\s+/g,' ');
+      return t.indexOf('التكلفة') >= 0 && t.indexOf('المخزون') < 0;
+    });
+    var costWrap=costLabel && costLabel.parentElement;
+    if(costWrap && costWrap.nextSibling) box.insertBefore(div, costWrap.nextSibling);
+    else box.appendChild(div);
+  }
+
+  function updateInventoryCostFormFieldV8(){
+    ensureInventoryCostFormFieldV8();
+    var el=document.getElementById('orderInventoryCostV8');
+    if(!el) return;
+    var inv=inventoryCostForOrder(currentFormOrderNoV8());
+    el.value=inv.toFixed(2);
+    var byLabel=function(word){
+      var labels=[].slice.call((document.getElementById('orderFormFieldsV233')||document).querySelectorAll('label'));
+      var label=labels.find(function(l){ return (l.textContent||'').indexOf(word)>=0 && (l.textContent||'').indexOf('المخزون')<0; });
+      return label && label.parentElement ? label.parentElement.querySelector('input,select,textarea') : null;
+    };
+    var before=byLabel('السعر قبل الضريبة');
+    var cost=byLabel('التكلفة');
+    var profit=byLabel('الربح');
+    if(profit && before){
+      profit.value=(num(before.value)-num(cost && cost.value)-inv).toFixed(2);
+    }
+  }
+
   function getOrders(){
     try{
       var saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
@@ -107,10 +151,11 @@
     var cls=cardClass(r);
     var price=field(r,18), profit=field(r,22);
     var invCost=inventoryCostForOrder(orderNoForRow(r));
+    var shownProfit=(profit!==''&&profit!=null) ? num(profit)-invCost : '';
     return '<article class="order-card-v6 '+cls+'">' +
       '<div class="order-card-head-v6"><div><h3>'+esc(field(r,0)||'-')+'</h3><small>رقم القروب: '+esc(field(r,1)||'-')+' | '+esc(dateForDisplay(field(r,2)))+'</small></div><span>'+esc(field(r,5)||'-')+'</span></div>' +
       '<div class="order-chip-row-v6"><b class="'+(cls==='cancel'?'bad':'ops')+'">التشغيل: '+esc(field(r,16)||'-')+'</b><b class="'+(cls==='due'?'finance':'')+'">المالية: '+esc(field(r,23)||'-')+'</b><b>الفوترة: '+esc(field(r,25)||'-')+'</b></div>' +
-      '<div class="order-meta-v6"><div><small>العميل</small><strong>'+esc(field(r,8)||'-')+'</strong></div><div><small>الجوال</small><strong>'+esc(field(r,9)||'-')+'</strong></div><div><small>المنفذ</small><strong>'+esc(field(r,10)||'-')+'</strong></div><div><small>مرسل الطلب</small><strong>'+esc(field(r,4)||'-')+'</strong></div><div><small>السعر شامل الضريبة</small><strong>'+esc(price!==''&&price!=null?money(price):'-')+'</strong></div><div><small>الربح</small><strong>'+esc(profit!==''&&profit!=null?money(profit):'-')+'</strong></div><div><small>تكلفة المخزن</small><strong>'+esc(invCost>0?money(invCost):'-')+'</strong></div></div>' +
+      '<div class="order-meta-v6"><div><small>العميل</small><strong>'+esc(field(r,8)||'-')+'</strong></div><div><small>الجوال</small><strong>'+esc(field(r,9)||'-')+'</strong></div><div><small>المنفذ</small><strong>'+esc(field(r,10)||'-')+'</strong></div><div><small>مرسل الطلب</small><strong>'+esc(field(r,4)||'-')+'</strong></div><div><small>السعر شامل الضريبة</small><strong>'+esc(price!==''&&price!=null?money(price):'-')+'</strong></div><div><small>الربح</small><strong>'+esc(shownProfit!==''?money(shownProfit):'-')+'</strong></div><div><small>تكلفة المخزن</small><strong>'+esc(invCost>0?money(invCost):'-')+'</strong></div></div>' +
       '<p class="order-details-v6">'+(esc(text(field(r,11),160)) || 'لا توجد تفاصيل')+'</p>' +
 '<div class="order-actions-v6"><button class="light" onclick="showOrderDetailsV6('+i+')">عرض</button><button onclick="editOrderV233('+i+')">تعديل</button><button class="light" onclick="sendOrderWhatsappV233('+i+')">واتساب</button><button class="danger" onclick="deleteOrderV233('+i+')">حذف</button></div>' +
     '</article>';
@@ -125,7 +170,7 @@
     var revenue=rows.reduce(function(a,r){return a+num(field(r,18));},0);
     var vat=rows.reduce(function(a,r){return a+num(field(r,19));},0);
     var cost=rows.reduce(function(a,r){return a+num(field(r,21));},0);
-    var profit=rows.reduce(function(a,r){return a+num(field(r,22));},0);
+    var profit=rows.reduce(function(a,r){return a+num(field(r,22))-inventoryCostForOrder(orderNoForRow(r));},0);
     if($('ordersTotalKpiV233')) $('ordersTotalKpiV233').textContent=rows.length;
     if($('ordersDoneKpiV233')) $('ordersDoneKpiV233').textContent=done;
     if($('ordersDueKpiV233')) $('ordersDueKpiV233').textContent=due;
@@ -178,6 +223,7 @@ window.showOrderDetailsV6=function(idx){
   var body=labels.map(function(x){
     var val=field(r,x[1]);
     if([13,14,15,17,18].indexOf(x[1])>-1 && val!=='' && val!=null) val=money(val);
+    if(x[0]==='الربح') val=money(num(field(r,x[1]))-inventoryCostForOrder(orderNoForRow(r)));
     return '<div><small>'+esc(x[0])+'</small><strong>'+esc(val||'-')+'</strong></div>';
   }).join('');
   body += '<div><small>تكلفة المخزن</small><strong>'+esc(inventoryCostForOrder(orderNoForRow(r))>0?money(inventoryCostForOrder(orderNoForRow(r))):'-')+'</strong></div>';
@@ -208,15 +254,16 @@ window.tasneefOrdersFindV8=function(orderNo){
 window.tasneefOrdersAddInventoryCostV8=function(orderNo, amount, meta){
   var key=normalizeOrderNo(orderNo);
   var value=num(amount);
-  if(!key || value<=0) return false;
+  if(!key || value===0) return false;
   var data=readOrderInventoryCosts();
   if(!data[key]) data[key]={amount:0, lines:[]};
   if(meta && meta.key && (data[key].lines||[]).some(function(line){ return line && line.key === meta.key; })) return true;
-  data[key].amount=+(num(data[key].amount)+value).toFixed(2);
+  data[key].amount=+Math.max(0, num(data[key].amount)+value).toFixed(2);
   data[key].updatedAt=new Date().toISOString();
   data[key].lines=(data[key].lines||[]).concat([Object.assign({amount:value, at:new Date().toISOString()}, meta||{})]).slice(-200);
   writeOrderInventoryCosts(data);
   if(typeof window.renderOrdersV233 === 'function') setTimeout(window.renderOrdersV233,0);
+  updateInventoryCostFormFieldV8();
   return true;
 };
 
@@ -236,7 +283,26 @@ window.renderOrdersV233=function(){
     if($('ordersCardsV6')) $('ordersCardsV6').innerHTML=rows.map(function(x){return card(x.r,x.i);}).join('') || '<div class="orders-empty-v6">لا توجد أوردرات حسب الفلتر الحالي</div>';
     if($('ordersPagerV6')) $('ordersPagerV6').innerHTML='<div>عرض '+(list.length?start+1:0)+'-'+Math.min(start+PAGE_SIZE,list.length)+' من '+list.length+' أوردر | صفحة '+page+' من '+pages+'</div><div><button class="light" onclick="changeOrdersPageV6(-1)" '+(page<=1?'disabled':'')+'>السابق</button> <button class="light" onclick="changeOrdersPageV6(1)" '+(page>=pages?'disabled':'')+'>التالي</button></div>';
     summary(list.map(function(x){return x.r;}));
+    updateInventoryCostFormFieldV8();
   };
+
+  var oldHydrate=window.hydrateOrdersForm;
+  if(typeof oldHydrate === 'function'){
+    window.hydrateOrdersForm=function(){
+      var r=oldHydrate.apply(this, arguments);
+      setTimeout(updateInventoryCostFormFieldV8,0);
+      return r;
+    };
+  }
+  ['editOrderV233','clearOrderFormV233','saveOrderV233'].forEach(function(name){
+    var old=window[name];
+    if(typeof old !== 'function') return;
+    window[name]=function(){
+      var r=old.apply(this, arguments);
+      setTimeout(updateInventoryCostFormFieldV8,0);
+      return r;
+    };
+  });
 
   var oldReset=window.resetOrdersFiltersV233;
   window.resetOrdersFiltersV233=function(){
@@ -246,6 +312,11 @@ window.renderOrdersV233=function(){
   };
 
   document.addEventListener('input',function(e){ if(e.target && e.target.id === 'orderSearchV233'){ page=1; setTimeout(window.renderOrdersV233,0); } },true);
+  document.addEventListener('input',function(e){
+    if(e.target && e.target.closest && e.target.closest('#orderFormFieldsV233')){
+      setTimeout(updateInventoryCostFormFieldV8,0);
+    }
+  },true);
   document.addEventListener('change',function(e){ if(e.target && /^order.*V233$/.test(e.target.id||'')){ page=1; setTimeout(window.renderOrdersV233,0); } },true);
   document.addEventListener('DOMContentLoaded',function(){ setTimeout(function(){ if($('orders')) window.renderOrdersV233(); },300); });
 })();
