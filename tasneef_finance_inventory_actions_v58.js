@@ -39,7 +39,17 @@
   }
 
   window.financeProShowProductV15 = function(id){
-    const item=A(state().items).find(i=>S(i.id)===S(id));
+    let key=S(id);
+    try{ key=decodeURIComponent(key); }catch(_){}
+    const item=A(state().items).find(i=>
+      S(i.id)===key ||
+      S(i.product_code)===key ||
+      S(i.serial_number)===key ||
+      S(i.barcode)===key ||
+      S(i.supplier_barcode)===key ||
+      S(i.code)===key ||
+      S(i.name)===key
+    );
     if(!item) return notice('المنتج غير موجود','err');
     const moves=A(state().movements).filter(m=>S(m.item_id)===S(item.id) || S(m.item_name)===S(item.name));
     const inRows=moves.filter(m=>S(m.movement_type)==='in');
@@ -57,13 +67,29 @@
     const others=readOthers().map(x=>`<option value="other:${E(x)}">${E(x)}</option>`).join('');
     return `<option value="">بدون مشروع</option>${projects}${others}`;
   }
+  function keepProjectOptions(select){
+    if(!select) return;
+    const keep=select.value;
+    const seen=new Set(A(select.options).map(o=>S(o.value)));
+    readOthers().forEach(name=>{
+      const value='other:'+name;
+      if(seen.has(value)) return;
+      const opt=document.createElement('option');
+      opt.value=value;
+      opt.textContent=name;
+      select.appendChild(opt);
+    });
+    if(keep && A(select.options).some(o=>S(o.value)===S(keep))) select.value=keep;
+  }
   function enhanceOthers(){
     const dist=$('finDistProjectV15');
-    if(dist && !dist.dataset.v58){ const keep=dist.value; dist.innerHTML=projectOptions(keep); dist.value=keep; dist.dataset.v58='1'; dist.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات / مشاريع أخرى</label><div class="fin-line"><input id="finOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58()">+</button></div></div>`); }
+    if(dist && !dist.dataset.v58){ keepProjectOptions(dist); dist.dataset.v58='1'; dist.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><div class="fin-line"><input id="finOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58()">+</button></div></div>`); }
+    else keepProjectOptions(dist);
     const cost=$('finCostProjectV15');
-    if(cost && !cost.dataset.v58){ const keep=cost.value; cost.innerHTML=projectOptions(keep); cost.value=keep; cost.dataset.v58='1'; cost.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات / مشاريع أخرى</label><div class="fin-line"><input id="finCostOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58('cost')">+</button></div></div>`); }
+    if(cost && !cost.dataset.v58){ keepProjectOptions(cost); cost.dataset.v58='1'; cost.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><div class="fin-line"><input id="finCostOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58('cost')">+</button></div></div>`); }
+    else keepProjectOptions(cost);
   }
-  window.financeProAddOtherServiceV58=function(scope){ const input=scope==='cost'?$('finCostOtherServiceNameV58'):$('finOtherServiceNameV58'); const name=S(input?.value); if(!name) return notice('اكتب اسم الخدمة أو المشروع الآخر','err'); const rows=readOthers(); rows.push(name); saveOthers(rows); if(input) input.value=''; ['finDistProjectV15','finCostProjectV15'].forEach(id=>{ const el=$(id); if(el){ el.innerHTML=projectOptions('other:'+name); el.value='other:'+name; }}); notice('تمت إضافة الخدمة/المشروع الآخر'); };
+  window.financeProAddOtherServiceV58=function(scope){ const input=scope==='cost'?$('finCostOtherServiceNameV58'):$('finOtherServiceNameV58'); const name=S(input?.value); if(!name) return notice('اكتب اسم الخدمة أو المشروع الآخر','err'); const rows=readOthers(); rows.push(name); saveOthers(rows); if(input) input.value=''; ['finDistProjectV15','finCostProjectV15'].forEach(id=>{ const el=$(id); if(el){ keepProjectOptions(el); el.value='other:'+name; }}); notice('تمت إضافة الخدمة/المشروع الآخر'); };
 
   const oldAddDist=window.financeProAddDistributionV15;
   window.financeProAddDistributionV15=function(){

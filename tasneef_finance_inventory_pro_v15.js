@@ -16,6 +16,7 @@
     suppliers: [],
     editMovementId: ''
   };
+  window.financeProStateV15 = state;
 
   const $ = (id)=>document.getElementById(id);
   const A = (v)=>Array.isArray(v) ? v : [];
