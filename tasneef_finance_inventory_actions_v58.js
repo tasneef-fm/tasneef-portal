@@ -22,6 +22,10 @@
     return map[x] || x;
   }
   function typeLabel(t){ return ({in:'داخل',out:'صرف',consume:'مستهلك',waste:'مهدور',damaged:'تالف',scrap:'سكراب',return:'مرتجع'}[normType(t)] || S(t) || '-'); }
+  function distributionType(type, fallback){
+    const t=normType(type || fallback);
+    return t === 'out' ? 'consume' : t;
+  }
   function movementAgeHours(m){ const raw=S(m?.updated_at || m?.created_at || m?.movement_date); const d=new Date(raw.length===10 ? raw+'T00:00:00' : raw); const t=d.getTime(); return Number.isFinite(t) ? ((Date.now()-t)/3600000) : 0; }
   function lockedConsume(m){ return S(m?.movement_type)==='consume' && movementAgeHours(m)>=24; }
 
@@ -51,7 +55,7 @@
       dist.forEach(d=>{
         rows.push(Object.assign({}, m, {
           __fromDistribution: true,
-          movement_type: normType(d.type || m.movement_type),
+          movement_type: distributionType(d.type, m.movement_type),
           quantity: N(d.qty),
           cost_center: d.center || m.cost_center,
           project_name: d.projectName || d.otherName || m.project_name,

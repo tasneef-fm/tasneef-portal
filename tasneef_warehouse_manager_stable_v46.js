@@ -190,6 +190,10 @@
     const map={'داخل':'in','صرف':'out','خارج':'out','مستهلك':'consume','استهلاك':'consume','مرتجع':'return','مرجع':'return','مهدور':'waste','هدر':'waste','تالف':'damaged','سكراب':'scrap'};
     return map[t] || t;
   }
+  function distributionType(type, fallback){
+    const t=rowType(type || fallback);
+    return t === 'out' ? 'consume' : t;
+  }
   function metaOf(note){
     const raw=S(note);
     if(!raw.startsWith('finance_pro_v15:')) return {};
@@ -203,7 +207,7 @@
     moves.forEach(m=>{
       const dist=Array.isArray(metaOf(m.notes).distribution) ? metaOf(m.notes).distribution : [];
       if(dist.length){
-        dist.forEach(d=>rows.push({date:m.movement_date||S(m.created_at).slice(0,10)||'-', type:rowType(d.type||m.movement_type), item:m.item_name||'-', qty:qty(d.qty), receiver:m.receiver||'-', project:d.projectName||d.otherName||m.project_name||'-', order:d.orderNo||m.order_no||'-'}));
+        dist.forEach(d=>rows.push({date:m.movement_date||S(m.created_at).slice(0,10)||'-', type:distributionType(d.type,m.movement_type), item:m.item_name||'-', qty:qty(d.qty), receiver:m.receiver||'-', project:d.projectName||d.otherName||m.project_name||'-', order:d.orderNo||m.order_no||'-'}));
       }else{
         rows.push({date:m.movement_date||S(m.created_at).slice(0,10)||'-', type:rowType(m.movement_type), item:m.item_name||'-', qty:qty(m.quantity), receiver:m.receiver||'-', project:m.project_name||'-', order:m.order_no||'-'});
       }
