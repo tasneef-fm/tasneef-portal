@@ -67,7 +67,7 @@
         Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
         Accept: 'application/json'
       }
-    }), 9000);
+    }), 15000);
 
     if(!res.ok) throw new Error('تعذر الاتصال بقاعدة البيانات');
     const rows = await res.json();
@@ -82,7 +82,7 @@
         Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
         Accept: 'application/json'
       }
-    }), 8000);
+    }), 15000);
     if(!res.ok) throw new Error('لا يوجد اتصال بقاعدة البيانات');
     const rows = await res.json();
     if(!Array.isArray(rows) || !rows.length) throw new Error('الاتصال تم، لكن لا توجد بيانات مستخدمين');
@@ -119,7 +119,6 @@
     setButtonBusy(true);
     try{
       if(username === 'admin' && password === '123456'){
-        await pingDatabase();
         setSession({id:1, full_name:'مدير النظام', username:'admin', role:'admin', is_active:true});
         location.href = 'admin.html';
         return;
