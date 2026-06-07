@@ -16,7 +16,12 @@
   function readOthers(){ try{ return JSON.parse(localStorage.getItem(otherKey) || '[]') || []; }catch(_){ return []; } }
   function saveOthers(rows){ localStorage.setItem(otherKey, JSON.stringify([...new Set(A(rows).map(S).filter(Boolean))])); }
   function parseMeta(note){ const raw=S(note); if(!raw.startsWith('finance_pro_v15:')) return {}; try{return JSON.parse(raw.replace('finance_pro_v15:',''));}catch(_){return {};} }
-  function typeLabel(t){ return ({in:'داخل',out:'صرف',consume:'مستهلك',waste:'مهدور',damaged:'تالف',scrap:'سكراب',return:'مرتجع'}[S(t)] || S(t) || '-'); }
+  function normType(t){
+    const x=S(t);
+    const map={'داخل':'in','صرف':'out','خارج':'out','مستهلك':'consume','استهلاك':'consume','مهدور':'waste','هدر':'waste','تالف':'damaged','سكراب':'scrap','مرتجع':'return','مرجع':'return'};
+    return map[x] || x;
+  }
+  function typeLabel(t){ return ({in:'داخل',out:'صرف',consume:'مستهلك',waste:'مهدور',damaged:'تالف',scrap:'سكراب',return:'مرتجع'}[normType(t)] || S(t) || '-'); }
   function movementAgeHours(m){ const raw=S(m?.updated_at || m?.created_at || m?.movement_date); const d=new Date(raw.length===10 ? raw+'T00:00:00' : raw); const t=d.getTime(); return Number.isFinite(t) ? ((Date.now()-t)/3600000) : 0; }
   function lockedConsume(m){ return S(m?.movement_type)==='consume' && movementAgeHours(m)>=24; }
 
@@ -51,54 +56,61 @@
       S(i.name)===key
     );
     if(!item) return notice('المنتج غير موجود','err');
-    const moves=A(state().movements).filter(m=>S(m.item_id)===S(item.id) || S(m.item_name)===S(item.name));
-    const inRows=moves.filter(m=>S(m.movement_type)==='in');
-    const outRows=moves.filter(m=>['out','consume','waste','damaged','scrap'].includes(S(m.movement_type)));
+    const itemKeys=[S(item.id),S(item.name),S(item.product_code),S(item.serial_number),S(item.barcode),S(item.supplier_barcode),S(item.code)].filter(Boolean);
+    const moves=A(state().movements).filter(m=>
+      itemKeys.includes(S(m.item_id)) ||
+      itemKeys.includes(S(m.item_name)) ||
+      itemKeys.includes(S(m.product_code)) ||
+      itemKeys.includes(S(m.code))
+    );
+    const inRows=moves.filter(m=>normType(m.movement_type)==='in');
+    const outRows=moves.filter(m=>normType(m.movement_type)==='out');
+    const consumedRows=moves.filter(m=>normType(m.movement_type)==='consume');
+    const returnRows=moves.filter(m=>normType(m.movement_type)==='return');
+    const wasteRows=moves.filter(m=>['waste','damaged','scrap'].includes(normType(m.movement_type)));
+    const sum = rows => rows.reduce((a,m)=>a+N(m.quantity),0);
     const img=item.image_url?`<img src="${E(item.image_url)}" style="width:96px;height:96px;object-fit:contain;border:1px solid #d9e7e2;border-radius:16px;background:#fff;padding:4px">`:'';
     modal('بيانات المنتج: '+(item.name||'-'), [
-      {title:'الملخص', html:`<div class="fin-grid">${img?`<div class="fin-card">${img}</div>`:''}<div class="fin-card fin-kpi"><small>الرصيد الحالي</small><b>${N(item.quantity)}</b></div><div class="fin-card fin-kpi"><small>الداخل</small><b>${inRows.reduce((a,m)=>a+N(m.quantity),0)}</b></div><div class="fin-card fin-kpi"><small>الخارج</small><b>${outRows.reduce((a,m)=>a+N(m.quantity),0)}</b></div></div>`},
+      {title:'الملخص', html:`<div class="fin-grid">${img?`<div class="fin-card">${img}</div>`:''}<div class="fin-card fin-kpi"><small>الرصيد الحالي</small><b>${N(item.quantity)}</b></div><div class="fin-card fin-kpi"><small>الداخل</small><b>${sum(inRows)}</b></div><div class="fin-card fin-kpi"><small>الخارج</small><b>${sum(outRows)}</b></div><div class="fin-card fin-kpi"><small>المستهلك</small><b>${sum(consumedRows)}</b></div><div class="fin-card fin-kpi"><small>المرتجع</small><b>${sum(returnRows)}</b></div></div>`},
       {title:'الداخل', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المورد</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(inRows)}</tbody></table></div>`},
-      {title:'الخارج', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(outRows)}</tbody></table></div>`}
+      {title:'الخارج', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(outRows)}</tbody></table></div>`},
+      {title:'المستهلك', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(consumedRows)}</tbody></table></div>`},
+      {title:'المرتجع', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(returnRows)}</tbody></table></div>`},
+      {title:'تالف / هدر / سكراب', html:`<div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>مركز التكلفة</th><th>المشروع/الخدمة</th><th>الأوردر</th><th>البيان</th><th>القيمة</th></tr></thead><tbody>${movementRows(wasteRows)}</tbody></table></div>`}
     ]);
   };
 
-  function projectOptions(keep){
-    const projects=A(state().projects).map(p=>`<option value="${E(p.id)}">${E(p.name||p.project_name||p.id)}</option>`).join('');
-    const others=readOthers().map(x=>`<option value="other:${E(x)}">${E(x)}</option>`).join('');
-    return `<option value="">بدون مشروع</option>${projects}${others}`;
+  function serviceOptions(selected){
+    return `<option value="">بدون خدمة أخرى</option>${readOthers().map(x=>`<option value="${E(x)}" ${S(selected)===S(x)?'selected':''}>${E(x)}</option>`).join('')}`;
   }
-  function keepProjectOptions(select){
+  function refreshServiceSelects(selected){
+    ['finOtherServiceSelectV58','finCostOtherServiceSelectV58'].forEach(id=>{ const el=$(id); if(el) el.innerHTML=serviceOptions(selected || el.value); });
+  }
+  function removeOtherOptionsFromProject(select){
     if(!select) return;
-    const keep=select.value;
-    const seen=new Set(A(select.options).map(o=>S(o.value)));
-    readOthers().forEach(name=>{
-      const value='other:'+name;
-      if(seen.has(value)) return;
-      const opt=document.createElement('option');
-      opt.value=value;
-      opt.textContent=name;
-      select.appendChild(opt);
-    });
-    if(keep && A(select.options).some(o=>S(o.value)===S(keep))) select.value=keep;
+    A(select.options).forEach(opt=>{ if(S(opt.value).startsWith('other:')) opt.remove(); });
   }
   function enhanceOthers(){
     const dist=$('finDistProjectV15');
-    if(dist && !dist.dataset.v58){ keepProjectOptions(dist); dist.dataset.v58='1'; dist.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><div class="fin-line"><input id="finOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58()">+</button></div></div>`); }
-    else keepProjectOptions(dist);
+    removeOtherOptionsFromProject(dist);
+    if(dist && !dist.dataset.v58){ dist.dataset.v58='1'; dist.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><select id="finOtherServiceSelectV58">${serviceOptions('')}</select><div class="fin-line"><input id="finOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58()">+</button></div></div>`); }
     const cost=$('finCostProjectV15');
-    if(cost && !cost.dataset.v58){ keepProjectOptions(cost); cost.dataset.v58='1'; cost.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><div class="fin-line"><input id="finCostOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58('cost')">+</button></div></div>`); }
-    else keepProjectOptions(cost);
+    removeOtherOptionsFromProject(cost);
+    if(cost && !cost.dataset.v58){ cost.dataset.v58='1'; cost.closest('div')?.insertAdjacentHTML('afterend', `<div><label>خدمات أخرى</label><select id="finCostOtherServiceSelectV58">${serviceOptions('')}</select><div class="fin-line"><input id="finCostOtherServiceNameV58" placeholder="اسم خدمة أو مشروع آخر"><button type="button" class="light" onclick="financeProAddOtherServiceV58('cost')">+</button></div></div>`); }
+    refreshServiceSelects();
   }
-  window.financeProAddOtherServiceV58=function(scope){ const input=scope==='cost'?$('finCostOtherServiceNameV58'):$('finOtherServiceNameV58'); const name=S(input?.value); if(!name) return notice('اكتب اسم الخدمة أو المشروع الآخر','err'); const rows=readOthers(); rows.push(name); saveOthers(rows); if(input) input.value=''; ['finDistProjectV15','finCostProjectV15'].forEach(id=>{ const el=$(id); if(el){ keepProjectOptions(el); el.value='other:'+name; }}); notice('تمت إضافة الخدمة/المشروع الآخر'); };
+  window.financeProAddOtherServiceV58=function(scope){ const input=scope==='cost'?$('finCostOtherServiceNameV58'):$('finOtherServiceNameV58'); const name=S(input?.value); if(!name) return notice('اكتب اسم الخدمة أو المشروع الآخر','err'); const rows=readOthers(); rows.push(name); saveOthers(rows); if(input) input.value=''; refreshServiceSelects(name); const target=scope==='cost'?$('finCostOtherServiceSelectV58'):$('finOtherServiceSelectV58'); if(target) target.value=name; notice('تمت إضافة الخدمة في خانة الخدمات الأخرى'); };
 
   const oldAddDist=window.financeProAddDistributionV15;
   window.financeProAddDistributionV15=function(){
-    const sel=$('finDistProjectV15');
-    if(sel && S(sel.value).startsWith('other:')){
-      const name=S(sel.value).replace(/^other:/,'');
+    const other=S($('finOtherServiceSelectV58')?.value);
+    if(other){
+      const sel=$('finDistProjectV15');
+      const projectId=S(sel?.value);
+      const selectedProjectText=S(sel?.selectedOptions?.[0]?.textContent);
       const qty=N($('finDistQtyV15')?.value);
       if(qty<=0) return notice('كمية التوزيع مطلوبة','err');
-      state().distribution.push({center:S($('finDistCenterV15')?.value)||'GENERAL',type:S($('finDistTypeV15')?.value)||'out',projectId:null,projectName:name,otherName:name,orderNo:S($('finDistOrderV15')?.value),qty,note:S($('finDistNoteV15')?.value)});
+      state().distribution.push({center:S($('finDistCenterV15')?.value)||'GENERAL',type:S($('finDistTypeV15')?.value)||'out',projectId:projectId||null,projectName:projectId?selectedProjectText:other,otherName:other,orderNo:S($('finDistOrderV15')?.value),qty,note:S($('finDistNoteV15')?.value)});
       ['finDistOrderV15','finDistQtyV15','finDistNoteV15'].forEach(id=>{ if($(id)) $(id).value=''; });
       if(typeof window.financeProRenderCurrentV15==='function') window.financeProRenderCurrentV15();
       return;
@@ -108,9 +120,9 @@
 
   const oldSaveExpense=window.financeProSaveExpenseV15;
   window.financeProSaveExpenseV15=async function(btn){
-    const sel=$('finCostProjectV15');
-    if(sel && S(sel.value).startsWith('other:') && window.sb){
-      try{ if(btn) btn.disabled=true; const center=S($('finCostCenterV15')?.value)||'GENERAL'; const net=N($('finCostNetV15')?.value); if(net<=0) throw new Error('قيمة المصروف قبل الضريبة مطلوبة'); const other=S(sel.value).replace(/^other:/,''); const desc=S($('finCostDescV15')?.value)||other; const vat=net*.15,gross=net+vat; const row={expense_date:S($('finCostDateV15')?.value)||new Date().toISOString().slice(0,10),category:center,description:desc,supplier:desc,project_id:null,project_name:other,subtotal:+net.toFixed(2),vat:+vat.toFixed(2),total:+gross.toFixed(2),amount:+gross.toFixed(2),notes:`${S($('finCostNoteV15')?.value)} | other:${other} | order:${S($('finCostOrderV15')?.value)} | center:${center}`}; const res=await window.sb.from('finance_expenses').insert(row); if(res.error) throw res.error; if(typeof window.financeLoadAll==='function') await window.financeLoadAll(true); if(typeof window.financeProRenderCurrentV15==='function') window.financeProRenderCurrentV15(); notice('تم حفظ مصروف مركز التكلفة'); }
+    const other=S($('finCostOtherServiceSelectV58')?.value);
+    if(other && window.sb){
+      try{ if(btn) btn.disabled=true; const center=S($('finCostCenterV15')?.value)||'GENERAL'; const net=N($('finCostNetV15')?.value); if(net<=0) throw new Error('قيمة المصروف قبل الضريبة مطلوبة'); const sel=$('finCostProjectV15'); const pid=S(sel?.value); const projectText=S(sel?.selectedOptions?.[0]?.textContent); const desc=S($('finCostDescV15')?.value)||other; const vat=net*.15,gross=net+vat; const row={expense_date:S($('finCostDateV15')?.value)||new Date().toISOString().slice(0,10),category:center,description:desc,supplier:desc,project_id:pid?Number(pid):null,project_name:pid?projectText:other,subtotal:+net.toFixed(2),vat:+vat.toFixed(2),total:+gross.toFixed(2),amount:+gross.toFixed(2),notes:`${S($('finCostNoteV15')?.value)} | other:${other} | order:${S($('finCostOrderV15')?.value)} | center:${center}`}; const res=await window.sb.from('finance_expenses').insert(row); if(res.error) throw res.error; if(typeof window.financeLoadAll==='function') await window.financeLoadAll(true); if(typeof window.financeProRenderCurrentV15==='function') window.financeProRenderCurrentV15(); notice('تم حفظ مصروف مركز التكلفة'); }
       catch(e){ alert(e.message||String(e)); notice(e.message||String(e),'err'); } finally{ if(btn) btn.disabled=false; } return;
     }
     return oldSaveExpense && oldSaveExpense.apply(this,arguments);

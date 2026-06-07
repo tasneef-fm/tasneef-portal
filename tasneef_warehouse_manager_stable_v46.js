@@ -171,6 +171,22 @@
       try{ window.financeProTabV15('movement'); }catch(_){}
     }
   }
+  function reportBodyLooksBroken(){
+    const body = document.getElementById('finBodyV15');
+    if(!body) return true;
+    if(activeTab() !== 'reports') return false;
+    const text = S(body.textContent);
+    if(!text) return true;
+    if(!body.querySelector('#finReportWindowV15')) return true;
+    return /(جاري|تعذر|الموردين|الفواتير المسجلة|إضافة مخزون|صرف منتج وتوزيع|supplier|invoice)/i.test(text);
+  }
+  function stabilizeReportsBody(){
+    if(!isWarehouse() || !visible() || activeTab() !== 'reports') return;
+    if(!reportBodyLooksBroken()) return;
+    if(typeof window.financeProTabV15 === 'function'){
+      try{ window.financeProTabV15('reports'); }catch(_){}
+    }
+  }
   function ensurePro(tab){
     if(!isWarehouse()) return;
     elevateSession();
@@ -181,13 +197,17 @@
     setTimeout(() => {
       clean();
       const target = tab || wantedTab();
-      if(typeof window.financeProTabV15 === 'function' && visible() && (!activeTab() || activeTab() !== target || (target === 'movement' && movementBodyLooksBroken()))){
+      if(typeof window.financeProTabV15 === 'function' && visible() && (!activeTab() || activeTab() !== target || (target === 'movement' && movementBodyLooksBroken()) || (target === 'reports' && reportBodyLooksBroken()))){
         window.financeProTabV15(target);
         setTimeout(clean, 80);
       }
       if(target === 'movement'){
         setTimeout(stabilizeMovementBody, 180);
         setTimeout(stabilizeMovementBody, 520);
+      }
+      if(target === 'reports'){
+        setTimeout(stabilizeReportsBody, 180);
+        setTimeout(stabilizeReportsBody, 520);
       }
     }, 100);
   }
@@ -206,6 +226,11 @@
             try{ old.call(this, 'movement'); }catch(_){}
             setTimeout(clean, 80);
             setTimeout(stabilizeMovementBody, 220);
+          }
+          if(target === 'reports' && body && reportBodyLooksBroken()){
+            try{ old.call(this, 'reports'); }catch(_){}
+            setTimeout(clean, 80);
+            setTimeout(stabilizeReportsBody, 220);
           }
         }, 60);
         return result;
@@ -261,6 +286,10 @@
       if(id === 'movement'){
         setTimeout(stabilizeMovementBody, 180);
         setTimeout(stabilizeMovementBody, 520);
+      }
+      if(id === 'reports'){
+        setTimeout(stabilizeReportsBody, 180);
+        setTimeout(stabilizeReportsBody, 520);
       }
     }, true);
   }
