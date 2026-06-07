@@ -26,6 +26,24 @@
   ];
   const EXTRA_KEYS = ['can_manage_inventory','can_inventory_requests','can_edit_inventory_requests','can_delete_inventory_requests','can_journey','can_reports','can_edit_time_logs'];
   const CORE_KEYS = NAV.map(x=>x[1]).concat(EXTRA_KEYS);
+  const PAGE_ALIASES = {
+    clientReports:['can_client_reports','can_reports','tab_clientReports_view'],
+    clientRatings:['can_client_ratings','can_reports','tab_clientRatings_view'],
+    financeDashboard:['can_expenses_inventory','can_manage_inventory','can_inventory_requests','tab_financeDashboard_view','tab_summary_view','tab_products_view','tab_movement_view','tab_reports_view'],
+    daily:['can_time_logs','tab_daily_view'],
+    users:['can_manage_users','tab_users_view'],
+    projects:['can_projects','tab_projects_view'],
+    contracts:['can_contracts','tab_contracts_view'],
+    workers:['can_manage_workers','tab_workers_view'],
+    attendance:['can_attendance','tab_attendance_view'],
+    monthly:['can_monthly','tab_monthly_view'],
+    tickets:['can_tickets','tab_tickets_view'],
+    orders:['can_orders','tab_orders_view'],
+    dashboard:['can_dashboard','tab_dashboard_view'],
+    alerts:['can_alerts','tab_alerts_view'],
+    assistant:['can_assistant','tab_assistant_view'],
+    export:['can_export','tab_export_view']
+  };
 
   function roleOf(role){
     const r=S(role);
@@ -87,7 +105,9 @@
     if(isAdmin(user)) return true;
     const row=NAV.find(([id])=>id===page);
     if(!row) return true;
-    return exactPerms(user)[row[1]] === true;
+    const p=exactPerms(user);
+    const keys=(PAGE_ALIASES[page] || [row[1]]);
+    return keys.some(k=>p[k] === true);
   }
   function firstAllowed(){
     const u=currentUser();
@@ -121,7 +141,7 @@
     const activeId=currentActive && currentActive.id ? currentActive.id : firstAllowed();
     const allowed=NAV.filter(([id,core])=>canPage(id,u));
     const sig=allowed.map(([id])=>id).join('|')+'::'+activeId;
-    if(side.dataset.permissionLockV44==='1' && side.dataset.navSigV44===sig){
+    if(side.dataset.permissionLockV44==='1' && side.dataset.navSigV44===sig && !hasSidebarDrift(side, allowed)){
       enforceExistingButtons();
       return;
     }
@@ -133,6 +153,19 @@
     }).join('');
     side.innerHTML = brandHtml(side) + buttons + '<button class="nav danger" onclick="logout()">تسجيل خروج</button>';
     guardCurrentPage();
+  }
+  function hasSidebarDrift(side, allowed){
+    const allowedIds=allowed.map(([id])=>id);
+    const seen={};
+    const btns=[...side.querySelectorAll('.nav')].filter(b=>!b.classList.contains('danger'));
+    if(btns.length !== allowedIds.length) return true;
+    for(const btn of btns){
+      const page=pageFromButton(btn);
+      if(!page || !allowedIds.includes(page)) return true;
+      seen[page]=(seen[page]||0)+1;
+      if(seen[page] > 1) return true;
+    }
+    return false;
   }
   function enforceExistingButtons(){
     document.querySelectorAll('.side .nav[onclick*="showPage"], .side .nav[data-page]').forEach(btn=>{
@@ -182,8 +215,8 @@
   function refreshSessionFromData(){
     const s=sessionUser();
     const fresh=dataUsers().find(u => (s.id && S(u.id)===S(s.id)) || (s.username && S(u.username).toLowerCase()===S(s.username).toLowerCase()));
-    if(fresh && fresh.permissions){
-      localStorage.setItem('tasneef_user', JSON.stringify(Object.assign({}, s, fresh, {permissions:fresh.permissions})));
+    if(fresh){
+      localStorage.setItem('tasneef_user', JSON.stringify(Object.assign({}, s, fresh, {permissions:fresh.permissions || s.permissions || {}})));
     }
   }
   function boot(){
@@ -199,7 +232,8 @@
     const mo=new MutationObserver(()=>setTimeout(boot,20));
     mo.observe(side,{childList:true,subtree:true});
   }
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{ boot(); observe(); },250));
-  window.addEventListener('load',()=>{ setTimeout(()=>{ boot(); observe(); },800); setTimeout(boot,1800); });
-  setInterval(boot,1200);
+  boot();
+  document.addEventListener('DOMContentLoaded',()=>{ boot(); observe(); setTimeout(boot,80); setTimeout(boot,250); });
+  window.addEventListener('load',()=>{ boot(); observe(); setTimeout(boot,300); setTimeout(boot,800); setTimeout(boot,1800); });
+  setInterval(boot,500);
 })();

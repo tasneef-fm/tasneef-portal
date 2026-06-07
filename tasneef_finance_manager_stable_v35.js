@@ -35,16 +35,8 @@
     return S(user().role) === 'financial_manager';
   }
   function elevateFinanceSession(){
-    const u=user();
-    if(S(u.role) !== 'financial_manager') return;
-    const next=Object.assign({}, u, { permissions: financeAdminPerms(parsePerms(u.permissions)) });
-    try{ localStorage.setItem('tasneef_user', JSON.stringify(next)); }catch(e){}
-    try{ localStorage.setItem('tasneef_session', JSON.stringify(next)); }catch(e){}
-    try{
-      if(window.data && Array.isArray(window.data.users)){
-        window.data.users = window.data.users.map(row=>String(row.id)===String(next.id) ? Object.assign({}, row, {permissions:next.permissions}) : row);
-      }
-    }catch(e){}
+    /* Keep the finance UI stable without changing the user's real sidebar permissions. */
+    return;
   }
   function page(){
     return document.getElementById('financeDashboard');
