@@ -2,6 +2,7 @@
   'use strict';
   if(window.__tasneefSidebarPermissionsLockV44) return;
   window.__tasneefSidebarPermissionsLockV44 = true;
+  window.__tasneefSidebarFastLockV47 = true;
 
   const S = v => String(v ?? '').trim();
   const A = v => Array.isArray(v) ? v : [];
@@ -128,8 +129,9 @@
     document.querySelectorAll('.side .nav').forEach(n=>n.classList.remove('active'));
     const activeBtn=btn || [...document.querySelectorAll('.side .nav')].find(b=>pageFromButton(b)===id);
     if(activeBtn && activeBtn.classList) activeBtn.classList.add('active');
-    try{ if(typeof renderAll === 'function') renderAll(); }catch(_){}
     try{ if(id==='contracts' && typeof showContractsSubTab === 'function') showContractsSubTab('services'); }catch(_){}
+    try{ if(id==='attendance' && typeof window.renderAttendanceMonthly === 'function') setTimeout(()=>window.renderAttendanceMonthly(),40); }catch(_){}
+    try{ if(id==='clientReports' && typeof window.renderPremiumReports === 'function') setTimeout(()=>window.renderPremiumReports(),40); }catch(_){}
     try{
       if(id==='financeDashboard'){
         target.classList.add('finance-pro');
@@ -137,7 +139,7 @@
         if(typeof window.financeProRenderAll === 'function') window.financeProRenderAll();
       }
     }catch(_){}
-    setTimeout(()=>{ rebuildSidebar(); enforceExistingButtons(); },30);
+    setTimeout(()=>{ rebuildSidebar(); },30);
     return true;
   }
   function pageFromButton(btn){
@@ -224,14 +226,17 @@
         rebuildSidebar();
         return;
       }
-      let r;
-      try{ if(typeof originalShowPage === 'function') r=originalShowPage.apply(this, arguments); }catch(_){}
-      setTimeout(()=>{
-        const target=$(id);
-        if(target && target.classList.contains('hidden')) directOpenPage(id, btn);
-        rebuildSidebar();
-        enforceExistingButtons();
-      },40);
+      if(id==='financeDashboard'){
+        let r;
+        try{ if(typeof originalShowPage === 'function') r=originalShowPage.apply(this, arguments); }catch(_){}
+        setTimeout(()=>{
+          const target=$(id);
+          if(target && target.classList.contains('hidden')) directOpenPage(id, btn);
+          rebuildSidebar();
+        },40);
+        return r;
+      }
+      const r=directOpenPage(id, btn);
       return r;
     };
     wrapped.__sidebarLockV44=true;
@@ -254,15 +259,23 @@
     rebuildSidebar();
     guardCurrentPage();
   }
+  function lightBoot(){
+    wrapShowPage();
+    rebuildSidebar();
+    guardCurrentPage();
+  }
   function observe(){
     const side=document.querySelector('.side');
     if(!side || side.__sidebarObserverV44) return;
     side.__sidebarObserverV44=true;
-    const mo=new MutationObserver(()=>setTimeout(boot,20));
-    mo.observe(side,{childList:true,subtree:true});
+    let timer=null;
+    const mo=new MutationObserver(()=>{
+      clearTimeout(timer);
+      timer=setTimeout(lightBoot,120);
+    });
+    mo.observe(side,{childList:true});
   }
   boot();
-  document.addEventListener('DOMContentLoaded',()=>{ boot(); observe(); setTimeout(boot,80); setTimeout(boot,250); });
-  window.addEventListener('load',()=>{ boot(); observe(); setTimeout(boot,300); setTimeout(boot,800); setTimeout(boot,1800); });
-  setInterval(boot,500);
+  document.addEventListener('DOMContentLoaded',()=>{ boot(); observe(); setTimeout(lightBoot,120); });
+  window.addEventListener('load',()=>{ boot(); observe(); setTimeout(lightBoot,500); setTimeout(lightBoot,1500); });
 })();
