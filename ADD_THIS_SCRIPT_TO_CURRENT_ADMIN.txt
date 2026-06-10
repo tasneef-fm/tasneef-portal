@@ -1,0 +1,7 @@
+ضع هذا السطر فقط في آخر ملف admin.html الحالي عندك قبل </body> مباشرة:
+
+<script src="tasneef_inventory_audit_current_patch_v10045.js?v=10045" defer></script>
+
+مهم جدًا:
+لا ترفع admin.html الموجود في النسخ القديمة.
+ارفع ملف الجافاسكربت هذا فقط، ثم أضف السطر أعلاه في admin.html الحالي عندك.
