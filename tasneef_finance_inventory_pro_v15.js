@@ -1,4 +1,4 @@
-/* Tasneef Finance Inventory Pro v10094
+/* Tasneef Finance Inventory Pro v10095
    RESTORE REPORTS + MOVEMENT + CONSUMPTION
    Official core file only: no injected external scripts, no MutationObserver, no duplicate renderer.
    Changes:
@@ -11,12 +11,13 @@
    - v10092: products fallback from inventory_movements when inventory_items returns empty.
    - v10094: professional product source merge: inventory_items has priority for image_url, fallback only for missing items.
    - v10094: instant product rendering without waiting message; includes accurate image filter.
+   - v10095: lock image_url from inventory_items so movement fallback/re-render cannot remove product images.
 */
 (function(){
   'use strict';
-  const VERSION='v10094-professional-products-images-priority';
+  const VERSION='v10095-lock-product-images-render-fix';
   const VAT=0.15;
-  const state={loaded:false,tab:'summary',items:[],movements:[],expenses:[],projects:[],users:[],tickets:[],invoiceLines:[],distribution:[],reportTab:'products',suppliers:[],editMovementId:''};
+  const state={loaded:false,tab:'summary',items:[],movements:[],expenses:[],projects:[],users:[],tickets:[],invoiceLines:[],distribution:[],reportTab:'products',suppliers:[],editMovementId:'',imageCache:{}};
   window.financeProStateV15=state;
 
   const $=id=>document.getElementById(id);
@@ -66,10 +67,33 @@
     const balance=Math.max(0, inside-netOut);
     return {inside, netOut, consume, waste, damaged, scrap, returned, balance, outRows};
   }
+  function productKeys(obj){
+    const keys=[];
+    [obj&&obj.id,obj&&obj.item_id,obj&&obj.product_code,obj&&obj.serial_number,obj&&obj.barcode,obj&&obj.supplier_barcode,obj&&obj.distributor_code,obj&&obj.code,obj&&obj.name,obj&&obj.item_name].forEach(v=>{const x=S(v).toLowerCase(); if(x&&!keys.includes(x))keys.push(x);});
+    return keys;
+  }
+  function rememberProductImages(items){
+    state.imageCache=state.imageCache||{};
+    A(items).forEach(i=>{
+      const url=S(i&&i.image_url);
+      if(!url)return;
+      productKeys(i).forEach(k=>{state.imageCache[k]=url;});
+    });
+  }
+  function lockedImageUrl(item){
+    const direct=S(item&&item.image_url);
+    if(direct)return direct;
+    const cache=state.imageCache||{};
+    for(const k of productKeys(item)){ if(S(cache[k]))return S(cache[k]); }
+    return '';
+  }
+  function officialProductFor(obj){
+    const keys=productKeys(obj);
+    return state.items.find(i=>productKeys(i).some(k=>keys.includes(k)))||null;
+  }
   function fallbackItemsFromMovements(){
-    if(state.items.length) return state.items;
     const map=new Map();
-    const keyOf=(m)=>S(m.product_code||m.barcode||m.item_id||m.item_name);
+    const keyOf=(m)=>S(m.item_id||m.product_code||m.barcode||m.item_name);
     state.movements.forEach(m=>{
       const key=keyOf(m); if(!key) return;
       if(!map.has(key)) map.set(key,{_fallback:true,_key:key,id:'fb_'+(map.size+1),name:S(m.item_name)||key,product_code:S(m.product_code)||S(m.barcode)||key,serial_number:S(m.product_code)||'',barcode:S(m.barcode)||S(m.product_code)||'',supplier_barcode:S(m.barcode)||'',unit:'حبة',item_type:'مادة',type:'مادة',quantity:0,min_quantity:1,unit_cost:0,supplier:S(m.receiver||''),category:'مادة',image_url:'' ,_inside:0,_netOut:0,_returned:0});
@@ -84,27 +108,46 @@
         else if(t==='return') it._returned+=q;
       });
     });
-    return [...map.values()].map(i=>{i.quantity=Math.max(0,i._inside-i._netOut); return i;});
+    return [...map.values()].map(i=>{
+      i.quantity=Math.max(0,i._inside-i._netOut);
+      const official=officialProductFor(i);
+      if(official){
+        const keep={...official,_source:'inventory_items'};
+        if(N(keep.quantity)===0&&N(i.quantity)>0)keep.quantity=i.quantity;
+        if(N(itemCost(keep))===0&&N(itemCost(i))>0)keep.unit_cost=i.unit_cost;
+        keep.image_url=lockedImageUrl(official);
+        return keep;
+      }
+      i.image_url=lockedImageUrl(i);
+      return i;
+    });
   }
   function productItems(){
-    const primary=A(state.items);
-    const fallback=fallbackItemsFromMovements();
+    rememberProductImages(state.items);
     const map=new Map();
-    const keyOf=(i)=>S(itemCode(i)||i?.id||i?.name).toLowerCase();
-    primary.forEach(i=>{ const k=keyOf(i); if(k) map.set(k,{...i,_source:'inventory_items'}); });
-    fallback.forEach(f=>{
-      const k=keyOf(f); if(!k) return;
-      if(!map.has(k)) map.set(k,{...f,_source:'inventory_movements'});
-      else{
-        const base=map.get(k);
-        // Keep official inventory_items fields and image_url, but fill missing quantity/cost from movements only if needed.
-        if(!S(base.image_url) && S(f.image_url)) base.image_url=f.image_url;
-        if(N(base.quantity)===0 && N(f.quantity)>0) base.quantity=f.quantity;
-        if(N(itemCost(base))===0 && N(itemCost(f))>0){ base.unit_cost=f.unit_cost; base.cost=f.cost; base.price=f.price; }
-        map.set(k,base);
+    const add=(item,source)=>{
+      if(!item)return;
+      const official=source==='inventory_movements'?officialProductFor(item):null;
+      const row=official?{...official}: {...item};
+      row._source=official?'inventory_items':source;
+      const img=lockedImageUrl(row)||lockedImageUrl(item);
+      if(img)row.image_url=img;
+      const keys=productKeys(row);
+      let existingKey=keys.find(k=>map.has(k));
+      if(existingKey){
+        const base=map.get(existingKey);
+        if(!S(base.image_url)&&S(row.image_url))base.image_url=row.image_url;
+        if(N(base.quantity)===0&&N(row.quantity)>0)base.quantity=row.quantity;
+        if(N(itemCost(base))===0&&N(itemCost(row))>0)base.unit_cost=itemCost(row);
+        keys.forEach(k=>map.set(k,base));
+      }else{
+        keys.forEach(k=>map.set(k,row));
       }
-    });
-    return [...map.values()];
+    };
+    A(state.items).forEach(i=>add(i,'inventory_items'));
+    fallbackItemsFromMovements().forEach(f=>add(f,'inventory_movements'));
+    const seen=new Set();
+    return [...map.values()].filter(i=>{const key=S(i.id||itemCode(i)||i.name); if(!key||seen.has(key))return false; seen.add(key); return true;});
   }
   function computedItemQty(item){if(!item)return 0; if(item._fallback) return N(item.quantity); const rows=productMovements(item).flatMap(movementDistributionRows); const distributionReturnToStock=rows.filter(m=>S(m.movement_type)==='return'&&m.is_distribution_row&&S(m.base_movement_type)!=='return').reduce((a,m)=>a+N(m.quantity),0); return N(item.quantity)+distributionReturnToStock;}
   function itemUnitCost(item){const direct=itemCost(item); if(direct>0)return direct; const code=itemCode(item); const moves=state.movements.filter(m=>S(m.movement_type)==='in'&&(String(m.item_id)===String(item&&item.id)||(code&&[m.product_code,m.barcode].map(S).includes(code))||(!m.item_id&&S(m.item_name)===S(item&&item.name)))).sort((a,b)=>S(b.movement_date||b.created_at).localeCompare(S(a.movement_date||a.created_at))); return moves.length?movementUnitCost(moves[0]):0;}
@@ -132,7 +175,7 @@
   function ensureNav(){const side=document.querySelector('.side'); if(!side||document.querySelector('.nav[data-finance-pro-v15]'))return; const btn=document.createElement('button'); btn.className='nav'; btn.dataset.financeProV15='1'; btn.textContent='المالية والمخزون'; btn.onclick=function(){window.showPage('financeDashboard',btn);}; const ref=[...side.querySelectorAll('.nav')].find(b=>S(b.textContent).includes('التصدير'))||side.querySelector('.danger'); side.insertBefore(btn,ref||null);}
   function ensurePage(){ensureStyle(); ensureNav(); let page=$('financeDashboard'); if(page)return page; page=document.createElement('section'); page.id='financeDashboard'; page.className='page hidden finance-pro'; const main=document.querySelector('main.content')||document.querySelector('.content')||document.body; main.appendChild(page); return page;}
   function renderShell(){ensureAllowedTab(); const page=ensurePage(); page.innerHTML=`<div class="fin-shell" dir="rtl"><div class="fin-hero"><div><h2>المالية والمخزون</h2><p>إدارة الفواتير والمنتجات والصرف والاستهلاك ومركز التكلفة والتقارير.</p></div><div class="fin-actions"><button class="light" onclick="financeProLoadV15(true)">تحديث البيانات</button></div></div><div class="fin-tabs" id="finTabsV15">${financeTabs().map(([id,label])=>`<button type="button" class="${state.tab===id?'active':''}" onclick="return financeProTabV15('${id}')">${label}</button>`).join('')}</div><div id="finBodyV15"></div></div>`; renderBody();}
-  async function loadAll(force){if(state.loaded&&!force)return; const [items,movements,expenses,projects,users,tickets]=await Promise.all([table('inventory_items','*',8000),table('inventory_movements','*',8000),table('finance_expenses','*',5000),table('projects','*',5000),table('app_users','*',3000),table('tickets','*',3000)]); state.items=items; state.movements=movements; state.expenses=expenses; state.projects=projects; state.users=users; state.tickets=tickets; state.suppliers=[...new Set([...localSuppliers(),...supplierList()])].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ar')); state.loaded=true;}
+  async function loadAll(force){if(state.loaded&&!force)return; const [items,movements,expenses,projects,users,tickets]=await Promise.all([table('inventory_items','*',8000),table('inventory_movements','*',8000),table('finance_expenses','*',5000),table('projects','*',5000),table('app_users','*',3000),table('tickets','*',3000)]); state.items=items; rememberProductImages(items); state.movements=movements; state.expenses=expenses; state.projects=projects; state.users=users; state.tickets=tickets; state.suppliers=[...new Set([...localSuppliers(),...supplierList()])].filter(Boolean).sort((a,b)=>a.localeCompare(b,'ar')); state.loaded=true;}
   function renderBody(){const body=$('finBodyV15'); if(!body)return; if(!state.loaded){body.innerHTML='<div class="fin-card">جاري تحميل بيانات المالية والمخزون...</div>'; return;} ({summary:renderSummary,products:renderProducts,suppliers:renderSuppliers,add:renderAddStock,movement:renderMovement,cost:renderCostCenter,reports:renderReports}[state.tab]||renderSummary)(body);}
 
   function renderSummary(body){const stock=stockValue(); const fin=state.movements.reduce((a,m)=>{const type=S(m.movement_type); if(type==='return'||type==='out')return a; const net=type==='in'||movementFinancialTypes().includes(type)?movementReportNet(m):movementNet(m); const vat=type==='in'?movementVat(m):net*VAT; a.net+=net; a.vat+=vat; a.gross+=net+vat; return a;},{net:0,vat:0,gross:0}); body.innerHTML=`<div class="fin-grid"><div class="fin-card fin-kpi"><small>عدد المنتجات</small><b>${productItems().length}</b></div><div class="fin-card fin-kpi"><small>السعر قبل الضريبة</small><b>${money(stock)}</b></div><div class="fin-card fin-kpi"><small>الضريبة</small><b>${money(stock*VAT)}</b></div><div class="fin-card fin-kpi"><small>السعر شامل الضريبة</small><b>${money(stock*(1+VAT))}</b></div></div><div class="fin-card"><h3>الأصناف التي سوف تنتهي (${lowItems().length})</h3><div class="fin-table"><table><thead><tr><th>المنتج</th><th>الكود</th><th>المتوفر</th><th>الحد الأدنى</th><th>التكلفة</th><th>الحالة</th></tr></thead><tbody>${lowItems().map(i=>`<tr><td><b>${esc(i.name)}</b></td><td>${esc(itemCode(i)||'-')}</td><td>${N(computedItemQty(i))}</td><td>${N(i.min_quantity||i.reorder_level||1)}</td><td>${money(itemUnitCost(i))}</td><td><span class="fin-badge warn">قارب الانتهاء</span></td></tr>`).join('')||'<tr><td colspan="6">لا توجد أصناف قاربت الانتهاء</td></tr>'}</tbody></table></div></div><div class="fin-grid three"><div class="fin-card fin-kpi"><small>حركة المخزون قبل الضريبة</small><b>${money(fin.net)}</b></div><div class="fin-card fin-kpi"><small>ضريبة حركة المخزون</small><b>${money(fin.vat)}</b></div><div class="fin-card fin-kpi"><small>حركة المخزون بعد الضريبة</small><b>${money(fin.gross)}</b></div></div>`;}
@@ -161,7 +204,7 @@
       const hay=[i.name,itemCode(i),i.category,i.supplier,i.supplier_barcode].map(S).join(' ').toLowerCase();
       const qty=quickQty(i);
       const min=N(i.min_quantity||i.reorder_level||1);
-      const hasImage=!!S(i.image_url);
+      const hasImage=!!S(lockedImageUrl(i));
       if(q&&!hay.includes(q))return false;
       if(st==='available'&&qty<=min)return false;
       if(st==='low'&&!(qty>0&&qty<=min))return false;
@@ -174,10 +217,10 @@
     });
     rows=rows.sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
     const total=rows.length;
-    const noImg=rows.filter(x=>!S(x.image_url)).length, withImg=rows.filter(x=>S(x.image_url)).length; const note=`<div class="fin-product-note">عدد المنتجات المعروضة: ${total} | فيها صور: ${withImg} | بدون صور: ${noImg}</div>`;
+    const noImg=rows.filter(x=>!S(lockedImageUrl(x))).length, withImg=rows.filter(x=>S(lockedImageUrl(x))).length; const note=`<div class="fin-product-note">عدد المنتجات المعروضة: ${total} | فيها صور: ${withImg} | بدون صور: ${noImg}</div>`;
     box.innerHTML=`${note}<div class="fin-report-cards">${rows.map(i=>{
       const qty=quickQty(i), min=N(i.min_quantity||i.reorder_level||1), low=qty>0&&qty<=min, zero=qty===0;
-      const img=i.image_url?`<img class="fin-thumb" loading="lazy" src="${esc(i.image_url)}" alt="" onclick="financeProZoomImageV15('${encodeURIComponent(i.image_url)}','${encodeURIComponent(S(i.name))}')">`:'<div class="fin-thumb" style="display:grid;place-items:center;color:#8aa096;font-size:11px">بدون صورة</div>';
+      const imageUrl=lockedImageUrl(i); const img=imageUrl?`<img class="fin-thumb" loading="lazy" src="${esc(imageUrl)}" alt="" onclick="financeProZoomImageV15('${encodeURIComponent(imageUrl)}','${encodeURIComponent(S(i.name))}')" onerror="this.style.opacity=.35;this.title='رابط الصورة غير متاح'">`:'<div class="fin-thumb" style="display:grid;place-items:center;color:#8aa096;font-size:11px">بدون صورة</div>';
       return `<div class="fin-product-card">${img}<h4>${esc(i.name||'-')}</h4><span class="fin-badge ${zero?'bad':low?'warn':''}">${zero?'رصيد صفر':low?'قارب الانتهاء':'متوفر'}</span><div class="fin-meta"><div><small>الكود</small><b>${esc(itemCode(i)||'-')}</b></div><div><small>الوحدة</small><b>${esc(i.unit||'-')}</b></div><div><small>النوع</small><b>${esc(productType(i))}</b></div><div><small>الكمية</small><b>${N(qty)}</b></div><div><small>سعر قبل الضريبة</small><b>${money(itemUnitCost(i))}</b></div><div><small>بعد الضريبة للوحدة</small><b>${money(itemUnitCost(i)*(1+VAT))}</b></div></div><div class="fin-card-actions"><button class="light" onclick="financeProShowProductV15('${esc(i.id)}')">عرض البيانات</button><label class="light" style="display:inline-flex;align-items:center;justify-content:center;min-width:130px;cursor:pointer;border:1px solid #d8ebe3;border-radius:11px;padding:8px 11px;background:#eef7f3;color:#073d31">تحميل صورة<input type="file" accept="image/*" style="display:none" onchange="financeProUploadProductImageV15('${esc(i.id)}',this)"></label>${canDelete()?`<button class="danger" onclick="financeProDeleteProductV15('${esc(i.id)}')">حذف</button>`:''}</div></div>`;
     }).join('')||'<div class="fin-soft">لا توجد منتجات حسب الفلتر.</div>'}</div>`;
   }
@@ -284,7 +327,7 @@
           const image_url=String(reader.result||'');
           const res=await c.from('inventory_items').update({image_url}).eq('id',id).select('*');
           if(res.error) throw res.error;
-          const idx=state.items.findIndex(i=>String(i.id)===String(id)); if(idx>=0) state.items[idx]={...state.items[idx],image_url};
+          const idx=state.items.findIndex(i=>String(i.id)===String(id)); if(idx>=0){ state.items[idx]={...state.items[idx],image_url}; rememberProductImages([state.items[idx]]); }
           renderProductList();
           if(typeof msg==='function') msg('تم حفظ صورة المنتج');
         }catch(e){ alert(e.message||String(e)); }
@@ -302,7 +345,7 @@
     const consumed=rowsAll.filter(m=>S(m.movement_type)==='consume');
     const returns=rowsAll.filter(m=>S(m.movement_type)==='return');
     const rows=arr=>arr.map(m=>`<tr><td>${esc(movementDate(m)||'-')}</td><td>${esc(movementTypeLabel(m.movement_type))}</td><td>${N(m.quantity)}</td><td>${esc(m.receiver||'-')}</td><td>${esc(m.project_name||m.projectName||'-')}</td><td>${money(movementReportNet(m)||movementNet(m))}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>';
-    modal('بيانات المنتج: '+S(item.name),`${item.image_url?`<img src="${esc(item.image_url)}" onclick="financeProZoomImageV15('${encodeURIComponent(item.image_url)}','${encodeURIComponent(S(item.name))}')" style="width:100px;height:100px;object-fit:contain;border:1px solid #d9e7e2;border-radius:16px;background:#fff;padding:4px;cursor:zoom-in">`:''}<div class="fin-grid"><div class="fin-card fin-kpi"><small>الداخل</small><b>${N(met.inside)}</b></div><div class="fin-card fin-kpi"><small>الخارج الصافي</small><b>${N(met.netOut)}</b></div><div class="fin-card fin-kpi"><small>المستهلك</small><b>${N(met.consume)}</b></div><div class="fin-card fin-kpi"><small>التالف</small><b>${N(met.damaged)}</b></div><div class="fin-card fin-kpi"><small>المهدور</small><b>${N(met.waste)}</b></div><div class="fin-card fin-kpi"><small>سكراب</small><b>${N(met.scrap)}</b></div><div class="fin-card fin-kpi"><small>المرتجع</small><b>${N(met.returned)}</b></div><div class="fin-card fin-kpi"><small>الرصيد الحالي</small><b>${N(met.balance)}</b></div></div><h3>الداخل</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المورد</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(ins)}</tbody></table></div><h3>الخارج الصافي</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(outRows)}</tbody></table></div><h3>المستهلك</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(consumed)}</tbody></table></div><h3>المرتجع</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(returns)}</tbody></table></div>`);
+    modal('بيانات المنتج: '+S(item.name),`${imageUrl?`<img src="${esc(imageUrl)}" onclick="financeProZoomImageV15('${encodeURIComponent(imageUrl)}','${encodeURIComponent(S(item.name))}')" style="width:100px;height:100px;object-fit:contain;border:1px solid #d9e7e2;border-radius:16px;background:#fff;padding:4px;cursor:zoom-in">`:''}<div class="fin-grid"><div class="fin-card fin-kpi"><small>الداخل</small><b>${N(met.inside)}</b></div><div class="fin-card fin-kpi"><small>الخارج الصافي</small><b>${N(met.netOut)}</b></div><div class="fin-card fin-kpi"><small>المستهلك</small><b>${N(met.consume)}</b></div><div class="fin-card fin-kpi"><small>التالف</small><b>${N(met.damaged)}</b></div><div class="fin-card fin-kpi"><small>المهدور</small><b>${N(met.waste)}</b></div><div class="fin-card fin-kpi"><small>سكراب</small><b>${N(met.scrap)}</b></div><div class="fin-card fin-kpi"><small>المرتجع</small><b>${N(met.returned)}</b></div><div class="fin-card fin-kpi"><small>الرصيد الحالي</small><b>${N(met.balance)}</b></div></div><h3>الداخل</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المورد</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(ins)}</tbody></table></div><h3>الخارج الصافي</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(outRows)}</tbody></table></div><h3>المستهلك</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(consumed)}</tbody></table></div><h3>المرتجع</h3><div class="fin-table"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الكمية</th><th>المستلم</th><th>المشروع</th><th>القيمة</th></tr></thead><tbody>${rows(returns)}</tbody></table></div>`);
   };
   window.financeProDeleteProductV15=async function(id){try{if(!canDelete())return alert('حذف المنتج متاح لمدير النظام فقط'); if(!await confirmBox('حذف المنتج','هل تريد حذف المنتج من قائمة المنتجات؟ لن يتم حذف حركاته القديمة.'))return; const res=await client().from('inventory_items').delete().eq('id',id); if(res.error)throw res.error; await loadAll(true); renderShell();}catch(e){alert(e.message||String(e));}};
 
