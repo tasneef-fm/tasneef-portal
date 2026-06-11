@@ -1,4 +1,4 @@
-/* Tasneef Finance Inventory Pro v10093
+/* Tasneef Finance Inventory Pro v10094
    RESTORE REPORTS + MOVEMENT + CONSUMPTION
    Official core file only: no injected external scripts, no MutationObserver, no duplicate renderer.
    Changes:
@@ -9,10 +9,12 @@
    - Direct invoice loading by invoice number.
    - v10091: fast product list rendering; details are calculated only when opening product.
    - v10092: products fallback from inventory_movements when inventory_items returns empty.
+   - v10094: professional product source merge: inventory_items has priority for image_url, fallback only for missing items.
+   - v10094: instant product rendering without waiting message; includes accurate image filter.
 */
 (function(){
   'use strict';
-  const VERSION='v10093-instant-products-photo-filter';
+  const VERSION='v10094-professional-products-images-priority';
   const VAT=0.15;
   const state={loaded:false,tab:'summary',items:[],movements:[],expenses:[],projects:[],users:[],tickets:[],invoiceLines:[],distribution:[],reportTab:'products',suppliers:[],editMovementId:''};
   window.financeProStateV15=state;
@@ -84,7 +86,26 @@
     });
     return [...map.values()].map(i=>{i.quantity=Math.max(0,i._inside-i._netOut); return i;});
   }
-  function productItems(){ return state.items.length ? state.items : fallbackItemsFromMovements(); }
+  function productItems(){
+    const primary=A(state.items);
+    const fallback=fallbackItemsFromMovements();
+    const map=new Map();
+    const keyOf=(i)=>S(itemCode(i)||i?.id||i?.name).toLowerCase();
+    primary.forEach(i=>{ const k=keyOf(i); if(k) map.set(k,{...i,_source:'inventory_items'}); });
+    fallback.forEach(f=>{
+      const k=keyOf(f); if(!k) return;
+      if(!map.has(k)) map.set(k,{...f,_source:'inventory_movements'});
+      else{
+        const base=map.get(k);
+        // Keep official inventory_items fields and image_url, but fill missing quantity/cost from movements only if needed.
+        if(!S(base.image_url) && S(f.image_url)) base.image_url=f.image_url;
+        if(N(base.quantity)===0 && N(f.quantity)>0) base.quantity=f.quantity;
+        if(N(itemCost(base))===0 && N(itemCost(f))>0){ base.unit_cost=f.unit_cost; base.cost=f.cost; base.price=f.price; }
+        map.set(k,base);
+      }
+    });
+    return [...map.values()];
+  }
   function computedItemQty(item){if(!item)return 0; if(item._fallback) return N(item.quantity); const rows=productMovements(item).flatMap(movementDistributionRows); const distributionReturnToStock=rows.filter(m=>S(m.movement_type)==='return'&&m.is_distribution_row&&S(m.base_movement_type)!=='return').reduce((a,m)=>a+N(m.quantity),0); return N(item.quantity)+distributionReturnToStock;}
   function itemUnitCost(item){const direct=itemCost(item); if(direct>0)return direct; const code=itemCode(item); const moves=state.movements.filter(m=>S(m.movement_type)==='in'&&(String(m.item_id)===String(item&&item.id)||(code&&[m.product_code,m.barcode].map(S).includes(code))||(!m.item_id&&S(m.item_name)===S(item&&item.name)))).sort((a,b)=>S(b.movement_date||b.created_at).localeCompare(S(a.movement_date||a.created_at))); return moves.length?movementUnitCost(moves[0]):0;}
   function rowVat(qty,price,mode='before'){const total=N(qty)*N(price); mode=S(mode||'before'); if(mode==='after'){const net=total/(1+VAT);return{net,vat:total-net,gross:total};} if(mode==='none')return{net:total,vat:0,gross:total}; return{net:total,vat:total*VAT,gross:total*(1+VAT)};}
@@ -153,7 +174,7 @@
     });
     rows=rows.sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
     const total=rows.length;
-    const note=`<div class="fin-product-note">عدد المنتجات المعروضة: ${total}</div>`;
+    const noImg=rows.filter(x=>!S(x.image_url)).length, withImg=rows.filter(x=>S(x.image_url)).length; const note=`<div class="fin-product-note">عدد المنتجات المعروضة: ${total} | فيها صور: ${withImg} | بدون صور: ${noImg}</div>`;
     box.innerHTML=`${note}<div class="fin-report-cards">${rows.map(i=>{
       const qty=quickQty(i), min=N(i.min_quantity||i.reorder_level||1), low=qty>0&&qty<=min, zero=qty===0;
       const img=i.image_url?`<img class="fin-thumb" loading="lazy" src="${esc(i.image_url)}" alt="" onclick="financeProZoomImageV15('${encodeURIComponent(i.image_url)}','${encodeURIComponent(S(i.name))}')">`:'<div class="fin-thumb" style="display:grid;place-items:center;color:#8aa096;font-size:11px">بدون صورة</div>';
