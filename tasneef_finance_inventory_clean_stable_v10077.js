@@ -2,7 +2,7 @@
 /* ===== tasneef_finance_inventory_stable_root_v10070.js merged into clean stable v10077 ===== */
 (function(){
   'use strict';
-  const VERSION='v10078-finance-inventory-single-json-fix';
+  const VERSION='v10079-finance-inventory-image-onerow-global-fix';
   const VAT_RATE=0.15;
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
@@ -23,6 +23,9 @@
     if(!d) throw new Error((label||'العملية')+' لم ترجع بيانات من السيرفر.');
     return d;
   }
+
+  // v10079: expose helper globally because some inline/late patched image handlers run outside this closure
+  try{ window.oneRow = oneRow; window.__tasneefOneRow = oneRow; }catch(e){}
 
 
   // v10077: منع أي مؤقتات/قنوات قديمة من ملفات الترقيع السابقة
@@ -203,11 +206,11 @@
     };
     if(S(line.image)) upd.image_url=S(line.image);
     const res=await sb.from('inventory_items').update(upd).eq('id',item.id).select('*');
-    return oneRow(res,'تحديث المنتج');
+    return (window.__tasneefOneRow||window.oneRow||oneRow)(res,'تحديث المنتج');
   }
   async function createItem(line,q,supplier,cost,invoiceNo){
     const ins={name:S(line.name),product_code:S(line.code),serial_number:S(line.code),barcode:S(line.code),supplier_barcode:S(line.distributor_code)||S(line.code),image_url:S(line.image)||'',unit:S(line.unit)||'حبة',item_type:S(line.item_type)||'مادة',type:S(line.item_type)||'مادة',quantity:N(q),min_quantity:N(line.min_quantity)||1,unit_cost:+N(cost).toFixed(4),supplier,category:S(line.item_type)||'عام',notes:'تمت الإضافة من فاتورة '+invoiceNo,created_by:uid(),created_by_name:uname(),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()};
-    const res=await sb.from('inventory_items').insert(ins).select('*'); return oneRow(res,'إنشاء المنتج');
+    const res=await sb.from('inventory_items').insert(ins).select('*'); return (window.__tasneefOneRow||window.oneRow||oneRow)(res,'إنشاء المنتج');
   }
   async function saveIncomingMovement(item,line,q,date,supplier,invoiceNo,cost,oldMove){
     const c=rowVat(q,line.price,line.tax_mode);
@@ -216,11 +219,11 @@
     if(oldMove){
       meta.oldQuantity=N(line._oldQty||oldMove.quantity); meta.deltaQuantity=N(q)-meta.oldQuantity;
       const up={item_id:item.id,item_name:item.name,quantity:N(q),movement_date:date,receiver:supplier,reason:'تعديل آمن لفاتورة '+invoiceNo,notes:'finance_pro_v15:'+JSON.stringify(meta),product_code:S(line.code)||itemCode(item),barcode:S(line.distributor_code)||itemCode(item),unit_cost:+N(cost).toFixed(4),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()};
-      const mr=await sb.from('inventory_movements').update(up).eq('id',oldMove.id).select('*'); return oneRow(mr,'تحديث حركة المخزون');
+      const mr=await sb.from('inventory_movements').update(up).eq('id',oldMove.id).select('*'); return (window.__tasneefOneRow||window.oneRow||oneRow)(mr,'تحديث حركة المخزون');
     }
     meta.createdBy=uid(); meta.createdByName=uname(); meta.createdAt=new Date().toISOString();
     const mv={item_id:item.id,item_name:item.name,movement_type:'in',quantity:N(q),movement_date:date,receiver:supplier,reason:'إضافة مخزون - فاتورة '+invoiceNo,notes:'finance_pro_v15:'+JSON.stringify(meta),product_code:S(line.code)||itemCode(item),barcode:S(line.distributor_code)||itemCode(item),unit_cost:+N(cost).toFixed(4),created_by:uid(),created_by_name:uname(),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()};
-    const mr=await sb.from('inventory_movements').insert(mv).select('*'); return oneRow(mr,'إنشاء حركة المخزون');
+    const mr=await sb.from('inventory_movements').insert(mv).select('*'); return (window.__tasneefOneRow||window.oneRow||oneRow)(mr,'إنشاء حركة المخزون');
   }
   window.financeProSaveInvoiceV15=async function(btn){
     try{
@@ -263,7 +266,7 @@
     document.body.insertAdjacentHTML('beforeend',html);
   }
   window.financeProSaveProductEditV10070=async function(id,btn){
-    try{ if(btn) btn.disabled=true; const upd={name:S($('editProdName10070')?.value),product_code:S($('editProdCode10070')?.value),serial_number:S($('editProdCode10070')?.value),barcode:S($('editProdCode10070')?.value),supplier_barcode:S($('editProdDist10070')?.value),unit:S($('editProdUnit10070')?.value)||'حبة',item_type:S($('editProdType10070')?.value)||'مادة',type:S($('editProdType10070')?.value)||'مادة',min_quantity:N($('editProdMin10070')?.value)||1,unit_cost:N($('editProdCost10070')?.value),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()}; const res=await sb.from('inventory_items').update(upd).eq('id',id).select('*'); const row=oneRow(res,'تعديل المنتج'); const ss=st(); const idx=A(ss.items).findIndex(i=>String(i.id)===String(id)); if(idx>=0) ss.items[idx]=row; document.querySelector('.modal-backdrop:last-child')?.remove(); if(typeof msg==='function') msg('تم تعديل المنتج بدون تغيير الكمية'); }catch(e){ alert(e.message||String(e)); } finally{ if(btn) btn.disabled=false; }
+    try{ if(btn) btn.disabled=true; const upd={name:S($('editProdName10070')?.value),product_code:S($('editProdCode10070')?.value),serial_number:S($('editProdCode10070')?.value),barcode:S($('editProdCode10070')?.value),supplier_barcode:S($('editProdDist10070')?.value),unit:S($('editProdUnit10070')?.value)||'حبة',item_type:S($('editProdType10070')?.value)||'مادة',type:S($('editProdType10070')?.value)||'مادة',min_quantity:N($('editProdMin10070')?.value)||1,unit_cost:N($('editProdCost10070')?.value),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()}; const res=await sb.from('inventory_items').update(upd).eq('id',id).select('*'); const row=(window.__tasneefOneRow||window.oneRow||oneRow)(res,'تعديل المنتج'); const ss=st(); const idx=A(ss.items).findIndex(i=>String(i.id)===String(id)); if(idx>=0) ss.items[idx]=row; document.querySelector('.modal-backdrop:last-child')?.remove(); if(typeof msg==='function') msg('تم تعديل المنتج بدون تغيير الكمية'); }catch(e){ alert(e.message||String(e)); } finally{ if(btn) btn.disabled=false; }
   };
 
   window.financeProRecoverProductsFromInvoicesV10070=async function(btn){
@@ -276,7 +279,7 @@
         if(exists) continue;
         const meta=safeJson(m.notes)||{}; const code=S(m.product_code)||('PRD-'+String(Date.now()+count).slice(-6)); const q=stableBalance({id:m.item_id,name:m.item_name,product_code:code},'');
         const ins={name:S(m.item_name)||'منتج مسترجع',product_code:code,serial_number:code,barcode:code,supplier_barcode:S(m.barcode)||code,image_url:'',unit:'حبة',item_type:S(meta.itemType||'مادة'),type:S(meta.itemType||'مادة'),quantity:q||N(m.quantity),min_quantity:N(meta.minQuantity)||1,unit_cost:N(m.unit_cost),supplier:S(meta.supplier||m.receiver||''),category:S(meta.itemType||'عام'),notes:'استرجاع تلقائي من فاتورة قديمة v10070',created_by:uid(),created_by_name:uname(),updated_by:uid(),updated_by_name:uname(),updated_at:new Date().toISOString()};
-        const res=await sb.from('inventory_items').insert(ins).select('*'); ss.items.push(oneRow(res,'استيراد المنتج')); count++;
+        const res=await sb.from('inventory_items').insert(ins).select('*'); ss.items.push((window.__tasneefOneRow||window.oneRow||oneRow)(res,'استيراد المنتج')); count++;
       }
       if(typeof msg==='function') msg('تم استرجاع '+count+' منتج مفقود من الفواتير القديمة');
       if(typeof window.financeProRenderProductListV15==='function') window.financeProRenderProductListV15();
@@ -484,7 +487,7 @@
       const id=S($('prodImgItemV10073')?.value); const data=S(window.__prodImgV10073||'');
       if(!id) throw new Error('اختر المنتج'); if(!data) throw new Error('اختر الصورة أولاً');
       const res=await sb.from('inventory_items').update({image_url:data, updated_at:new Date().toISOString()}).eq('id',id).select('*');
-      const row=oneRow(res,'حفظ صورة المنتج');
+      const row=(window.__tasneefOneRow||window.oneRow||oneRow)(res,'حفظ صورة المنتج');
       const ss=st(); const idx=A(ss.items).findIndex(i=>String(i.id)===String(id)); if(idx>=0) ss.items[idx]=row;
       document.querySelector('.modal-backdrop:last-child')?.remove(); renderProductsEverywhere(ss.items);
       if(typeof window.msg==='function') window.msg('تم حفظ صورة المنتج');
@@ -724,7 +727,7 @@
       const id=S($('prodImageItemV10075')?.value); const data=S(window.__prodImageV10075||'');
       if(!id) throw new Error('اختر المنتج'); if(!data) throw new Error('اختر الصورة');
       const res=await sb.from('inventory_items').update({image_url:data,updated_at:new Date().toISOString()}).eq('id',id).select('*');
-      const row=oneRow(res,'حفظ صورة المنتج');
+      const row=(window.__tasneefOneRow||window.oneRow||oneRow)(res,'حفظ صورة المنتج');
       const idx=productsCache.findIndex(i=>String(i.id)===String(id)); if(idx>=0) productsCache[idx]=row;
       const ss=st(); const idx2=A(ss.items).findIndex(i=>String(i.id)===String(id)); if(idx2>=0) ss.items[idx2]=row;
       renderProductTables(A(ss.items)); document.querySelector('.modal-backdrop:last-child')?.remove();
@@ -815,4 +818,146 @@
   }
   document.addEventListener('click', function(){ setTimeout(addClearButton,200); }, true);
   window.addEventListener('load', function(){ setTimeout(addClearButton,1200); });
+})();
+
+/* ===== v10080 inventory operations, matching and movement-value fix ===== */
+(function(){
+  'use strict';
+  const VERSION='v10080-products-equal-movements-edit-delete-match';
+  const VAT=0.15;
+  const S=v=>String(v??'').trim();
+  const N=v=>Number(v||0)||0;
+  const A=v=>Array.isArray(v)?v:[];
+  const $=id=>document.getElementById(id);
+  const money=v=>`${N(v).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})} ر.س`;
+  const esc=v=>S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  window.__tasneefFinanceInventoryV10080=true;
+  function st(){ return window.financeProStateV15 || (window.financeProStateV15={items:[],movements:[],invoiceLines:[],distribution:[]}); }
+  function sb(){ return window.supabaseClient || window.supabase || window.sb || null; }
+  function code(i){ return S(i?.product_code||i?.serial_number||i?.barcode||i?.supplier_barcode||i?.code||''); }
+  function dist(i){ return S(i?.supplier_barcode||i?.distributor_code||''); }
+  function keyOfItem(i){ return S(i?.id)||code(i)||S(i?.name); }
+  function safeJson(v){ const t=S(v); try{return JSON.parse(t.replace(/^finance_pro_v15:/,''))||{};}catch(_){return{};} }
+  function moveType(m){ return S(m?.movement_type).toLowerCase(); }
+  function isIn(m){ const t=moveType(m); const r=S(m?.reason); return ['in','add','incoming','purchase','ادخال','إدخال','اضافة','إضافة'].includes(t) || /إضافة مخزون|فاتورة/.test(r); }
+  function isOut(m){ const t=moveType(m); const r=S(m?.reason); return ['out','issue','consume','consumption','waste','damaged','scrap','صرف','استهلاك','تالف','هالك'].includes(t) || /صرف|استهلاك|تالف|هالك/.test(r); }
+  function isReturn(m){ const t=moveType(m); const r=S(m?.reason); return ['return','returned','مرتجع'].includes(t) || /مرتجع|استرجاع/.test(r); }
+  function itemForMove(m){
+    const items=A(st().items); const mid=S(m.item_id), mc=S(m.product_code||m.barcode), mn=S(m.item_name);
+    return items.find(i=>S(i.id)===mid) || items.find(i=>mc && [i.product_code,i.serial_number,i.barcode,i.supplier_barcode].map(S).includes(mc)) || items.find(i=>S(i.name)===mn) || {id:mid,name:mn,product_code:mc,unit_cost:N(m.unit_cost),quantity:0};
+  }
+  function unitCostFromMove(m){
+    const meta=safeJson(m.notes); const q=N(m.quantity)||1;
+    if(N(meta.beforeVat)) return N(meta.beforeVat)/q;
+    if(N(meta.afterVat)) return (N(meta.afterVat)/(1+VAT))/q;
+    return N(m.unit_cost||m.cost||m.price);
+  }
+  function calcFromMovements(){
+    const groups=new Map();
+    const sorted=A(st().movements).slice().sort((a,b)=>S(a.movement_date||a.created_at).localeCompare(S(b.movement_date||b.created_at)));
+    for(const m of sorted){
+      const it=itemForMove(m); const k=keyOfItem(it) || S(m.item_id)||S(m.product_code)||S(m.item_name); if(!k) continue;
+      if(!groups.has(k)) groups.set(k,{item:it,layers:[],outQty:0});
+      const g=groups.get(k); if(!g.item?.id && it?.id) g.item=it;
+      const q=N(m.quantity); if(q<=0) continue;
+      if(isIn(m) || isReturn(m)) g.layers.push({qty:q,cost:unitCostFromMove(m),move:m});
+      else if(isOut(m)){
+        let need=q; g.outQty+=q;
+        for(const layer of g.layers){ if(need<=0) break; const take=Math.min(layer.qty,need); layer.qty-=take; need-=take; }
+      }
+      const meta=safeJson(m.notes);
+      A(meta.distribution).forEach(d=>{
+        if(['consume','waste','damaged','scrap','out','issue','صرف','استهلاك','تالف'].includes(S(d.type))){
+          let need=N(d.qty); g.outQty+=need;
+          for(const layer of g.layers){ if(need<=0) break; const take=Math.min(layer.qty,need); layer.qty-=take; need-=take; }
+        }
+      });
+    }
+    const perItem=[]; let net=0, qty=0;
+    groups.forEach((g,k)=>{ const balQty=g.layers.reduce((a,l)=>a+N(l.qty),0); const val=g.layers.reduce((a,l)=>a+N(l.qty)*N(l.cost),0); if(balQty>0.0001){ net+=val; qty+=balQty; perItem.push({key:k,item:g.item,qty:balQty,net:val,avg:balQty?val/balQty:0}); } });
+    return {perItem,net,vat:net*VAT,gross:net*(1+VAT),qty};
+  }
+  function applyComputedToItems(){
+    const calc=calcFromMovements(); const map=new Map(calc.perItem.map(x=>[x.key,x]));
+    const items=A(st().items);
+    items.forEach(i=>{ const k=keyOfItem(i); const x=map.get(k); if(x){ i.__v10080_qty=N(x.qty); i.__v10080_unit_cost=N(x.avg); i.quantity=+N(x.qty).toFixed(4); i.unit_cost=+N(x.avg).toFixed(4); } });
+    return calc;
+  }
+  function updateKpis(){
+    const calc=applyComputedToItems();
+    function setCard(label,value,notContains){
+      const nodes=[...document.querySelectorAll('.kpi,.fin-soft,.card,div')].filter(el=>{ const t=S(el.innerText); return t.includes(label) && !(notContains&&t.includes(notContains)) && t.length<120; });
+      nodes.forEach(el=>{ const b=el.querySelector('b,strong'); if(b) b.textContent=value; else el.innerHTML=el.innerHTML.replace(/([\d,٠-٩.]+\s*ر\.س|\d+)/,value); });
+    }
+    setCard('عدد المنتجات', String(A(st().items).length));
+    setCard('السعر قبل الضريبة', money(calc.net),'حركة');
+    setCard('الضريبة', money(calc.vat),'حركة');
+    setCard('السعر شامل الضريبة', money(calc.gross),'حركة');
+  }
+  function findProductByAny(text){
+    const q=S(text).toLowerCase(); if(!q) return null;
+    return A(st().items).find(i=>[i.name,i.product_code,i.serial_number,i.barcode,i.supplier_barcode,i.distributor_code].map(x=>S(x).toLowerCase()).includes(q)) ||
+           A(st().items).find(i=>[i.name,i.product_code,i.serial_number,i.barcode,i.supplier_barcode,i.distributor_code].some(x=>S(x).toLowerCase().includes(q)));
+  }
+  function fillLineFromItem(i){
+    if(!i) return;
+    const pairs={finExistingProductV15:i.id,finLineNameV15:i.name,finLineCodeV15:code(i),finLineDistributorCodeV15:dist(i),finLineUnitV15:i.unit||'حبة',finLineMinQtyV15:i.min_quantity||1,finLinePriceV15:i.unit_cost||i.cost||0,finLineTypeV15:i.item_type||i.type||'مادة'};
+    Object.entries(pairs).forEach(([id,val])=>{ const el=$(id); if(el) el.value=val??''; });
+  }
+  function bindMatching(){
+    ['finLineNameV15','finLineCodeV15','finLineDistributorCodeV15'].forEach(id=>{ const el=$(id); if(el && !el.__v10080Bound){ el.__v10080Bound=true; el.addEventListener('change',()=>fillLineFromItem(findProductByAny(el.value))); el.addEventListener('blur',()=>fillLineFromItem(findProductByAny(el.value))); } });
+    const sel=$('finExistingProductV15'); if(sel && !sel.__v10080Bound){ sel.__v10080Bound=true; sel.addEventListener('change',()=>fillLineFromItem(A(st().items).find(i=>S(i.id)===S(sel.value)))); }
+  }
+  function renderInvoiceLinesSafe(){
+    try{ if(typeof window.financeProRenderInvoiceLinesV10070==='function') window.financeProRenderInvoiceLinesV10070(); else if(typeof window.financeProRenderV15==='function') window.financeProRenderV15(); }catch(e){}
+  }
+  window.financeProRemoveInvoiceLineV15=function(idx){
+    const ss=st(); ss.invoiceLines=A(ss.invoiceLines); if(idx<0||idx>=ss.invoiceLines.length) return alert('لم يتم العثور على السطر');
+    ss.invoiceLines.splice(idx,1); renderInvoiceLinesSafe(); updateKpis();
+  };
+  window.financeProEditInvoiceLineV10080=function(idx){
+    const ss=st(); ss.invoiceLines=A(ss.invoiceLines); const l=ss.invoiceLines[idx]; if(!l) return alert('لم يتم العثور على السطر');
+    fillLineFromItem(findProductByAny(l.name)||findProductByAny(l.code)||findProductByAny(l.distributor_code));
+    const vals={finLineNameV15:l.name,finLineCodeV15:l.code,finLineDistributorCodeV15:l.distributor_code,finLineSupplierInvoiceV15:l.supplier_invoice_no,finLineQtyV15:l.qty,finLineMinQtyV15:l.min_quantity||1,finLinePriceV15:l.price,finLineTaxModeV15:l.tax_mode||'before',finLineUnitV15:l.unit||'حبة',finLineTypeV15:l.item_type||'مادة'};
+    Object.entries(vals).forEach(([id,val])=>{ const el=$(id); if(el) el.value=val??''; });
+    ss.invoiceLines.splice(idx,1); renderInvoiceLinesSafe();
+  };
+  // Keep old inline button name working, but route it to the stronger function.
+  window.financeProEditInvoiceLineV10070=window.financeProEditInvoiceLineV10080;
+  window.financeProDeleteMovementV10080=async function(id,btn){
+    if(!confirm('تأكيد حذف حركة المخزون؟ سيتم تحديث الكميات والقيمة من جديد.')) return;
+    try{ if(btn) btn.disabled=true; const c=sb(); if(!c) throw new Error('الاتصال بالسيرفر غير متاح'); const res=await c.from('inventory_movements').delete().eq('id',id).select('*'); if(res.error) throw res.error; st().movements=A(st().movements).filter(m=>S(m.id)!==S(id)); updateKpis(); if(typeof window.financeProRenderV15==='function') window.financeProRenderV15(); alert('تم حذف الحركة وتحديث قيمة المنتجات'); }catch(e){ alert(e.message||String(e)); } finally{ if(btn) btn.disabled=false; }
+  };
+  window.financeProOpenMovementEditV10080=function(id){
+    const m=A(st().movements).find(x=>S(x.id)===S(id)); if(!m) return alert('لم يتم العثور على الحركة');
+    document.body.insertAdjacentHTML('beforeend',`<div class="modal-backdrop" onclick="if(event.target===this)this.remove()" style="position:fixed;inset:0;background:rgba(0,35,28,.45);z-index:999999;display:grid;place-items:center;padding:18px"><div class="card" style="width:min(720px,96vw);max-height:92vh;overflow:auto"><div class="fin-actions" style="justify-content:space-between"><h2>تعديل حركة المخزون</h2><button class="danger" onclick="this.closest('.modal-backdrop').remove()">إغلاق</button></div><div class="fin-grid two"><div><label>المنتج</label><input id="mvName10080" value="${esc(m.item_name)}"></div><div><label>نوع الحركة</label><select id="mvType10080"><option value="in">إدخال</option><option value="consume">استهلاك/صرف</option><option value="damaged">تالف</option><option value="return">مرتجع</option></select></div><div><label>الكمية</label><input id="mvQty10080" type="number" step="0.01" value="${N(m.quantity)}"></div><div><label>تكلفة الوحدة قبل الضريبة</label><input id="mvCost10080" type="number" step="0.01" value="${N(m.unit_cost)}"></div><div><label>التاريخ</label><input id="mvDate10080" type="date" value="${S(m.movement_date||m.created_at).slice(0,10)}"></div><div><label>المورد / المستلم</label><input id="mvReceiver10080" value="${esc(m.receiver)}"></div><div style="grid-column:1/-1"><label>السبب</label><input id="mvReason10080" value="${esc(m.reason)}"></div></div><div class="fin-actions"><button onclick="financeProSaveMovementEditV10080('${esc(id)}',this)">حفظ التعديل</button></div></div></div>`);
+    const type=$('mvType10080'); if(type) type.value=isIn(m)?'in':(isReturn(m)?'return':(moveType(m)||'consume'));
+  };
+  window.financeProSaveMovementEditV10080=async function(id,btn){
+    try{ if(btn) btn.disabled=true; const c=sb(); if(!c) throw new Error('الاتصال بالسيرفر غير متاح'); const upd={item_name:S($('mvName10080')?.value),movement_type:S($('mvType10080')?.value)||'in',quantity:N($('mvQty10080')?.value),unit_cost:N($('mvCost10080')?.value),movement_date:S($('mvDate10080')?.value),receiver:S($('mvReceiver10080')?.value),reason:S($('mvReason10080')?.value),updated_at:new Date().toISOString()}; if(!upd.quantity) throw new Error('الكمية مطلوبة'); const res=await c.from('inventory_movements').update(upd).eq('id',id).select('*'); if(res.error) throw res.error; const row=A(res.data)[0]||res.data||upd; const ss=st(); const ix=A(ss.movements).findIndex(m=>S(m.id)===S(id)); if(ix>=0) ss.movements[ix]=Object.assign({},ss.movements[ix],row); document.querySelector('.modal-backdrop:last-child')?.remove(); updateKpis(); if(typeof window.financeProRenderV15==='function') window.financeProRenderV15(); alert('تم تعديل الحركة وتحديث قيمة المنتجات'); }catch(e){ alert(e.message||String(e)); } finally{ if(btn) btn.disabled=false; }
+  };
+  function injectMovementButtons(){
+    const rows=[...document.querySelectorAll('tr')];
+    rows.forEach((tr,idx)=>{
+      if(tr.__v10080MovementBtns) return;
+      const showBtn=[...tr.querySelectorAll('button')].find(b=>/financeProShowMovementV15/.test(b.getAttribute('onclick')||''));
+      if(!showBtn) return;
+      const m=(showBtn.getAttribute('onclick')||'').match(/financeProShowMovementV15\((\d+)\)/); if(!m) return;
+      const move=A(st().movements)[Number(m[1])]; if(!move||!move.id) return;
+      const cell=showBtn.closest('td')||tr.lastElementChild; if(!cell) return;
+      cell.insertAdjacentHTML('beforeend',` <button class="light v10080-mv-edit" type="button" onclick="financeProOpenMovementEditV10080('${esc(move.id)}')">تعديل</button> <button class="danger v10080-mv-del" type="button" onclick="financeProDeleteMovementV10080('${esc(move.id)}',this)">حذف</button>`);
+      tr.__v10080MovementBtns=true;
+    });
+  }
+  const oldRender=window.financeProRenderV15;
+  if(typeof oldRender==='function' && !oldRender.__v10080){
+    const wrapped=function(){ const calc=applyComputedToItems(); const r=oldRender.apply(this,arguments); setTimeout(()=>{updateKpis();bindMatching();injectMovementButtons();},100); return r; };
+    wrapped.__v10080=true; window.financeProRenderV15=wrapped; try{ financeProRenderV15=wrapped; }catch(_){ }
+  }
+  function boot(){ bindMatching(); updateKpis(); injectMovementButtons(); }
+  document.addEventListener('input',function(e){ const id=e.target&&e.target.id; if(['finLineNameV15','finLineCodeV15','finLineDistributorCodeV15'].includes(id)){ const found=findProductByAny(e.target.value); if(found) fillLineFromItem(found); }},true);
+  document.addEventListener('click',()=>setTimeout(boot,250),true);
+  window.addEventListener('load',()=>setTimeout(boot,1200));
+  setTimeout(boot,1600);
+  console.log('Tasneef '+VERSION+' loaded');
 })();
