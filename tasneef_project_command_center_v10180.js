@@ -2,8 +2,8 @@
    Read-only reporting module. Improves project fields + supervisor phone lookup. */
 (function(){
   'use strict';
-  const VERSION='v10180-project-command-center';
-  const STATE={loaded:false,tab:'dashboard',projects:[],users:[],contracts:[],contractServices:[],annualServices:[],projectServices:[],serviceSchedules:[],tickets:[],selectedProjectId:'',lastLoadedAt:''};
+  const VERSION='v10181-project-command-center';
+  const STATE={loaded:false,tab:'dashboard',projects:[],users:[],contracts:[],contractServices:[],annualServices:[],projectServices:[],serviceSchedules:[],smartContracts:[],tickets:[],selectedProjectId:'',filterProjectId:'',filterSupervisorId:'',lastLoadedAt:''};
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
@@ -29,15 +29,32 @@
   function projectRelatedContracts(p){ const pid=idOf(p), pn=projectName(p); return STATE.contracts.filter(c=>rowProjectId(c)===pid || rowProjectName(c)===pn || S(field(c,['project','project_title','projectName'],'')).toLowerCase()===pn.toLowerCase()); }
   function fromRelatedContracts(p, keys){ for(const c of projectRelatedContracts(p)){ const v=field(c,keys,''); if(S(v)!=='') return v; } return ''; }
 
+  function readLocalObj(key){try{const x=JSON.parse(localStorage.getItem(key)||'{}'); return x&&typeof x==='object'?x:{};}catch(_){return{};}}
+  function smartRawRows(){
+    const rows=[...A(STATE.smartContracts)];
+    const local={...readLocalObj('tasneef_contract_smart_v299'),...readLocalObj('tasneef_contract_smart_v10107_cache')};
+    Object.entries(local).forEach(([project_id,payload])=>rows.push({project_id,payload,_local:true}));
+    const seen=new Map();
+    rows.forEach(r=>{const k=S(field(r,['project_id','projectId','project'],'')||rowProjectId(r)||rowProjectName(r)); if(k)seen.set(k,r);});
+    return [...seen.values()];
+  }
+  function smartRecordForProject(p){
+    const pid=idOf(p), pn=projectName(p).toLowerCase();
+    const row=smartRawRows().find(r=>S(field(r,['project_id','projectId','project'],'')||rowProjectId(r))===pid || rowProjectName(r).toLowerCase()===pn);
+    const payload=row&&(row.payload||row.data||row.record||row);
+    return payload&&typeof payload==='object'?payload:{};
+  }
+  function smartAssoc(p){const a=smartRecordForProject(p).association||{}; return a&&typeof a==='object'?a:{};}
+
   function projectDistrict(p){return S(field(p,['district','neighborhood','neighbourhood','area','city_area','district_name','location_area','حي','الحى','الحي'],'') || fromRelatedContracts(p,['district','neighborhood','area','حي','الحي']));}
   function projectLocation(p){return S(field(p,['location_url','map_url','maps_url','google_maps','location_link','location','site_url','site_link','map','site_location','google_map_url'],'' ) || fromRelatedContracts(p,['location_url','map_url','maps_url','google_maps','location_link','location','site_url','site_link','map']));}
   function projectBuildings(p){return cleanNum(field(p,['buildings_count','building_count','buildings','building','num_buildings','no_buildings','buildingsNo','blocks','towers','عدد_المباني','عدد_العمائر'],0) || fromRelatedContracts(p,['buildings_count','building_count','buildings','building','num_buildings','blocks','towers','عدد_المباني','عدد_العمائر']));}
   function projectApartments(p){return cleanNum(field(p,['apartments_count','apartment_count','apartments','apartment','units','unit_count','units_count','flats','flat_count','num_apartments','no_apartments','total_units','عدد_الشقق','عدد_الوحدات'],0) || fromRelatedContracts(p,['apartments_count','apartment_count','apartments','units','unit_count','units_count','flats','flat_count','num_apartments','total_units','عدد_الشقق','عدد_الوحدات']));}
   function projectScentDevices(p){return cleanNum(field(p,['scent_devices','scent_device_count','fragrance_devices','fragrance_devices_count','perfume_devices','perfume_device_count','aroma_devices','diffusers','diffuser_count','scent_count','air_freshener_count','عدد_اجهزة_التعطير','عدد_أجهزة_التعطير'],0) || fromRelatedContracts(p,['scent_devices','scent_device_count','fragrance_devices','perfume_devices','aroma_devices','diffusers','air_freshener_count','عدد_اجهزة_التعطير']));}
-  function propertyManagerName(p){return S(field(p,['property_manager','property_manager_name','manager_name','real_estate_manager','asset_manager','propertyManager','مدير_العقار'],'' ) || fromRelatedContracts(p,['property_manager','property_manager_name','manager_name','real_estate_manager','asset_manager','مدير_العقار']));}
-  function propertyManagerPhone(p){return S(field(p,['property_manager_phone','manager_phone','real_estate_manager_phone','asset_manager_phone','property_manager_mobile','propertyManagerPhone'],'' ) || fromRelatedContracts(p,['property_manager_phone','manager_phone','real_estate_manager_phone','asset_manager_phone']));}
-  function associationPresidentName(p){return S(field(p,['association_president','association_president_name','chairman','hoa_president','president_name','association_head','رئيس_الجمعية'],'' ) || fromRelatedContracts(p,['association_president','association_president_name','chairman','hoa_president','president_name','رئيس_الجمعية']));}
-  function associationPresidentPhone(p){return S(field(p,['association_president_phone','chairman_phone','hoa_president_phone','president_phone','association_head_phone'],'' ) || fromRelatedContracts(p,['association_president_phone','chairman_phone','hoa_president_phone','president_phone']));}
+  function propertyManagerName(p){const a=smartAssoc(p); return S(field(p,['property_manager','property_manager_name','manager_name','real_estate_manager','asset_manager','propertyManager','مدير_العقار'],'' ) || field(a,['manager','property_manager','property_manager_name','manager_name'],'') || fromRelatedContracts(p,['property_manager','property_manager_name','manager_name','real_estate_manager','asset_manager','مدير_العقار']));}
+  function propertyManagerPhone(p){const a=smartAssoc(p); return S(field(p,['property_manager_phone','manager_phone','real_estate_manager_phone','asset_manager_phone','property_manager_mobile','propertyManagerPhone'],'' ) || field(a,['phone','manager_phone','property_manager_phone'],'') || fromRelatedContracts(p,['property_manager_phone','manager_phone','real_estate_manager_phone','asset_manager_phone']));}
+  function associationPresidentName(p){const a=smartAssoc(p); return S(field(p,['association_president','association_president_name','chairman','hoa_president','president_name','association_head','رئيس_الجمعية'],'' ) || field(a,['name','president','association_president','chairman'],'') || fromRelatedContracts(p,['association_president','association_president_name','chairman','hoa_president','president_name','رئيس_الجمعية']));}
+  function associationPresidentPhone(p){const a=smartAssoc(p); return S(field(p,['association_president_phone','chairman_phone','hoa_president_phone','president_phone','association_head_phone'],'' ) || field(a,['president_phone','association_president_phone','chairman_phone'],'') || fromRelatedContracts(p,['association_president_phone','chairman_phone','hoa_president_phone','president_phone']));}
 
   function supervisorOf(p){
     const sid=S(field(p,['supervisor_id','supervisorId','supervisor_user_id','assigned_supervisor_id'],''));
@@ -52,7 +69,7 @@
   }
   async function load(force){
     if(STATE.loaded&&!force)return;
-    const [projects,users,users2,contracts,contracts2,cs,cs2,annual,annual2,ps,schedules,tickets]=await Promise.all([
+    const [projects,users,users2,contracts,contracts2,cs,cs2,annual,annual2,ps,schedules,smartContracts,tickets]=await Promise.all([
       table('projects','*',8000),
       table('app_users','*',5000),
       table('users','*',5000),
@@ -64,6 +81,7 @@
       table('project_annual_services','*',10000),
       table('project_services','*',10000),
       table('service_schedules','*',10000),
+      table('project_contract_smart','*',10000),
       table('tickets','*',10000)
     ]);
     STATE.projects=projects;
@@ -73,6 +91,7 @@
     STATE.annualServices=[...annual,...annual2];
     STATE.projectServices=ps;
     STATE.serviceSchedules=schedules;
+    STATE.smartContracts=smartContracts;
     STATE.tickets=tickets;
     if(!STATE.selectedProjectId && projects[0]) STATE.selectedProjectId=idOf(projects[0]);
     STATE.loaded=true;
@@ -99,11 +118,38 @@
     const pid=idOf(p), pn=projectName(p);
     return STATE.contracts.filter(c=>rowProjectId(c)===pid || rowProjectName(c)===pn || S(field(c,['project'],''))===pn).map(c=>S(field(c,['id','contract_id','uuid']))).filter(Boolean);
   }
+  function smartServiceRowsForProject(p){
+    const rec=smartRecordForProject(p);
+    const out=[];
+    const pid=idOf(p), pn=projectName(p);
+    const contracts=rec.contracts||rec.core||{};
+    const coreNames={elevators:'صيانة مصاعد',pools:'صيانة مسابح',civilDefense:'الدفاع المدني',civil_defense:'الدفاع المدني'};
+    Object.keys(contracts||{}).forEach(k=>{
+      const r=contracts[k]||{}; const service=coreNames[k]||serviceKey(k);
+      const visits=N(r.visits||r.visit_count||r.count||0);
+      const done=A(r.done).length || N(r.done_count||r.completed_count||0);
+      const active=!!(r.onUs??r.on_us) || S(r.company||r.company_name||r.phone||r.start||r.end) || visits>0;
+      if(active) out.push({project_id:pid,project_name:pn,service_name:service,required_count:Math.max(1,visits||1),completed_count:done,due_date:S(r.end||r.next_date||''),status:(done>=Math.max(1,visits||1))?'مكتمل':(active?'مستمر':'غير مفعل'),_smart:true,_source:'عقد'});
+    });
+    A(rec.annual).forEach(a=>{
+      const visits=Math.max(1,N(a.visits||a.visit_count||a.required_count||1));
+      const done=A(a.done).length || N(a.done_count||a.completed_count||0);
+      const sched=A(a.schedule).map(x=>typeof x==='string'?x:S(x&&x.date)).filter(Boolean);
+      const notDone=A(a.schedule).filter((x,i)=>!(A(a.done).map(Number).includes(i+1)||x.done));
+      const next=notDone.map(x=>typeof x==='string'?x:S(x&&x.date)).filter(Boolean).sort()[0]||sched.sort()[0]||'';
+      out.push({project_id:pid,project_name:pn,service_name:S(a.name)||'خدمة سنوية',required_count:visits,completed_count:done,due_date:next,status:done>=visits?'مكتمل':'مستمر',schedule:sched,_smart:true,_source:'سنوي'});
+    });
+    return out;
+  }
   function relatedRowsForProject(p){
-    const pid=idOf(p), pn=projectName(p), cids=contractIdsForProject(p);
-    const direct=r=>rowProjectId(r)===pid || rowProjectName(r)===pn || cids.includes(rowContractId(r));
+    const pid=idOf(p), pn=projectName(p), pnLow=pn.toLowerCase(), cids=contractIdsForProject(p);
+    const direct=r=>{
+      const rid=rowProjectId(r), rn=rowProjectName(r).toLowerCase();
+      const pfield=S(field(r,['project','project_title','projectName','project_name','site','site_name','property','property_name'],'')).toLowerCase();
+      return rid===pid || rn===pnLow || pfield===pnLow || cids.includes(rowContractId(r));
+    };
     const rows=[...STATE.contractServices,...STATE.annualServices,...STATE.projectServices,...STATE.serviceSchedules].filter(direct);
-    return rows;
+    return [...smartServiceRowsForProject(p),...rows];
   }
   function requiredCount(r){
     const x=field(r,['required_count','visits_count','annual_count','count','quantity','qty','frequency_count','service_count','times','number_of_visits'],null);
@@ -184,7 +230,7 @@
   function delayAlerts(p){
     return serviceSummary(p).filter(s=>s.late>0).map(s=>({project:p,type:'خدمة متأخرة',field:s.service,priority:'عالية',action:'متابعة تنفيذ الخدمة المتأخرة'}));
   }
-  function alertsAll(){return STATE.projects.flatMap(p=>[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)]);}
+  function alertsAll(){return filteredProjects().flatMap(p=>[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)]);}
   function completeness(p){const total=11; const missing=missingDataAlerts(p).length; return Math.max(0,Math.round(((total-missing)/total)*100));}
   function projectStatus(p){const a=[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)]; if(a.some(x=>x.priority==='عالية'))return 'يحتاج متابعة'; if(a.length)return 'ناقص بيانات'; return 'مكتمل';}
   function statusClass(s){return /متأخر|عالية|يحتاج/.test(S(s))?'bad':/مستمر|ناقص|متوسطة/.test(S(s))?'warn':'ok';}
@@ -206,19 +252,19 @@
     }
     return page;
   }
-  function header(){return `<div class="pcc-hero"><div><h2>مركز متابعة المشاريع والخدمات</h2><p>لوحة تنفيذية لقراءة حالة الخدمات، التنبيهات، العقود غير المفعلة، والبيانات الناقصة دون تعديل أي قسم آخر.</p></div><div class="pcc-actions"><button class="light" onclick="projectCommandCenterV10172.reload()">تحديث البيانات</button><button onclick="projectCommandCenterV10172.printCurrent()">طباعة PDF</button></div></div><div class="pcc-tabs">${[['dashboard','لوحة المؤشرات'],['project','ملف المشروع التنفيذي'],['alerts','التنبيهات والمخاطر'],['all','ملخص كل المشاريع']].map(([id,l])=>`<button class="${STATE.tab===id?'active':''}" onclick="projectCommandCenterV10172.tab('${id}')">${l}</button>`).join('')}</div>`;}
+  function header(){return `<div class="pcc-hero"><div><h2>مركز متابعة المشاريع والخدمات</h2><p>لوحة تنفيذية لقراءة حالة الخدمات، التنبيهات، العقود غير المفعلة، والبيانات الناقصة دون تعديل أي قسم آخر.</p></div><div class="pcc-actions"><button class="light" onclick="projectCommandCenterV10172.reload()">تحديث البيانات</button><button onclick="projectCommandCenterV10172.printCurrent()">طباعة PDF</button></div></div><div class="pcc-tabs">${[['dashboard','لوحة المؤشرات'],['project','ملف المشروع التنفيذي'],['alerts','التنبيهات والمخاطر'],['all','ملخص كل المشاريع']].map(([id,l])=>`<button class="${STATE.tab===id?'active':''}" onclick="projectCommandCenterV10172.tab('${id}')">${l}</button>`).join('')}</div>${STATE.loaded?filterBar():''}`;}
   function render(){const page=ensurePage(); if(!STATE.loaded){page.innerHTML=`<div class="pcc-shell">${header()}<div class="pcc-card">جاري تحميل مركز متابعة المشاريع...</div></div>`; return;} page.innerHTML=`<div class="pcc-shell">${header()}<div id="pccBody10172">${bodyHtml()}</div></div>`;}
   function bodyHtml(){if(STATE.tab==='project')return projectTab(); if(STATE.tab==='alerts')return alertsTab(); if(STATE.tab==='all')return allProjectsTab(); return dashboardTab();}
   function dashboardTab(){
-    const total=STATE.projects.length, alerts=alertsAll(), high=alerts.filter(a=>a.priority==='عالية').length, missing=alerts.filter(a=>a.type==='بيانات ناقصة').length, late=alerts.filter(a=>a.type==='خدمة متأخرة').length;
-    const complete=STATE.projects.filter(p=>completeness(p)>=100).length;
+    const projects=filteredProjects(); const total=projects.length, alerts=alertsAll(), high=alerts.filter(a=>a.priority==='عالية').length, missing=alerts.filter(a=>a.type==='بيانات ناقصة').length, late=alerts.filter(a=>a.type==='خدمة متأخرة').length;
+    const complete=projects.filter(p=>completeness(p)>=100).length;
     const inactive=alerts.filter(a=>a.type==='عقد غير مفعل').length;
     return `<div class="pcc-grid"><div class="pcc-card pcc-kpi"><small>إجمالي المشاريع</small><b>${total}</b></div><div class="pcc-card pcc-kpi"><small>مشاريع مكتملة البيانات</small><b>${complete}</b></div><div class="pcc-card pcc-kpi"><small>تنبيهات عالية</small><b>${high}</b></div><div class="pcc-card pcc-kpi"><small>خدمات متأخرة</small><b>${late}</b></div></div><div class="pcc-grid three"><div class="pcc-card"><h3>البيانات الناقصة</h3><b style="font-size:32px;color:#073d31">${missing}</b><p>اسم مدير العقار، رئيس الجمعية، الموقع، المشرف، الجوال، المباني، الشقق، أجهزة التعطير.</p></div><div class="pcc-card"><h3>العقود غير المفعلة</h3><b style="font-size:32px;color:#a92525">${inactive}</b><p>مصاعد، مسابح، دفاع مدني أو أي عقد مرتبط ولم يتم تفعيله.</p></div><div class="pcc-card"><h3>آخر تحديث</h3><b>${esc(STATE.lastLoadedAt||'-')}</b><p>البيانات مقروءة فقط من النظام الحالي بدون تعديل.</p></div></div>${topAlertsHtml(alerts.slice(0,12))}`;
   }
   function topAlertsHtml(rows){return `<div class="pcc-card"><h3>أهم التنبيهات</h3><div class="pcc-table"><table><thead><tr><th>المشروع</th><th>الحي</th><th>نوع المشكلة</th><th>البيان</th><th>الأولوية</th><th>الإجراء المطلوب</th></tr></thead><tbody>${rows.map(a=>`<tr><td>${esc(projectName(a.project))}</td><td>${esc(projectDistrict(a.project)||'-')}</td><td>${esc(a.type)}</td><td>${esc(a.field)}</td><td><span class="pcc-badge ${statusClass(a.priority)}">${esc(a.priority)}</span></td><td>${esc(a.action)}</td></tr>`).join('')||'<tr><td colspan="6">لا توجد تنبيهات</td></tr>'}</tbody></table></div></div>`;}
-  function projectSelect(){return `<select id="pccProjectSelect10172" onchange="projectCommandCenterV10172.select(this.value)">${STATE.projects.map(p=>`<option value="${esc(idOf(p))}" ${STATE.selectedProjectId===idOf(p)?'selected':''}>${esc(projectName(p)||idOf(p))}</option>`).join('')}</select>`;}
+  function projectSelect(){const rows=filteredProjects().length?filteredProjects():STATE.projects; return `<select id="pccProjectSelect10172" onchange="projectCommandCenterV10172.select(this.value)">${rows.map(p=>`<option value="${esc(idOf(p))}" ${STATE.selectedProjectId===idOf(p)?'selected':''}>${esc(projectName(p)||idOf(p))}</option>`).join('')}</select>`;}
   function projectTab(){
-    const p=STATE.projects.find(x=>idOf(x)===STATE.selectedProjectId)||STATE.projects[0]; if(!p)return '<div class="pcc-card">لا توجد مشاريع</div>';
+    const rows=filteredProjects().length?filteredProjects():STATE.projects; const p=rows.find(x=>idOf(x)===STATE.selectedProjectId)||rows[0]; if(!p)return '<div class="pcc-card">لا توجد مشاريع</div>';
     const sup=supervisorOf(p), services=serviceSummary(p), compl=completeness(p), alerts=[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)];
     return `<div class="pcc-card"><div class="pcc-actions"><div style="flex:1"><label>اختيار المشروع</label>${projectSelect()}</div><button onclick="projectCommandCenterV10172.printProject('${esc(idOf(p))}')">طباعة ملخص المشروع</button></div></div><div id="pccProjectPrintable10172">${projectProfileHtml(p,sup,services,alerts,compl)}</div>`;
   }
@@ -227,7 +273,7 @@
   }
   function alertsTab(){const alerts=alertsAll(); return `<div class="pcc-card"><div class="pcc-actions"><button onclick="projectCommandCenterV10172.printAlerts()">طباعة تقرير التنبيهات</button></div></div>${topAlertsHtml(alerts)}`;}
   function allProjectsTab(){
-    const rows=STATE.projects.map(p=>{const sv=serviceSummary(p), al=[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)], sup=supervisorOf(p); return {p,sv,al,sup};});
+    const rows=filteredProjects().map(p=>{const sv=serviceSummary(p), al=[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)], sup=supervisorOf(p); return {p,sv,al,sup};});
     return `<div class="pcc-card"><div class="pcc-actions"><button onclick="projectCommandCenterV10172.printAll()">طباعة ملخص كل المشاريع</button></div><h3>ملخص كل المشاريع</h3><div class="pcc-table"><table><thead><tr><th>المشروع</th><th>الحي</th><th>المشرف</th><th>جوال المشرف</th><th>الموقع</th><th>المباني</th><th>الشقق</th><th>أجهزة التعطير</th><th>الخدمات المطلوبة</th><th>المنفذة</th><th>المتأخرة</th><th>البيانات الناقصة</th><th>حالة المشروع</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(projectName(r.p))}</td><td>${esc(projectDistrict(r.p)||'-')}</td><td>${esc(r.sup.name||'-')}</td><td>${esc(r.sup.phone||'-')}</td><td>${linkCell(projectLocation(r.p))}</td><td>${N(projectBuildings(r.p))}</td><td>${N(projectApartments(r.p))}</td><td>${N(projectScentDevices(r.p))}</td><td>${r.sv.reduce((a,s)=>a+N(s.required),0)}</td><td>${r.sv.reduce((a,s)=>a+N(s.done),0)}</td><td>${r.sv.reduce((a,s)=>a+N(s.late),0)}</td><td>${missingDataAlerts(r.p).length}</td><td><span class="pcc-badge ${statusClass(projectStatus(r.p))}">${esc(projectStatus(r.p))}</span></td></tr>`).join('')||'<tr><td colspan="13">لا توجد مشاريع</td></tr>'}</tbody></table></div></div>`;
   }
   function printHtml(title,content){
@@ -239,8 +285,11 @@
     reload:async()=>{STATE.loaded=false; render(); await load(true); render();},
     tab:t=>{STATE.tab=t; render();},
     select:id=>{STATE.selectedProjectId=id; render();},
+    filterProject:id=>{STATE.filterProjectId=S(id); if(id)STATE.selectedProjectId=S(id); render();},
+    filterSupervisor:id=>{STATE.filterSupervisorId=S(id); const rows=filteredProjects(); if(rows[0])STATE.selectedProjectId=idOf(rows[0]); render();},
+    clearFilters:()=>{STATE.filterProjectId=''; STATE.filterSupervisorId=''; render();},
     printCurrent:()=>{if(STATE.tab==='project')api.printProject(STATE.selectedProjectId); else if(STATE.tab==='alerts')api.printAlerts(); else if(STATE.tab==='all')api.printAll(); else printHtml('لوحة مؤشرات المشاريع',bodyHtml());},
-    printProject:id=>{const p=STATE.projects.find(x=>idOf(x)===S(id))||STATE.projects[0]; if(!p)return; printHtml('ملخص المشروع - '+projectName(p),projectProfileHtml(p,supervisorOf(p),serviceSummary(p),[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)],completeness(p)));},
+    printProject:id=>{const rows=filteredProjects().length?filteredProjects():STATE.projects; const p=STATE.projects.find(x=>idOf(x)===S(id))||rows[0]; if(!p)return; printHtml('ملخص المشروع - '+projectName(p),projectProfileHtml(p,supervisorOf(p),serviceSummary(p),[...missingDataAlerts(p),...contractActivationAlerts(p),...delayAlerts(p)],completeness(p)));},
     printAlerts:()=>printHtml('تقرير التنبيهات والمخاطر',topAlertsHtml(alertsAll())),
     printAll:()=>printHtml('ملخص كل المشاريع',allProjectsTab())
   };
