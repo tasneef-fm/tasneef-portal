@@ -1,4 +1,4 @@
-/* Tasneef v10182 - Finance core speed + unified multi-product movement
+/* Tasneef v10183 - Finance core speed + unified multi-product movement
    هدف الملف: حل جذري داخل المالية فقط بدون حقن متعدد وبدون التأثير على الأقسام الأخرى.
    - تحميل المنتجات سريع: لا يتم تحميل image_url الثقيل مع أول فتح، ويتم تحميل الصور بالخلفية.
    - قسم العمليات: تحويل قائمة المنتج إلى قائمة بحث قابلة للكتابة.
@@ -7,9 +7,10 @@
 */
 (function(){
   'use strict';
-  const VERSION='v10182-finance-core-speed-multi-order-link';
-  if(window.__tasneefFinanceCoreSpeedMulti10177) return;
+  const VERSION='v10183-finance-core-speed-multi-order-link-core';
+  if(window.__tasneefFinanceCoreSpeedMulti10177 && window.__tasneefFinanceCoreSpeedMulti10177_VERSION===VERSION) return;
   window.__tasneefFinanceCoreSpeedMulti10177=true;
+  window.__tasneefFinanceCoreSpeedMulti10177_VERSION=VERSION;
 
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[v].filter(Boolean);
@@ -150,7 +151,9 @@
     if($('financeCoreSpeedMultiStyle10177'))return;
     const css=`
       .fin-fast-search-wrap{position:relative}.fin-fast-search-input{width:100%;border:1px solid #cfe3db;border-radius:12px;padding:10px;background:#fff}.fin-fast-search-menu{position:absolute;z-index:9999;top:calc(100% + 4px);right:0;left:0;max-height:280px;overflow:auto;background:#fff;border:1px solid #cfe3db;border-radius:14px;box-shadow:0 18px 40px rgba(7,61,49,.16);display:none}.fin-fast-search-menu.show{display:block}.fin-fast-search-item{padding:10px;border-bottom:1px solid #eef4f1;cursor:pointer}.fin-fast-search-item:hover{background:#eef7f3}.fin-fast-search-item b{color:#073d31}.fin-fast-search-item small{display:block;color:#6b7d77;margin-top:3px}.fin-hidden-select-10177{display:none!important}
-      #finMultiProductOp10175,#finMultiBoxes10176{display:none!important}.mb10177-wrap{border:2px solid #0d5b49;background:linear-gradient(180deg,#fbfffd,#f4faf7);border-radius:20px;padding:16px}.mb10177-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.mb10177-box{background:#fff;border:1px solid #d9e7e2;border-radius:18px;padding:14px;margin:12px 0;box-shadow:0 8px 25px rgba(7,61,49,.06)}.mb10177-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.mb10177-head h4{margin:0;color:#073d31}.mb10177-main{display:grid;grid-template-columns:2fr .8fr .7fr .7fr auto;gap:8px;align-items:end;margin:12px 0}.mb10177-row{display:grid;grid-template-columns:.65fr 1.05fr 1.05fr .75fr .75fr .95fr 1.1fr auto;gap:8px;align-items:end;margin:8px 0;padding:10px;border:1px solid #e2eee9;border-radius:14px;background:#f8fbfa}.mb10177-kpi{background:#eef7f3;border:1px solid #d9e7e2;border-radius:12px;padding:8px}.mb10177-kpi small{display:block;color:#667c75}.mb10177-kpi b{font-size:18px;color:#073d31}.mb10177-badge{border-radius:999px;padding:6px 10px;font-weight:800}.mb10177-badge.ok{background:#e6f7ec;color:#087047}.mb10177-badge.warn{background:#fff5d6;color:#8a5b00}.mb10177-badge.bad{background:#ffe7e7;color:#b42318}.v10182-linked-order{border-color:#0b7a53!important;background:#f1fff8!important}.v10182-backdrop{position:fixed;inset:0;background:rgba(0,35,28,.48);z-index:999999;display:grid;place-items:center;padding:18px}.v10182-modal{width:min(760px,96vw);background:#fff;border-radius:20px;padding:18px;box-shadow:0 22px 80px rgba(0,0,0,.25);direction:rtl}.v10182-order-card h3{margin:0 0 12px;color:#063f32}.v10182-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.v10182-grid div{border:1px solid #dcebe5;border-radius:12px;padding:9px;background:#f8fbfa}.v10182-grid small{display:block;color:#60706a;margin-bottom:4px}.v10182-grid b{color:#063f32}.v10182-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}.mb10177-title{font-weight:900;color:#073d31;margin:10px 0 6px}.mb10177-old-hidden{display:none!important}@media(max-width:900px){.mb10177-main,.mb10177-row{grid-template-columns:1fr}}
+      #finMultiProductOp10175,#finMultiBoxes10176{display:none!important}.mb10177-wrap{border:2px solid #0d5b49;background:linear-gradient(180deg,#fbfffd,#f4faf7);border-radius:20px;padding:16px}.mb10177-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.mb10177-box{background:#fff;border:1px solid #d9e7e2;border-radius:18px;padding:14px;margin:12px 0;box-shadow:0 8px 25px rgba(7,61,49,.06)}.mb10177-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.mb10177-head h4{margin:0;color:#073d31}.mb10177-main{display:grid;grid-template-columns:2fr .8fr .7fr .7fr auto;gap:8px;align-items:end;margin:12px 0}.mb10177-row{display:grid;grid-template-columns:.65fr 1.05fr 1.05fr .75fr .75fr .95fr 1.1fr auto;gap:8px;align-items:end;margin:8px 0;padding:10px;border:1px solid #e2eee9;border-radius:14px;background:#f8fbfa}.mb10177-kpi{background:#eef7f3;border:1px solid #d9e7e2;border-radius:12px;padding:8px}.mb10177-kpi small{display:block;color:#667c75}.mb10177-kpi b{font-size:18px;color:#073d31}.mb10177-badge{border-radius:999px;padding:6px 10px;font-weight:800}.mb10177-badge.ok{background:#e6f7ec;color:#087047}.mb10177-badge.warn{background:#fff5d6;color:#8a5b00}.mb10177-badge.bad{background:#ffe7e7;color:#b42318}.v10182-linked-order{border-color:#0b7a53!important;background:#f1fff8!important}.v10182-backdrop{position:fixed;inset:0;background:rgba(0,35,28,.48);z-index:999999;display:grid;place-items:center;padding:18px}.v10182-modal{width:min(760px,96vw);background:#fff;border-radius:20px;padding:18px;box-shadow:0 22px 80px rgba(0,0,0,.25);direction:rtl}.v10182-order-card h3{margin:0 0 12px;color:#063f32}.v10182-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}.v10182-grid div{border:1px solid #dcebe5;border-radius:12px;padding:9px;background:#f8fbfa}.v10182-grid small{display:block;color:#60706a;margin-bottom:4px}.v10182-grid b{color:#063f32}.v10182-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}.mb10177-title{font-weight:900;color:#073d31;margin:10px 0 6px}.mb10177-old-hidden{display:none!important}
+      .mb10183-row{grid-template-columns:.65fr 1fr 1fr .75fr .75fr 1fr 1.25fr auto!important;overflow:visible!important}.mb10183-order input,.mb10183-note input{min-width:100%;background:#fff}.mb10183-order label,.mb10183-note label{font-weight:800;color:#073d31}.mb10177-row label{display:block!important;margin-bottom:4px!important;color:#073d31!important;font-weight:800!important}@media(max-width:1200px){.mb10183-row{grid-template-columns:repeat(2,1fr)!important}.mb10183-row button{grid-column:1/-1}}
+@media(max-width:900px){.mb10177-main,.mb10177-row{grid-template-columns:1fr!important}}
     `;
     const stl=document.createElement('style'); stl.id='financeCoreSpeedMultiStyle10177'; stl.textContent=css; document.head.appendChild(stl);
   }
@@ -260,7 +263,7 @@
   // 4) حركة متعددة المنتجات في مكان واحد فقط.
   let blocks=[];
   function nextOperationNo(){let max=0; A(st().movements).forEach(m=>{const mt=S((safeJson(m.notes)||{}).operationNo).match(/MOV[-_ ]?(\d+)/i); if(mt)max=Math.max(max,N(mt[1]));}); return 'MOV-'+String(max+1).padStart(6,'0');}
-  function newDistRow(){return {qty:0,project_id:'',staff_id:'',center:'FM',type:'out'};}
+  function newDistRow(){return {qty:0,project_id:'',staff_id:'',center:'FM',type:'out',order_no:'',note:''};}
   function newBlock(){return {id:'b'+Date.now()+Math.floor(Math.random()*9999), item_id:'', item_text:'', qty:0, rows:[newDistRow()]};}
   function ensureInitial(){if(!blocks.length)blocks.push(newBlock());}
   function optionsProjects(selected){return `<option value="">بدون مشروع</option>`+A(st().projects).map(p=>`<option value="${esc(p.id)}" ${String(selected)===String(p.id)?'selected':''}>${esc(p.name||p.project_name||p.id)}</option>`).join('');}
@@ -288,14 +291,14 @@
     const host=$('finMultiBoxesRows10177'); if(!host)return; ensureInitial();
     host.innerHTML=blocks.map((b,bi)=>{
       const item=resolveBlockItem(b), status=blockStatus(b), after=item?N(item.quantity)+netDelta(b):0, listId='mb10177_list_'+b.id;
-      const rows=A(b.rows).map((r,ri)=>`<div class="mb10177-row">
+      const rows=A(b.rows).map((r,ri)=>`<div class="mb10177-row mb10183-row">
         <div><label>الكمية</label><input type="number" min="0" step="0.01" id="mb10177_rqty_${b.id}_${ri}" value="${N(r.qty)||''}" oninput="financeMultiBoxesSync10177()"></div>
         <div><label>المشروع</label><select id="mb10177_proj_${b.id}_${ri}" onchange="financeMultiBoxesSync10177()">${optionsProjects(r.project_id)}</select></div>
         <div><label>المشرف</label><select id="mb10177_staff_${b.id}_${ri}" onchange="financeMultiBoxesSync10177()">${optionsStaff(r.staff_id)}</select></div>
         <div><label>مركز التكلفة</label><select id="mb10177_center_${b.id}_${ri}" onchange="financeMultiBoxesSync10177()"><option ${r.center==='FM'?'selected':''}>FM</option><option ${r.center==='CN'?'selected':''}>CN</option><option ${r.center==='GENERAL'?'selected':''}>GENERAL</option></select></div>
         <div><label>الحركة</label><select id="mb10177_type_${b.id}_${ri}" onchange="financeMultiBoxesSync10177()"><option value="out" ${r.type==='out'?'selected':''}>صرف</option><option value="consume" ${r.type==='consume'?'selected':''}>مستهلك</option><option value="return" ${r.type==='return'?'selected':''}>مرتجع</option><option value="damaged" ${r.type==='damaged'?'selected':''}>تالف</option><option value="waste" ${r.type==='waste'?'selected':''}>مهدور</option><option value="scrap" ${r.type==='scrap'?'selected':''}>سكراب</option></select></div>
-        <div><label>رقم الأوردر</label><input id="mb10177_order_${b.id}_${ri}" value="${esc(r.order_no||'')}" placeholder="اختياري" onblur="financeMultiBoxesConfirmOrder10182(this)" onchange="delete this.dataset.confirmedOrder10182; financeMultiBoxesSync10177()"></div>
-        <div><label>ملاحظة</label><input id="mb10177_note_${b.id}_${ri}" value="${esc(r.note||'')}" placeholder="ملاحظة"></div>
+        <div class="mb10183-order"><label>رقم الأوردر</label><input id="mb10177_order_${b.id}_${ri}" value="${esc(r.order_no||'')}" placeholder="اكتب رقم الأوردر" onblur="financeMultiBoxesConfirmOrder10182(this)" onchange="delete this.dataset.confirmedOrder10182; financeMultiBoxesSync10177()"></div>
+        <div class="mb10183-note"><label>ملاحظة</label><input id="mb10177_note_${b.id}_${ri}" value="${esc(r.note||'')}" placeholder="ملاحظة الحركة" oninput="financeMultiBoxesSync10177()"></div>
         <button type="button" class="danger" onclick="financeMultiBoxesRemoveDist10177('${b.id}',${ri})">حذف</button>
       </div>`).join('');
       return `<div class="mb10177-box">
@@ -336,17 +339,18 @@
           const ord=normalizeOrderNo(r.order_no), rowNote=S(r.note);
           const dist=[{qty:N(r.qty),projectId:S(r.project_id),projectName:projName,center:S(r.center)||'FM',type:S(r.type)||'out',staffId:S(r.staff_id),staffName:supervisor,orderNo:ord,note:rowNote}];
           const meta={module:VERSION,operationNo,isMultiProductBox:true,productSeq:prodSeq,rowSeq:ri+1,batchCount:valid.length,staffId:S(r.staff_id),note:rowNote,distribution:dist,stockEffect:'normal',createdBy:user,createdAt:now,orderNo:ord};
-          const row={item_id:item.id,item_name:item.name,movement_type:S(r.type)||'out',quantity:N(r.qty),movement_date:S($('finMoveDateV15')?.value)||today(),receiver:supervisor,reason:reasonFor(r.type),notes:'finance_pro_v15:'+JSON.stringify(meta),product_code:itemCode(item),barcode:itemDistCode(item)||itemCode(item),unit_cost:+itemCost(item).toFixed(4),project_id:S(r.project_id)||null,project_name:projName};
+          const row={item_id:item.id,item_name:item.name,movement_type:S(r.type)||'out',quantity:N(r.qty),movement_date:S($('finMoveDateV15')?.value)||today(),receiver:supervisor,reason:reasonFor(r.type),notes:'finance_pro_v15:'+JSON.stringify(meta),product_code:itemCode(item),barcode:itemDistCode(item)||itemCode(item),unit_cost:+itemCost(item).toFixed(4)};
           movementRows.push(row);
           if(ord && ['out','consume','waste','damaged','scrap'].includes(S(r.type)||'out')) orderCostMap.set(ord, N(orderCostMap.get(ord))+orderCostFromMovementRow10182(row));
         });
         updates.push({item,next:N(item.quantity)+netDelta(b)});
       }
-      const ins=await c.from('inventory_movements').insert(movementRows).select('*'); if(ins.error)throw ins.error;
+      const safeMovementRows=movementRows.map(r=>{const x={...r}; delete x.order_no; delete x.orderNo; delete x.project_id; delete x.project_name; delete x.distribution_note; return x;});
+      const ins=await c.from('inventory_movements').insert(safeMovementRows).select('*'); if(ins.error)throw ins.error;
       const upds=await Promise.all(updates.map(u=>c.from('inventory_items').update({quantity:u.next,updated_by_name:user,updated_at:now}).eq('id',u.item.id).select(FAST_ITEMS_SELECT)));
       const bad=upds.find(r=>r&&r.error); if(bad)throw bad.error;
       upds.forEach((res,idx)=>patchStateItem(A(res.data)[0]||{...updates[idx].item,quantity:updates[idx].next}));
-      patchStateMovements(A(ins.data).length?A(ins.data):movementRows);
+      patchStateMovements(A(ins.data).length?A(ins.data):safeMovementRows);
       await updateOrdersInventoryCost10182(orderCostMap);
       blocks=[newBlock()]; await refreshLight(); msg('تم حفظ الحركة متعددة المنتجات: '+operationNo); console.log('Tasneef multi boxes save', Math.round(performance.now()-started)+'ms');
     }catch(e){alert(e.message||String(e)); msg(e.message||String(e),'err');}
