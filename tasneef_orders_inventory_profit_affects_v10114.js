@@ -70,7 +70,7 @@
   }
   async function saveOrderData(orderNo, data, flow){
     const no=normalizeNo(orderNo); if(!no) throw new Error('رقم الأوردر غير موجود');
-    const payload={order_no:no,data:data||{},flow:flow||{},updated_at:nowIso(),updated_by:VERSION};
+    const payload={order_no:no,data:data||{},flow:flow||{},updated_at:nowIso()};
     const res=await api('/rest/v1/'+TABLE+'?on_conflict=order_no',{method:'POST',body:JSON.stringify(payload)});
     if(!res.ok) throw new Error(await res.text().catch(()=>String(res.status)));
     return (await res.json())[0];

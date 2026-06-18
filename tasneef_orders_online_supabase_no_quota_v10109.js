@@ -26,7 +26,7 @@
   const say = (text,type) => { try{ if(typeof window.msg==='function') window.msg(text,type); else console.log(text); }catch(_){ console.log(text); } };
 
 
-  /* v10139 - إصلاح جذري: أي حفظ على orders_shared يخرج بمصدر حديث، حتى لو استدعاه سكربت قديم */
+  /* v10140 - إصلاح جذري: أي حفظ على orders_shared يخرج بمصدر حديث، حتى لو استدعاه سكربت قديم */
   if(!window.__tasneefOrdersFetchSourcePatchV10139){
     window.__tasneefOrdersFetchSourcePatchV10139=true;
     const rawFetch=window.fetch.bind(window);
@@ -35,7 +35,7 @@
         const url=typeof input==='string'?input:(input&&input.url)||'';
         const method=String((init&&init.method)||'GET').toUpperCase();
         if(/\/rest\/v1\/orders_shared/i.test(url) && ['POST','PATCH','PUT'].includes(method) && init && init.body){
-          const fixOne=o=>{ if(o&&typeof o==='object') o.updated_by='admin_orders_live_v10139'; return o; };
+          const fixOne=o=>{ if(o&&typeof o==='object') delete o.updated_by; return o; };
           const body=JSON.parse(init.body);
           const next=Array.isArray(body)?body.map(fixOne):fixOne(body);
           init=Object.assign({},init,{body:JSON.stringify(next)});
@@ -99,8 +99,7 @@
           order_no: orderNoForRow(r),
           data: r,
           flow: flow[orderNoForRow(r)] || {},
-          updated_at: r.__tasneef_updated_at || nowIso(),
-          updated_by: 'admin_orders_live_v10139'
+          updated_at: r.__tasneef_updated_at || nowIso()
         }));
         const res = await api('/rest/v1/'+TABLE+'?on_conflict=order_no', {method:'POST', body:JSON.stringify(batch)});
         if(!res.ok) throw new Error(await res.text().catch(()=>String(res.status)));
@@ -172,10 +171,10 @@
   window.addEventListener('load', ()=>setTimeout(boot, 800), {once:true});
 
 
-  /* v10138 - تعديل أساسي داخل ملف الأوردرات: الإيصال + حفظ Supabase بدون مصدر قديم */
-  const RECEIPT_KEY = '__tasneef_order_receipt_v10138';
+  /* v10140 - تعديل أساسي داخل ملف الأوردرات: الإيصال + حفظ Supabase بدون مصدر قديم */
+  const RECEIPT_KEY = '__tasneef_order_receipt_v10140';
   const RECEIPT_NAME_KEY = 'الإيصال';
-  const SAVE_SOURCE_V10138 = 'admin_orders_live_v10139';
+  const SAVE_SOURCE_V10138 = ''; // v10140: لا نرسل updated_by حتى لا يرفض Trigger قاعدة البيانات الحفظ
   const $ = id => document.getElementById(id);
   const esc = v => S(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[c]));
   const receiptCache = new Map();
@@ -194,17 +193,9 @@
     return inp;
   }
   function ensureReceiptViewV10139(){
+    // v10140: لا ننشئ خانة إيصال جديدة نهائياً حتى لا يتكرر الحقل. نستخدم خانة الإيصال الأساسية فقط.
+    try{ document.querySelectorAll('#ordersReceiptFallbackV10139').forEach(x=>x.remove()); }catch(_){}
     let inp=receiptInputV10139();
-    if(!inp){
-      const form=$('orderFormFieldsV233');
-      if(form){
-        const box=document.createElement('div');
-        box.id='ordersReceiptFallbackV10139';
-        box.innerHTML='<label>الإيصال</label><input id="orderReceiptFileV233" type="file" accept="image/*,application/pdf">';
-        form.insertAdjacentElement('afterend',box);
-        inp=$('orderReceiptFileV233');
-      }
-    }
     if(!inp) return {inp:null,view:null,name:null};
     let view=$('orderReceiptViewV233');
     if(!view){
@@ -212,7 +203,7 @@
       inp.insertAdjacentElement('afterend',view);
     }
     let name=$('orderReceiptNameV233');
-    if(!name){ name=document.createElement('small'); name.id='orderReceiptNameV233'; name.className='orders-receipt-name-v10139'; name.style.cssText='display:block;color:#60706a;margin-top:6px'; view.insertAdjacentElement('afterend',name); }
+    if(!name){ name=document.createElement('small'); name.id='orderReceiptNameV233'; name.className='orders-receipt-name-v10140'; name.style.cssText='display:block;color:#60706a;margin-top:6px'; view.insertAdjacentElement('afterend',name); }
     return {inp,view,name};
   }
 
@@ -323,7 +314,7 @@
   async function upsertOrderV10138(row, flow){
     const order_no=normalizeNo(row && (row['رقم الطلب']||row.order_no||row.orderNo));
     if(!order_no) throw new Error('رقم الأوردر غير موجود');
-    const payload={order_no, data:row, flow:flow||{}, updated_at:nowIso(), updated_by:SAVE_SOURCE_V10138};
+    const payload={order_no, data:row, flow:flow||{}, updated_at:nowIso()};
     const res=await api('/rest/v1/'+TABLE+'?on_conflict=order_no',{method:'POST',body:JSON.stringify([payload])});
     if(!res.ok) throw new Error(await res.text().catch(()=>res.status));
     receiptCache.set(order_no, findReceiptInRow(row));
@@ -383,11 +374,11 @@
   function attachReceiptButtonsV10138(){
     const cards=document.querySelectorAll('#ordersCardsV360 > *, .orders-cards-v360 > *');
     cards.forEach(card=>{
-      if(card.querySelector('.orders-card-receipt-v10138')) return;
+      if(card.querySelector('.orders-card-receipt-v10140')) return;
       const no=selectedCardOrderNoV10138(card);
       let host=card.querySelector('.row-actions,.actions,.order-actions-v360') || card;
       const btn=document.createElement('button');
-      btn.type='button'; btn.className='orders-card-receipt-v10138'; btn.textContent='عرض الإيصال';
+      btn.type='button'; btn.className='orders-card-receipt-v10140'; btn.textContent='عرض الإيصال';
       if(!no || !receiptCache.has(no)) btn.disabled=true;
       btn.onclick=async(e)=>{
         e.preventDefault(); e.stopPropagation();
@@ -419,5 +410,5 @@
   else setTimeout(bootReceiptCoreV10138,900);
   window.addEventListener('load',()=>setTimeout(()=>{ bootReceiptCoreV10138(); const target=$('ordersCardsV360'); if(target&&!target.__receiptObsV10138){ target.__receiptObsV10138=true; new MutationObserver(()=>setTimeout(attachReceiptButtonsV10138,50)).observe(target,{childList:true,subtree:true}); } },1300),{once:true});
 
-  console.log('Loaded '+VERSION+' + v10138 receipt core');
+  console.log('Loaded '+VERSION+' + v10140 receipt core');
 })();

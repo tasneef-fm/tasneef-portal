@@ -95,7 +95,7 @@
       const prev=N(data[ORDER_INV_FIELD] ?? data[ORDER_INV_BEFORE]);
       const before=+(prev+cost).toFixed(2), vat=+(before*VAT).toFixed(2), after=+(before*(1+VAT)).toFixed(2);
       data[ORDER_INV_FIELD]=before; data[ORDER_INV_BEFORE]=before; data[ORDER_INV_VAT]=vat; data[ORDER_INV_AFTER]=after; data.__inventory_cost_linked=true; data.__inventory_cost_updated_at=new Date().toISOString(); data.__inventory_cost_updated_by=VERSION;
-      const upd=await c.from(ORDERS_TABLE).update({data,flow:rec.flow||{},updated_at:new Date().toISOString(),updated_by:VERSION}).eq('order_no',no);
+      const upd=await c.from(ORDERS_TABLE).update({data,flow:rec.flow||{},updated_at:new Date().toISOString()}).eq('order_no',no);
       if(upd.error) console.warn(VERSION,'order update failed',no,upd.error.message||upd.error);
     }
   }
