@@ -9,7 +9,7 @@
   if(window.__tasneefOrdersReceiptSaveRefreshV10143) return;
   window.__tasneefOrdersReceiptSaveRefreshV10143=true;
 
-  const VERSION='v10144_orders_receipt_save_refresh';
+  const VERSION='v10146_orders_receipt_inventory_whatsapp';
   const SUPABASE_URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const SUPABASE_ANON_KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
   const TABLE='orders_shared';
@@ -162,6 +162,40 @@
     try{ w.document.close(); }catch(_){ }
   }
 
+
+
+  function fieldId(header){
+    try{return 'orderFieldV233_'+btoa(unescape(encodeURIComponent(header))).replace(/=+$/,'').replace(/[^a-zA-Z0-9]/g,'_');}
+    catch(_){return 'orderFieldV233_'+String(header).replace(/[^a-zA-Z0-9\u0600-\u06FF]/g,'_');}
+  }
+  function cleanupInventoryCostFields(){
+    // v10146: نخلي خانة تكلفة المخزن واحدة فقط، وهي الخانة التلقائية من حركة المخزون.
+    try{
+      const form=$('orderFormFieldsV233'); if(!form) return;
+      let auto=$('orderInventoryCostV10111');
+      // لو الخانة التلقائية غير موجودة، لا نحذف شيئاً حتى يركبها سكربت المخزون.
+      if(!auto) return;
+      const autoBox=auto.closest('div');
+      // احذف أي خانة أخرى عنوانها تكلفة المخزن، لأنها اليدوية وغير مطلوبة.
+      [...form.children].forEach(ch=>{
+        if(ch===autoBox || (autoBox&&autoBox.contains(ch)) || (ch&&ch.contains(auto))) return;
+        const lab=S((ch.querySelector&&ch.querySelector('label')&&ch.querySelector('label').textContent)||'').replace(/[:：]/g,'');
+        if(lab==='تكلفة المخزن') ch.remove();
+      });
+      // إزالة أي عنصر يدوي معروف بالاسم أو الآي دي القديم.
+      const manualIds=['orderInventoryCostV233',fieldId('تكلفة المخزن')];
+      manualIds.forEach(id=>{
+        const el=$(id);
+        if(el && el!==auto){ const box=el.closest('div'); if(box && box!==autoBox) box.remove(); else el.remove(); }
+      });
+      auto.readOnly=true;
+      auto.setAttribute('readonly','readonly');
+      auto.placeholder='تلقائي من حركة المخزون';
+      const note=autoBox&&autoBox.querySelector('small');
+      if(note) note.textContent='تلقائي من حركة المخزون ويؤثر على الربح.';
+    }catch(e){ console.warn('cleanupInventoryCostFields failed',e); }
+  }
+
   function labelForControl(el){
     if(!el) return '';
     if(el.dataset&&el.dataset.label) return S(el.dataset.label).replace(/[:：]/g,'');
@@ -183,9 +217,11 @@
       orderNoV233:'رقم الطلب', orderGroupNoV233:'رقم الطلب بالجروب', orderProjectV233:'المشروع', orderClientV233:'اسم العميل', orderClientPhoneV233:'رقم العميل',
       orderExecutorV233:'المنفذ', orderRequesterV233:'مرسل الطلب', orderDetailsV233:'التفاصيل', orderNotesV233:'ملاحظات', orderPriceV233:'السعر (شامل الضريبة)',
       orderTaxV233:'الضريبة 15%', orderBeforeTaxV233:'السعر قبل الضريبة', orderCostV233:'التكلفة', orderProfitV233:'الربح', orderStatusV233:'حالة التنفيذ',
-      orderPaymentStatusV233:'حالة السداد', orderInvoiceNoV233:'رقم الفاتورة', orderBillingStatusV233:'فوترة بالسيستم', orderInventoryCostV233:'تكلفة المخزن'
+      orderPaymentStatusV233:'حالة السداد', orderInvoiceNoV233:'رقم الفاتورة', orderBillingStatusV233:'فوترة بالسيستم', orderInventoryCostV10111:'تكلفة المخزن'
     };
     Object.keys(known).forEach(id=>{ const el=$(id); if(el) out[known[id]]=S(el.value); });
+    const autoInv=$('orderInventoryCostV10111');
+    if(autoInv) out['تكلفة المخزن']=S(autoInv.value||'0');
     const no=normalizeNo(out['رقم الطلب']||out.order_no||out.orderNo||(($('orderNoV233')&&$('orderNoV233').value)||''));
     if(no){ out['رقم الطلب']=no; out.order_no=no; out.orderNo=no; }
     out.__tasneef_updated_at=nowIso();
@@ -253,7 +289,7 @@
   async function refreshOrdersView(skipNotify){
     await fetchAllRows().catch(()=>[]);
     try{ if(typeof window.renderOrdersV233==='function') window.renderOrdersV233(); }catch(_){ }
-    setTimeout(()=>{ cleanupCardReceiptButtons(); attachReceiptButtons(); },120);
+    setTimeout(()=>{ cleanupInventoryCostFields(); cleanupCardReceiptButtons(); attachReceiptButtons(); patchOrderWhatsappButtons(); },120);
     if(!skipNotify) notify('تم تحديث الأوردرات','ok');
   }
   function installSave(){
@@ -262,6 +298,93 @@
     buttons.forEach(b=>{ b.onclick=function(ev){ if(ev) ev.preventDefault(); return saveOrder(); }; });
     const updateBtns=[...document.querySelectorAll('button')].filter(b=>/^تحديث$/.test(S(b.textContent)) && (($('orders')&&$('orders').contains(b))||S(document.querySelector('#orders h2')&&document.querySelector('#orders h2').textContent).includes('الأوردرات')));
     updateBtns.forEach(b=>{ if(!b.__ordersRefreshV10143){ b.__ordersRefreshV10143=true; b.onclick=function(ev){ if(ev) ev.preventDefault(); return refreshOrdersView(false); }; } });
+  }
+
+
+
+  function rowByNo(no){ no=normalizeNo(no); return A(serverRows).find(r=>orderNoForRow(r)===no) || null; }
+  function phoneForRow(row){
+    const raw=S(row&& (row['رقم العميل']||row.client_phone||row.phone||''));
+    let p=raw.replace(/[^0-9+]/g,'');
+    if(!p) return '';
+    if(p.startsWith('+')) p=p.slice(1);
+    if(p.startsWith('00')) p=p.slice(2);
+    if(p.startsWith('0')) p='966'+p.slice(1);
+    if(p.length===9 && p.startsWith('5')) p='966'+p;
+    return p;
+  }
+  function orderWhatsappText(row, hasReceipt){
+    row=row||{};
+    const no=S(row['رقم الطلب']||row.order_no||row.orderNo||'');
+    const project=S(row['المشروع']||'');
+    const client=S(row['اسم العميل']||'');
+    const details=S(row['التفاصيل']||'');
+    const status=S(row['حالة التنفيذ']||'');
+    const price=S(row['السعر (شامل الضريبة)']||'');
+    const inv=S(row['رقم الفاتورة']||'');
+    return [
+      'السلام عليكم ورحمة الله وبركاته',
+      '',
+      'تحديث أوردر صيانة',
+      no ? 'رقم الأوردر: '+no : '',
+      project ? 'المشروع: '+project : '',
+      client ? 'العميل: '+client : '',
+      details ? 'التفاصيل: '+details : '',
+      status ? 'حالة التنفيذ: '+status : '',
+      inv ? 'رقم الفاتورة: '+inv : '',
+      price ? 'المبلغ شامل الضريبة: '+price+' ر.س' : '',
+      hasReceipt ? 'مرفق الإيصال.' : '',
+      '',
+      'شركة تصنيف لإدارة المرافق'
+    ].filter(Boolean).join('\n');
+  }
+  function dataUrlToFile(dataUrl,name,type){
+    const arr=String(dataUrl||'').split(',');
+    const mime=(arr[0].match(/data:([^;]+)/)||[])[1] || type || 'application/octet-stream';
+    const bin=atob(arr[1]||''); const u8=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+    const ext=mime.includes('pdf')?'.pdf':(mime.includes('png')?'.png':(mime.includes('jpeg')||mime.includes('jpg')?'.jpg':''));
+    const safeName=S(name||('receipt'+ext)) || ('receipt'+ext);
+    return new File([u8], safeName, {type:mime});
+  }
+  async function receiptToFile(rec,no){
+    if(!rec) return null;
+    const data=typeof rec==='string'?rec:(rec.data||'');
+    if(!String(data).startsWith('data:')) return null;
+    return dataUrlToFile(data, (rec.name||('receipt_'+no)), rec.type||'');
+  }
+  async function sendOrderWhatsappWithReceipt(no){
+    no=normalizeNo(no);
+    if(!no) return notify('لم يتم تحديد الأوردر','err');
+    let row=rowByNo(no);
+    if(!row){ const r=await fetchRecord(no).catch(()=>null); row=r&&r.data; }
+    if(!row) return notify('لم يتم العثور على بيانات الأوردر','err');
+    let rec=findReceipt(row);
+    if(!rec){ const r=await fetchRecord(no).catch(()=>null); rec=r&&r.data&&findReceipt(r.data); }
+    const text=orderWhatsappText(row, !!rec);
+    const file=rec ? await receiptToFile(rec,no).catch(()=>null) : null;
+    // على الجوال: Web Share يرسل النص مع الملف إلى واتساب أو أي تطبيق مشاركة يختاره المستخدم.
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({title:'أوردر '+no, text, files:[file]}); return true; }
+      catch(e){ if(e && e.name==='AbortError') return false; }
+    }
+    // على الكمبيوتر / واتساب ويب: المتصفح لا يسمح بإرفاق ملف تلقائيًا، لذلك نفتح الرسالة ونفتح الإيصال بجانبها.
+    const phone=phoneForRow(row);
+    const url='https://wa.me/'+(phone?phone:'')+'?text='+encodeURIComponent(text);
+    window.open(url,'_blank','noopener');
+    if(rec) setTimeout(()=>openReceipt(rec),550);
+    return true;
+  }
+  function patchOrderWhatsappButtons(){
+    receiptCardRoots().forEach(card=>{
+      const no=selectedNoFromCard(card); if(!no) return;
+      [...card.querySelectorAll('button,a')].forEach(btn=>{
+        if(!/واتساب/i.test(S(btn.textContent))) return;
+        if(btn.__ordersWaReceiptV10146) return;
+        btn.__ordersWaReceiptV10146=true;
+        btn.onclick=function(ev){ ev.preventDefault(); ev.stopPropagation(); sendOrderWhatsappWithReceipt(no); return false; };
+      });
+    });
   }
 
   function selectedNoFromCard(card){
@@ -301,7 +424,7 @@
     if(window.__ordersReceiptDedupeObserverV10144) return;
     window.__ordersReceiptDedupeObserverV10144=true;
     let timer=null;
-    const run=()=>{ clearTimeout(timer); timer=setTimeout(()=>{ try{ attachReceiptButtons(); }catch(_){ } },180); };
+    const run=()=>{ clearTimeout(timer); timer=setTimeout(()=>{ try{ cleanupInventoryCostFields(); attachReceiptButtons(); patchOrderWhatsappButtons(); }catch(_){ } },180); };
     const mo=new MutationObserver(run);
     mo.observe(document.body,{childList:true,subtree:true});
   }
@@ -310,20 +433,20 @@
     if(window.__ordersRenderPatchV10143) return;
     const old=window.renderOrdersV233;
     if(typeof old==='function'){
-      window.renderOrdersV233=function(){ const r=old.apply(this,arguments); setTimeout(()=>{ cleanupCardReceiptButtons(); attachReceiptButtons(); },100); return r; };
+      window.renderOrdersV233=function(){ const r=old.apply(this,arguments); setTimeout(()=>{ cleanupInventoryCostFields(); cleanupCardReceiptButtons(); attachReceiptButtons(); patchOrderWhatsappButtons(); },100); return r; };
       window.__ordersRenderPatchV10143=true;
     }
   }
   async function boot(){
-    removeExtraReceiptInputs(); bindFormReceipt(); installSave(); patchRender(); installReceiptDedupeObserver();
+    removeExtraReceiptInputs(); bindFormReceipt(); cleanupInventoryCostFields(); installSave(); patchRender(); installReceiptDedupeObserver();
     await fetchAllRows().catch(()=>[]);
     try{ if(typeof window.renderOrdersV233==='function') window.renderOrdersV233(); }catch(_){ }
-    attachReceiptButtons();
+    attachReceiptButtons(); patchOrderWhatsappButtons(); cleanupInventoryCostFields();
   }
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,900),{once:true});
   else setTimeout(boot,900);
   window.addEventListener('load',()=>setTimeout(boot,1400),{once:true});
-  setInterval(()=>{ try{ bindFormReceipt(); installSave(); patchRender(); cleanupCardReceiptButtons(); attachReceiptButtons(); }catch(_){ } },1300);
+  setInterval(()=>{ try{ bindFormReceipt(); cleanupInventoryCostFields(); installSave(); patchRender(); cleanupCardReceiptButtons(); attachReceiptButtons(); patchOrderWhatsappButtons(); }catch(_){ } },1300);
   console.log('Loaded '+VERSION);
 })();

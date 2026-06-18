@@ -10,7 +10,7 @@
   if(window.__tasneefOrdersInventoryLinkV10111) return;
   window.__tasneefOrdersInventoryLinkV10111 = true;
 
-  const VERSION='v10111-orders-inventory-link';
+  const VERSION='v10146-orders-inventory-link-auto-only';
   const SUPABASE_URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const SUPABASE_ANON_KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
   const ORDERS_TABLE='orders_shared';
@@ -108,15 +108,28 @@
 
   function setInventoryCostField(v){ const el=$('orderInventoryCostV10111'); if(el) el.value = v===''?'':N(v).toFixed(2); }
   function getOrderNoFromForm(){ return normalizeNo(($('orderNoV233')&&$('orderNoV233').value) || ''); }
+  function removeManualInventoryCostFields(){
+    const form=$('orderFormFieldsV233'); if(!form) return;
+    const auto=$('orderInventoryCostV10111');
+    const autoBox=auto&&auto.closest('div');
+    [...form.children].forEach(ch=>{
+      if(ch===autoBox || (autoBox&&autoBox.contains(ch)) || (auto&&ch.contains(auto))) return;
+      const lab=S(ch.querySelector&&ch.querySelector('label')&&ch.querySelector('label').textContent).replace(/[:：]/g,'');
+      if(lab==='تكلفة المخزن') ch.remove();
+    });
+    ['orderInventoryCostV233',fieldId('تكلفة المخزن')].forEach(id=>{ const el=$(id); if(el&&el!==auto){ const box=el.closest('div'); if(box&&box!==autoBox) box.remove(); else el.remove(); } });
+  }
   function injectOrderInventoryField(){
-    if($('orderInventoryCostV10111')) return;
+    const existing=$('orderInventoryCostV10111');
+    if(existing){ existing.readOnly=true; existing.setAttribute('readonly','readonly'); removeManualInventoryCostFields(); return; }
     const costEl=$(fieldId('التكلفة'));
     const ref=(costEl&&costEl.parentElement) || $(fieldId('الربح'))?.parentElement || document.querySelector('#orders form .smart-grid div, #orders .smart-grid div');
     if(!ref) return;
     const box=document.createElement('div');
     box.id='orderInventoryCostBoxV10111';
-    box.innerHTML='<label>تكلفة المخزن</label><input id="orderInventoryCostV10111" type="number" step="0.01" readonly placeholder="تلقائي من حركة المخزون"><small style="display:block;color:#60706a;margin-top:4px">منفصلة عن خانة التكلفة ولا تؤثر عليها.</small>';
+    box.innerHTML='<label>تكلفة المخزن</label><input id="orderInventoryCostV10111" type="number" step="0.01" readonly placeholder="تلقائي من حركة المخزون"><small style="display:block;color:#60706a;margin-top:4px">تلقائي من حركة المخزون ويؤثر على الربح.</small>';
     ref.insertAdjacentElement('afterend',box);
+    removeManualInventoryCostFields();
   }
   async function refreshOrderCostFieldFromServer(){
     injectOrderInventoryField();
