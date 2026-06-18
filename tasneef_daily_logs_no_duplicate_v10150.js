@@ -4,37 +4,16 @@
 */
 (function(){
   'use strict';
-  const VERSION='v10151-daily-logs-timestamp-fix';
+  const VERSION='v10150-daily-logs-no-duplicate';
   const SUPABASE_URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const SUPABASE_ANON_KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
   const TABLE='time_logs';
-  const LOCK_PREFIX='tasneef_daily_log_lock_v10151:';
+  const LOCK_PREFIX='tasneef_daily_log_lock_v10150:';
   const S=v=>String(v==null?'':v).trim();
   const $=id=>document.getElementById(id);
   const nowIso=()=>new Date().toISOString();
   const today=()=>{const d=new Date(); const z=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());};
   const timeNow=()=>{const d=new Date(); const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes());};
-  function tzOffset(){
-    const off=-new Date().getTimezoneOffset();
-    const sign=off>=0?'+':'-';
-    const abs=Math.abs(off);
-    return sign+String(Math.floor(abs/60)).padStart(2,'0')+':'+String(abs%60).padStart(2,'0');
-  }
-  function cleanTime(t){
-    t=S(t);
-    if(!t) return timeNow();
-    if(/T/.test(t)){ try{ const d=new Date(t); if(!isNaN(d)){ const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes()); } }catch(_){ } }
-    const m=t.match(/(\d{1,2}):(\d{2})/);
-    if(m) return String(m[1]).padStart(2,'0')+':'+m[2];
-    return timeNow();
-  }
-  function toDbTimestamp(t){
-    // Supabase column is timestamptz; never send HH:MM alone.
-    const d=logDate();
-    const hm=cleanTime(t);
-    return d+'T'+hm+':00'+tzOffset();
-  }
-  function displayTime(v){ return cleanTime(v); }
   function getClient(){
     if(window.sb&&window.sb.from) return window.sb;
     if(window.supabaseClient&&window.supabaseClient.from) return window.supabaseClient;
@@ -110,15 +89,15 @@
     return (res.data||[]).filter(r=>sameProject(r,p)&&sameUser(r)&&sameVisit(r)).sort(byNewest);
   }
   function fillForm(kind,time,row){
-    if(kind==='in' && $('logIn')) $('logIn').value=displayTime(time||hasIn(row)||timeNow());
-    if(kind==='out' && $('logOut')) $('logOut').value=displayTime(time||hasOut(row)||timeNow());
+    if(kind==='in' && $('logIn')) $('logIn').value=time||hasIn(row)||timeNow();
+    if(kind==='out' && $('logOut')) $('logOut').value=time||hasOut(row)||timeNow();
     if(row && rowId(row) && $('logId')) $('logId').value=rowId(row);
   }
   async function insertCheckIn(t){
     const sb=getClient(); const p=projectInfo(); const u=currentUser();
     const payload={
       log_date:logDate(), project_id:p.id||p.name, supervisor_id:S(u.id||u.user_id||u.username||u.email||userName()), visit_type:visitType(),
-      check_in:toDbTimestamp(t), check_out:null, travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||0, notes:S($('logNotes')&&$('logNotes').value), created_at:nowIso(), updated_at:nowIso()
+      check_in:t, check_out:null, travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||0, notes:S($('logNotes')&&$('logNotes').value), created_at:nowIso(), updated_at:nowIso()
     };
     const {data,error}=await sb.from(TABLE).insert(payload).select('*').single();
     if(error) throw error;
@@ -126,7 +105,7 @@
   }
   async function updateCheckOut(row,t){
     const sb=getClient(); const id=rowId(row);
-    const payload={check_out:toDbTimestamp(t), updated_at:nowIso(), travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||Number(row.travel_minutes||row.transition_minutes||row.lost_minutes||0)||0, notes:S($('logNotes')&&$('logNotes').value)||S(row.notes)};
+    const payload={check_out:t, updated_at:nowIso(), travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||Number(row.travel_minutes||row.transition_minutes||row.lost_minutes||0)||0, notes:S($('logNotes')&&$('logNotes').value)||S(row.notes)};
     if(!id) throw new Error('لم يتم العثور على رقم السجل المفتوح');
     const {data,error}=await sb.from(TABLE).update(payload).eq('id',id).select('*').single();
     if(error) throw error;
@@ -163,50 +142,14 @@
     if(!document.getElementById('logProject')) return;
     window.supervisorCheckIn=checkInSmart;
     window.supervisorCheckOut=checkOutSmart;
-    // حفظ يدوي بصيغة صحيحة: يحول HH:MM إلى تاريخ + وقت كامل قبل الإرسال إلى Supabase.
+    // يجعل زر الحفظ اليدوي لا يكرر أثناء التعليق. الدالة الأصلية تبقى كما هي للحفظ اليدوي.
+    if(!window.__saveTimeLogOriginalV10150 && typeof window.saveTimeLog==='function') window.__saveTimeLogOriginalV10150=window.saveTimeLog;
     window.saveTimeLog=async function(){
       const key=opKey('manual'), l=lockRead(key);
       if(recent(l,90000)){ smartToast('جاري حفظ التسجيل، لا تضغط مرة ثانية','wait'); return; }
       lockWrite(key,{status:'pending'});
-      try{
-        const rows=await fetchTodayRows();
-        const id=S($('logId')&&$('logId').value);
-        const p=projectInfo(); const u=currentUser();
-        const inVal=S($('logIn')&&$('logIn').value);
-        const outVal=S($('logOut')&&$('logOut').value);
-        const payload={
-          log_date:logDate(),
-          project_id:p.id||p.name,
-          supervisor_id:S(u.id||u.user_id||u.username||u.email||userName()),
-          supervisor_name:userName(),
-          visit_type:visitType(),
-          travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||0,
-          notes:S($('logNotes')&&$('logNotes').value),
-          updated_at:nowIso()
-        };
-        if(inVal) payload.check_in=toDbTimestamp(inVal);
-        if(outVal) payload.check_out=toDbTimestamp(outVal);
-        const sb=getClient();
-        let result;
-        if(id){
-          result=await sb.from(TABLE).update(payload).eq('id',id).select('*').single();
-        }else{
-          const open=rows.find(r=>hasIn(r)&&!hasOut(r));
-          if(open&&rowId(open)){
-            result=await sb.from(TABLE).update(payload).eq('id',rowId(open)).select('*').single();
-          }else{
-            payload.created_at=nowIso();
-            result=await sb.from(TABLE).insert(payload).select('*').single();
-          }
-        }
-        if(result.error) throw result.error;
-        fillForm('in',payload.check_in,result.data||payload);
-        if(payload.check_out) fillForm('out',payload.check_out,result.data||payload);
-        lockWrite(key,{status:'done'});
-        smartToast('تم حفظ التسجيل');
-        try{ if(typeof window.renderSupervisorDailySummary==='function') window.renderSupervisorDailySummary(); }catch(_){ }
-        try{ if(typeof window.renderTimeLogs==='function') window.renderTimeLogs(); }catch(_){ }
-      }catch(e){ lockClear(key); smartToast('تعذر حفظ التسجيل: '+S(e.message||e),'err'); }
+      try{ if(typeof window.__saveTimeLogOriginalV10150==='function') await window.__saveTimeLogOriginalV10150(); lockWrite(key,{status:'done'}); smartToast('تم حفظ التسجيل'); }
+      catch(e){ lockClear(key); smartToast('تعذر حفظ التسجيل: '+S(e.message||e),'err'); }
     };
     console.log(VERSION,'installed');
   }
