@@ -534,6 +534,14 @@ body .tasneef-version-badge, body .version-badge, body .build-badge, body #versi
           <input type="hidden" id="orderEditIndexV233">
           <div class="split"><div><label>رقم الطلب / النظام</label><input id="orderNoV233" readonly placeholder="تلقائي عند الحفظ"></div><div><label>رقم الطلب بالجروب</label><input id="orderGroupNoV233"></div></div>
           <div id="orderFormFieldsV233" class="orders-form-grid-v233"></div>
+          <div class="orders-receipt-base-v10138" id="ordersReceiptBoxV10138">
+            <label>الإيصال</label>
+            <div class="orders-receipt-row-v10138">
+              <input id="orderReceiptFileV233" type="file" accept="image/*,application/pdf">
+              <button type="button" class="light" id="orderReceiptViewV233">عرض الإيصال</button>
+            </div>
+            <small id="orderReceiptNameV233" class="orders-receipt-name-v10138">اختياري</small>
+          </div>
           <div class="actions">
             <button onclick="saveOrderV233()">حفظ الأوردر</button>
             <button class="light" onclick="clearOrderFormV233()">جديد</button>
@@ -863,6 +871,7 @@ window.__tasneefV201Loaded=true;
 <script src="tasneef_users_tickets_format_v10180.js?v=10180" defer></script>
 <script src="tasneef_contracts_filters_orders_print_v10108.js?v=10108" defer></script>
 <script src="tasneef_orders_online_supabase_no_quota_v10109.js?v=10140" defer></script>
+<script src="tasneef_orders_receipt_save_refresh_v10143.js?v=10143" defer></script>
 
 <script src="tasneef_orders_dropdowns_online_v10110.js?v=10110" defer></script>
 <script src="tasneef_orders_inventory_link_v10111.js?v=10111" defer></script>
@@ -880,6 +889,5 @@ window.__tasneefV201Loaded=true;
   
 <script src="tasneef_language_switcher_safe_v10134.js?v=10134" defer></script>
 <script src="tasneef_monthly_cache_v10154.js?v=10154" defer></script>
-<script src="tasneef_orders_final_core_v10142.js?v=10142" defer></script>
 </body>
 </html>
