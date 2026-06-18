@@ -6,7 +6,7 @@
   if(window.__tasneefAdminTasksV10126) return;
   window.__tasneefAdminTasksV10126=true;
 
-  const VERSION='v10186-admin-tasks-smart-display-reopen';
+  const VERSION='v10188-admin-tasks-root-close-approve-reopen';
   const SUPABASE_URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const SUPABASE_ANON_KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
   const TABLE='admin_tasks';
@@ -189,8 +189,18 @@
   async function updateTask(id,patch){
     patch=Object.assign({},patch,{updated_at:nowIso()});
     Object.keys(patch).forEach(k=>{ if(patch[k]==='') patch[k]=null; });
-    const res=await api('/rest/v1/'+TABLE+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(patch)});
-    if(!res.ok) return alert('تعذر تحديث المهمة:\n'+await res.text().catch(()=>String(res.status)));
+    let res=await api('/rest/v1/'+TABLE+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(patch)});
+    if(!res.ok){
+      const tx=await res.text().catch(()=>String(res.status));
+      if(/schema cache|column|Could not find/i.test(tx)){
+        const safe={status:patch.status, details:patch.details, updated_at:patch.updated_at};
+        Object.keys(safe).forEach(k=>{ if(safe[k]===undefined) delete safe[k]; });
+        res=await api('/rest/v1/'+TABLE+'?id=eq.'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify(safe)});
+        if(!res.ok) return alert('تعذر تحديث المهمة:\n'+await res.text().catch(()=>String(res.status)));
+      }else{
+        return alert('تعذر تحديث المهمة:\n'+tx);
+      }
+    }
     await loadTasks();
   }
   function promptModal(title,label,placeholder,required=true){
