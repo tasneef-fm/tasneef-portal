@@ -269,6 +269,25 @@
   function optionsProjects(selected){return `<option value="">بدون مشروع</option>`+A(st().projects).map(p=>`<option value="${esc(p.id)}" ${String(selected)===String(p.id)?'selected':''}>${esc(p.name||p.project_name||p.id)}</option>`).join('');}
   function optionsStaff(selected){return `<option value="">اختر المشرف</option>`+A(st().users).map(u=>`<option value="${esc(u.id)}" ${String(selected)===String(u.id)?'selected':''}>${esc(u.full_name||u.name||u.username||u.email||u.id)}</option>`).join('');}
   function datalistProducts(id){return `<datalist id="${id}">${productItems().map(i=>`<option value="${esc(productDisplay(i))}"></option>`).join('')}</datalist>`;}
+  function ensureMultiSearchStyle10159(){
+    if(document.getElementById('mb10159_style')) return;
+    const stl=document.createElement('style'); stl.id='mb10159_style';
+    stl.textContent=`
+      .mb10159-product-wrap{position:relative;}
+      .mb10159-suggest{display:none;position:absolute;z-index:999999;inset-inline:0;top:100%;max-height:260px;overflow:auto;background:#fff;border:1px solid #cfe4dc;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.14);margin-top:6px;text-align:right;}
+      .mb10159-suggest.open{display:block;}
+      .mb10159-sug-item{display:block;width:100%;border:0;background:#fff;padding:12px 14px;text-align:right;cursor:pointer;border-bottom:1px solid #edf5f2;color:#073f32;font-weight:800;}
+      .mb10159-sug-item:hover{background:#eef8f4;}
+      .mb10159-sug-item small{display:block;color:#6d7f78;font-weight:600;margin-top:3px;}
+      .mb10159-empty{padding:12px 14px;color:#777;}
+    `;
+    document.head.appendChild(stl);
+  }
+  function productSearchBox10159(b,item){
+    ensureMultiSearchStyle10159();
+    const val=esc(b.item_text||(item?productDisplay(item):''));
+    return `<div class="mb10159-product-wrap"><input class="fin-fast-search-input" id="mb10177_item_${b.id}" value="${val}" placeholder="اكتب اسم المنتج أو الكود" autocomplete="off" oninput="financeMultiBoxesProductTyping10159('${b.id}',this)" onfocus="financeMultiBoxesProductTyping10159('${b.id}',this,true)" onblur="financeMultiBoxesProductBlur10159('${b.id}',this)"><div id="mb10159_sug_${b.id}" class="mb10159-suggest"></div></div>`;
+  }
   function distSum(b){return A(b.rows).reduce((a,r)=>a+N(r.qty),0);}
   function netDelta(b){return A(b.rows).reduce((a,r)=>a+N(r.qty)*moveSign(r.type),0);}
   function resolveBlockItem(b){return itemById(b.item_id)||findProductByText(b.item_text);}
@@ -304,7 +323,7 @@
       return `<div class="mb10177-box">
         <div class="mb10177-head"><h4>منتج ${bi+1}</h4><span class="mb10177-badge ${status.cls}">${esc(status.txt)}</span></div>
         <div class="mb10177-main">
-          <div><label>اسم المنتج</label><input class="fin-fast-search-input" list="${listId}" id="mb10177_item_${b.id}" value="${esc(b.item_text||(item?productDisplay(item):''))}" placeholder="اكتب اسم المنتج أو الكود" oninput="financeMultiBoxesSyncNoRender10158()" onchange="financeMultiBoxesSync10177()" onblur="financeMultiBoxesSync10177()">${datalistProducts(listId)}</div>
+          <div><label>اسم المنتج</label>${productSearchBox10159(b,item)}</div>
           <div><label>كمية المنتج</label><input type="number" min="0" step="0.01" id="mb10177_qty_${b.id}" value="${N(b.qty)||''}" oninput="financeMultiBoxesSyncNoRender10158()" onchange="financeMultiBoxesSync10177()" onblur="financeMultiBoxesSync10177()"></div>
           <div class="mb10177-kpi"><small>المتوفر</small><b>${item?N(item.quantity):'-'}</b></div>
           <div class="mb10177-kpi"><small>بعد الحركة</small><b>${item?N(after):'-'}</b></div>
@@ -318,6 +337,44 @@
   window.financeMultiBoxesSync10177=function(){syncFromDom(); renderBlocks();};
   // v10158: sync without re-render while typing so product name/quantity fields do not lose focus or accept one character only.
   window.financeMultiBoxesSyncNoRender10158=function(){try{syncFromDom();}catch(e){console.warn('multi boxes live sync failed',e);}};
+  // v10159: product typing like the existing invoice search: free typing, suggestions only, no render per character.
+  function renderProductSuggestions10159(id, term){
+    const host=$('mb10159_sug_'+id); if(!host) return;
+    const q=S(term).trim().toLowerCase();
+    const items=productItems().filter(i=>{
+      const d=productDisplay(i).toLowerCase();
+      const c=S(i.internal_code||i.code||i.product_code).toLowerCase();
+      return !q || d.includes(q) || c.includes(q);
+    }).slice(0,10);
+    if(!items.length){host.innerHTML='<div class="mb10159-empty">لا يوجد منتج مطابق</div>'; host.classList.add('open'); return;}
+    host.innerHTML=items.map(i=>`<button type="button" class="mb10159-sug-item" onmousedown="event.preventDefault(); financeMultiBoxesSelectProduct10159('${id}','${esc(String(i.id))}')">${esc(i.name||i.product_name||'منتج')}<small>${esc(i.internal_code||i.code||i.product_code||'')} | المتوفر ${N(i.quantity)}</small></button>`).join('');
+    host.classList.add('open');
+  }
+  window.financeMultiBoxesProductTyping10159=function(id,input,force){
+    try{
+      const b=blocks.find(x=>x.id===id); if(!b) return;
+      b.item_text=S(input.value); b.item_id='';
+      if(input._mb10159Timer) clearTimeout(input._mb10159Timer);
+      input._mb10159Timer=setTimeout(()=>renderProductSuggestions10159(id,input.value), force?0:180);
+    }catch(e){console.warn('product typing failed',e);}
+  };
+  window.financeMultiBoxesSelectProduct10159=function(id,productId){
+    try{
+      const b=blocks.find(x=>x.id===id), item=itemById(productId); if(!b||!item)return;
+      b.item_id=String(item.id); b.item_text=productDisplay(item);
+      renderBlocks();
+    }catch(e){console.warn('product select failed',e);}
+  };
+  window.financeMultiBoxesProductBlur10159=function(id,input){
+    setTimeout(()=>{const host=$('mb10159_sug_'+id); if(host) host.classList.remove('open');},160);
+    try{
+      const b=blocks.find(x=>x.id===id); if(!b)return;
+      b.item_text=S(input.value);
+      const it=findProductByText(b.item_text)||itemById(b.item_id);
+      if(it){ b.item_id=String(it.id); b.item_text=productDisplay(it); renderBlocks(); }
+    }catch(e){console.warn('product blur failed',e);}
+  };
+
   window.financeMultiBoxesAddProduct10177=function(){syncFromDom(); blocks.push(newBlock()); renderBlocks();};
   window.financeMultiBoxesRemoveProduct10177=function(id){syncFromDom(); blocks=blocks.filter(b=>b.id!==id); ensureInitial(); renderBlocks();};
   window.financeMultiBoxesAddDist10177=function(id){syncFromDom(); const b=blocks.find(x=>x.id===id); if(b)b.rows.push(newDistRow()); renderBlocks();};
