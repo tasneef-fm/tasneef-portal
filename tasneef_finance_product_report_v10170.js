@@ -53,9 +53,9 @@
     const ret=q('return'); const consumed=rows.filter(r=>finTypes.includes(S(r.movement_type))).reduce((a,r)=>a+N(r.quantity),0);
     return {inside,out,ret,consumed,balance:Math.max(0,inside-out)};
   }
-  function filters(){return {q:S($('finReportSearchV15')?.value).toLowerCase(), product:S($('finReportProductV15')?.value), from:S($('finReportFromV15')?.value), to:S($('finReportToV15')?.value), center:S($('finReportCenterV15')?.value), project:S($('finReportProjectV15')?.value), type:S($('finReportTypeV15')?.value)};}
+  function filters(){return {q:S($('finReportSearchV15')?.value).toLowerCase(), product:S($('finReportProductV15')?.value), from:S($('finReportFromV15')?.value), to:S($('finReportToV15')?.value), center:S($('finReportCenterV15')?.value), project:S($('finReportProjectV15')?.value), type:S($('finReportTypeV15')?.value), productClass:S($('finReportProductClassV10169')?.value)};}
   function passDate(m,f){const dt=movementDate(m); if(f.from&&dt<f.from)return false; if(f.to&&dt>f.to)return false; return true;}
-  function passProduct(item,f){ if(f.product && S(item.id)!==f.product)return false; if(f.q && ![item.name,productCode(item),item.unit,productType(item)].map(S).join(' ').toLowerCase().includes(f.q))return false; return true; }
+  function passProduct(item,f){ if(f.product && S(item.id)!==f.product)return false; if(f.productClass && productClass(item)!==f.productClass)return false; if(f.q && ![item.name,productCode(item),item.unit,productType(item)].map(S).join(' ').toLowerCase().includes(f.q))return false; return true; }
   function passRow(r,f){ if(!passDate(r,f))return false; if(f.center && centerOf(r)!==f.center)return false; if(f.project && S(r.project_id)!==f.project)return false; if(f.type==='in'&&S(r.movement_type)!=='in')return false; if(f.type==='out'&&!outTypes.includes(S(r.movement_type)))return false; return true; }
   const sum=(arr,fn)=>A(arr).reduce((a,x)=>a+N(fn?fn(x):x),0);
   function totalsRow(cells){return `<tfoot><tr>${cells.map(c=>`<td>${c}</td>`).join('')}</tr></tfoot>`;}
@@ -87,7 +87,20 @@
   }
   function style(){ if($('fprStyleV10170'))return; const st=document.createElement('style'); st.id='fprStyleV10170'; st.textContent=`
     .fpr-root-v10170{display:grid;gap:14px}.fpr-toolbar{display:flex;align-items:center;justify-content:space-between;background:#eef7f3;border:1px solid #d9e7e2;border-radius:16px;padding:12px;color:#063d31}.fpr-toolbar button{border:0;border-radius:12px;background:#063d31;color:#fff;font-weight:900;padding:10px 16px}.fpr-product{background:#fff;border:1px solid #d9e7e2;border-radius:20px;padding:14px;box-shadow:0 8px 24px rgba(10,64,51,.04)}.fpr-head{display:grid;grid-template-columns:112px 1fr;gap:14px;align-items:center;margin-bottom:12px}.fpr-img{width:104px;height:104px;border:1px solid #d9e7e2;border-radius:18px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#8a9a96}.fpr-img img{max-width:100%;max-height:100%;object-fit:contain}.fpr-head h2{margin:0 0 8px;color:#063d31}.fpr-chips{display:flex;gap:8px;flex-wrap:wrap}.fpr-chips span{background:#eef7f3;border:1px solid #d8ebe3;border-radius:999px;padding:7px 11px;font-weight:800}.fpr-box{margin:14px 0}.fpr-box h3{margin:0 0 8px;color:#063d31}.fpr-table{overflow:auto;border:1px solid #d9e7e2;border-radius:14px}.fpr-table table{width:100%;border-collapse:collapse;font-size:12px;background:#fff}.fpr-table th{background:#063d31;color:#fff;padding:9px;text-align:center}.fpr-table td{border-bottom:1px solid #e8efed;padding:8px;text-align:center}.fpr-table tbody tr:nth-child(even){background:#fbfdfc}.fpr-table tfoot td{background:#eef5f2;font-weight:900}@media print{body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.side,.topbar,.fin-hero,.fin-tabs,.fin-actions,.fpr-toolbar{display:none!important}.fin-card{box-shadow:none!important}.fpr-product{break-inside:avoid;box-shadow:none}.fpr-table th{background:#063d31!important;color:#fff!important}@page{size:A4 landscape;margin:8mm}}`; document.head.appendChild(st); }
-  function apply(){ style(); const st=state(); if(st.tab!=='reports' || st.reportTab!=='products')return false; const box=$('finReportWindowV15'); if(!box)return false; box.innerHTML=reportHtml(); return true; }
+
+  function ensureReportClassFilter(){
+    const box=$('finReportWindowV15'); if(!box || $('finReportProductClassV10169')) return;
+    const filters=box.closest('.fin-card')?.querySelector('.fin-actions') || document.querySelector('#finBodyV15 .fin-actions');
+    if(!filters) return;
+    const wrap=document.createElement('div');
+    wrap.id='finReportProductClassWrapV10169';
+    wrap.innerHTML='<label>تصنيف المنتج</label><select id="finReportProductClassV10169"><option value="">كل التصنيفات</option><option value="منتج">منتج</option><option value="أصل">أصل</option></select>';
+    const printBtn=[...filters.querySelectorAll('button')].find(b=>/طباعة/.test(S(b.textContent)));
+    if(printBtn) filters.insertBefore(wrap, printBtn); else filters.appendChild(wrap);
+    $('finReportProductClassV10169').addEventListener('change',()=>{ if(typeof window.financeProRenderReportsV15==='function') window.financeProRenderReportsV15(); setTimeout(apply,60); });
+  }
+
+  function apply(){ ensureReportClassFilter(); style(); const st=state(); if(st.tab!=='reports' || st.reportTab!=='products')return false; const box=$('finReportWindowV15'); if(!box)return false; box.innerHTML=reportHtml(); return true; }
   const oldRender=window.financeProRenderReportsV15; window.financeProRenderReportsV15=function(){ if(typeof oldRender==='function')oldRender.apply(this,arguments); setTimeout(apply,40); };
   const oldTab=window.financeProReportTabV15; window.financeProReportTabV15=function(tab){ if(typeof oldTab==='function')oldTab.apply(this,arguments); else {state().reportTab=tab||'products';} setTimeout(apply,60); };
   const oldPrint=window.financeProPrintReportV15; window.financeProPrintReportV15=function(){ if(state().tab==='reports' && state().reportTab==='products') return window.financeProPrintReportV10170(); if(typeof oldPrint==='function')return oldPrint.apply(this,arguments); };

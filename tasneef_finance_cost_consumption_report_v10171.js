@@ -20,6 +20,7 @@
   function productKeys(o){const keys=[]; [o&&o.id,o&&o.item_id,o&&o.product_code,o&&o.serial_number,o&&o.barcode,o&&o.supplier_barcode,o&&o.distributor_code,o&&o.code,o&&o.name,o&&o.item_name].forEach(v=>{const x=S(v).toLowerCase(); if(x&&!keys.includes(x))keys.push(x);}); return keys;}
   function officialItemFor(obj){const keys=productKeys(obj); return A(state().items).find(i=>productKeys(i).some(k=>keys.includes(k)))||null;}
   function itemCost(i){return N(i&&(i.unit_cost||i.cost||i.price||i.purchase_price));}
+  function productClass(i){const raw=S(i&&(i.product_classification||i.product_class||i.asset_type||i.classification))||'منتج'; return (raw==='أصل'||raw==='اصل'||raw.toLowerCase()==='asset')?'أصل':'منتج';}
   function unitCostMove(m){const meta=safeJson(m&&m.notes)||{}; if(N(m&&m.unit_cost)>0)return N(m.unit_cost); if(N(meta.beforeVat)>0&&N(m&&m.quantity)>0)return N(meta.beforeVat)/N(m.quantity); return itemCost(officialItemFor(m));}
   function movementDate(m){return S(m&&(m.movement_date||m.date||m.created_at)).slice(0,10);}
   function projectName(id){const p=A(state().projects).find(x=>String(x.id)===String(id)); return S(p&&(p.name||p.project_name))||'';}
@@ -29,7 +30,7 @@
     if(!rows.length) return [{...m,parent_id:m.id,base_movement_type:S(m.movement_type),project_name:S(m.project_name||projectName(m.project_id)||''),order_no:S(m.order_no||'')}];
     return rows.map((d,idx)=>({...m,parent_id:m.id,distribution_index:idx,is_distribution_row:true,base_movement_type:S(m.movement_type),movement_type:S(d.type||m.movement_type)||S(m.movement_type),quantity:N(d.qty),center:S(d.center||m.cost_center),project_id:d.projectId||m.project_id||null,project_name:S(d.projectName||projectName(d.projectId)||m.project_name||''),order_no:S(d.orderNo||m.order_no||''),distribution_note:S(d.note||'')})).filter(r=>N(r.quantity)>0);
   }
-  function filters(){return {q:S($('finReportSearchV15')?.value).toLowerCase(), product:S($('finReportProductV15')?.value), from:S($('finReportFromV15')?.value), to:S($('finReportToV15')?.value), center:S($('finReportCenterV15')?.value), project:S($('finReportProjectV15')?.value), type:S($('finReportTypeV15')?.value)};}
+  function filters(){return {q:S($('finReportSearchV15')?.value).toLowerCase(), product:S($('finReportProductV15')?.value), from:S($('finReportFromV15')?.value), to:S($('finReportToV15')?.value), center:S($('finReportCenterV15')?.value), project:S($('finReportProjectV15')?.value), type:S($('finReportTypeV15')?.value), productClass:S($('finReportProductClassV10169')?.value)};}
   function passRow(r,f){
     const dt=movementDate(r);
     if(f.from&&dt<f.from)return false;
@@ -37,6 +38,7 @@
     if(f.center&&centerOf(r)!==f.center)return false;
     if(f.project&&S(r.project_id)!==f.project)return false;
     if(f.product&&S(r.item_id)!==f.product)return false;
+    if(f.productClass && productClass(officialItemFor(r)||r)!==f.productClass)return false;
     if(f.type==='in'&&S(r.movement_type)!=='in')return false;
     if(f.type==='out'&&!outTypes.includes(S(r.movement_type)))return false;
     if(f.q){
@@ -93,7 +95,20 @@
     tabs.appendChild(btn);
     tabs.style.gridTemplateColumns='repeat(5,1fr)';
   }
-  function showReport(){
+
+  function ensureReportClassFilter(){
+    const box=$('finReportWindowV15'); if(!box || $('finReportProductClassV10169')) return;
+    const filters=box.closest('.fin-card')?.querySelector('.fin-actions') || document.querySelector('#finBodyV15 .fin-actions');
+    if(!filters) return;
+    const wrap=document.createElement('div');
+    wrap.id='finReportProductClassWrapV10169';
+    wrap.innerHTML='<label>تصنيف المنتج</label><select id="finReportProductClassV10169"><option value="">كل التصنيفات</option><option value="منتج">منتج</option><option value="أصل">أصل</option></select>';
+    const printBtn=[...filters.querySelectorAll('button')].find(b=>/طباعة/.test(S(b.textContent)));
+    if(printBtn) filters.insertBefore(wrap, printBtn); else filters.appendChild(wrap);
+    $('finReportProductClassV10169').addEventListener('change',()=>{ afterRender(); if(state().reportTab==='costConsumption') showReport(); });
+  }
+
+  function showReport(){ ensureReportClassFilter();
     style(); const st=state(); st.reportTab='costConsumption';
     addTab();
     const tabs=$('finBodyV15')?.querySelectorAll('.fin-tabs button')||[];

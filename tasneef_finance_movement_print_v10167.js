@@ -18,7 +18,7 @@
   const client=()=>window.sb||window.supabaseClient||window.supabase||null;
   const state=()=>window.financeProStateV15||{};
   const VAT=0.15;
-  const filters={supervisor:'', dateFrom:'', dateTo:'', type:''};
+  const filters={supervisor:'', dateFrom:'', dateTo:'', type:'', productClass:''};
   let syncing=false;
   let didAutoSync=false;
 
@@ -148,6 +148,7 @@
     if(filters.dateTo && d && d>filters.dateTo) return false;
     if(filters.supervisor && !movementMatchesSupervisor(row, filters.supervisor)) return false;
     if(filters.type && S(row.movement_type)!==filters.type) return false;
+    if(filters.productClass && productClassification(row)!==filters.productClass) return false;
     return true;
   }
   function currentMovementRows(){
@@ -572,6 +573,7 @@
       <div><label>من تاريخ</label><input id="fm10155DateFrom" type="date" value="${esc(filters.dateFrom)}"></div>
       <div><label>إلى تاريخ</label><input id="fm10155DateTo" type="date" value="${esc(filters.dateTo)}"></div>
       <div><label>نوع الحركة</label><select id="fm10155Type">${types.map(([v,n])=>`<option value="${esc(v)}" ${filters.type===v?'selected':''}>${esc(n)}</option>`).join('')}</select></div>
+      <div><label>تصنيف المنتج</label><select id="fm10169ProductClass"><option value="">كل التصنيفات</option><option value="منتج" ${filters.productClass==='منتج'?'selected':''}>منتج</option><option value="أصل" ${filters.productClass==='أصل'?'selected':''}>أصل</option></select></div>
       <button class="light" type="button" id="fm10155ClearFilters">تفريغ الفلاتر</button>
       <button class="light" type="button" id="fm10155SyncNames">مزامنة أسماء المنتجات</button>
       <button class="light" type="button" id="fm10156PrintSelected">طباعة المحدد</button>
@@ -591,12 +593,13 @@
     bindFilters();
   }
   function bindFilters(){
-    const sup=$('fm10155Supervisor'), from=$('fm10155DateFrom'), to=$('fm10155DateTo'), type=$('fm10155Type');
+    const sup=$('fm10155Supervisor'), from=$('fm10155DateFrom'), to=$('fm10155DateTo'), type=$('fm10155Type'), cls=$('fm10169ProductClass');
     if(sup) sup.onchange=()=>{filters.supervisor=S(sup.value); renderEnhancedMovementList();};
     if(from) from.onchange=()=>{filters.dateFrom=S(from.value); renderEnhancedMovementList();};
     if(to) to.onchange=()=>{filters.dateTo=S(to.value); renderEnhancedMovementList();};
     if(type) type.onchange=()=>{filters.type=S(type.value); renderEnhancedMovementList();};
-    const clear=$('fm10155ClearFilters'); if(clear) clear.onclick=()=>{filters.supervisor='';filters.dateFrom='';filters.dateTo='';filters.type='';renderEnhancedMovementList();};
+    if(cls) cls.onchange=()=>{filters.productClass=S(cls.value); renderEnhancedMovementList();};
+    const clear=$('fm10155ClearFilters'); if(clear) clear.onclick=()=>{filters.supervisor='';filters.dateFrom='';filters.dateTo='';filters.type='';filters.productClass='';renderEnhancedMovementList();};
     const sync=$('fm10155SyncNames'); if(sync) sync.onclick=async()=>{sync.disabled=true; sync.textContent='جاري المزامنة...'; await syncMovementNamesToDb(true); if(typeof window.financeProLoadV15==='function') await window.financeProLoadV15(true); setTimeout(()=>{sync.disabled=false;sync.textContent='مزامنة أسماء المنتجات'; enhanceMovementTab();},400);};
     const ps=$('fm10156PrintSelected'); if(ps) ps.onclick=()=>printRows(true);
     const pf=$('fm10156PrintFiltered'); if(pf) pf.onclick=()=>printRows(false);
@@ -821,14 +824,14 @@
       if(btn){btn.disabled=true; btn.textContent='جاري الحفظ...';}
       const realId=isBigint(officialId)?officialId:(isBigint(id)?id:'');
       if(realId){
-        const patch={name, item_type:type, type:type, category:type, product_classification:cls, unit, unit_cost:cost, cost:cost, price:cost, purchase_price:cost};
+        const patch={name, item_type:type, type:type, category:type, product_classification:cls, unit, unit_cost:cost};
         const res=await c.from('inventory_items').update(patch).eq('id',realId).select('*');
         if(res.error) throw res.error;
       }
       await updateMovementsByCodeOrName(c,{officialId:realId,code,oldName,name});
       // update local state immediately
       const st=state();
-      A(st.items).forEach(i=>{ if((realId&&S(i.id)===S(realId)) || (code&&[i.product_code,i.serial_number,i.barcode,i.supplier_barcode,i.code].map(S).includes(code))){ i.name=name; i.item_type=type; i.type=type; i.category=type; i.product_classification=cls; i.unit=unit; i.unit_cost=cost; i.cost=cost; i.price=cost; i.purchase_price=cost; } });
+      A(st.items).forEach(i=>{ if((realId&&S(i.id)===S(realId)) || (code&&[i.product_code,i.serial_number,i.barcode,i.supplier_barcode,i.code].map(S).includes(code))){ i.name=name; i.item_type=type; i.type=type; i.category=type; i.product_classification=cls; i.unit=unit; i.unit_cost=cost; } });
       A(st.movements).forEach(m=>{ if((realId&&S(m.item_id)===S(realId)) || (code&&[m.product_code,m.barcode].map(S).includes(code)) || (oldName&&S(m.item_name)===oldName)){ m.item_name=name; } });
       closeModal();
       if(typeof window.financeProLoadV15==='function') await window.financeProLoadV15(true);
@@ -922,6 +925,7 @@
     const unit=S($('finProductUnitV15')?.value);
     const type=S($('finProductTypeV15')?.value);
     const imageFilter=S($('finProductImageFilterV15')?.value);
+    const productClassFilter=S($('finProductClassFilterV10169')?.value);
     let rows=items.filter(i=>{
       const hay=[i.name,itemCode(i),i.category,i.supplier,i.supplier_barcode,i.distributor_code,i.unit].map(S).join(' ').toLowerCase();
       const qv=qty(i), min=N(i.min_quantity||i.reorder_level||1), hasImage=!!S(lockedImageUrl(i));
@@ -931,6 +935,7 @@
       if(status==='zero' && qv!==0) return false;
       if(unit && S(i.unit)!==unit) return false;
       if(type && productType(i)!==type && S(i.item_type)!==type && S(i.type)!==type && S(i.category)!==type) return false;
+      if(productClassFilter && productClass(i)!==productClassFilter) return false;
       if(imageFilter==='without' && hasImage) return false;
       if(imageFilter==='with' && !hasImage) return false;
       return true;
@@ -944,6 +949,19 @@
     }).join('')||'<div class="fin-soft">لا توجد منتجات حسب الفلتر.</div>'}</div>`;
     return true;
   }
+
+  function ensureProductClassFilter10169(){
+    const list=$('finProductListV15'); if(!list || $('finProductClassFilterV10169')) return;
+    const filtersCard=list.closest('.fin-card') || document.querySelector('#finBodyV15 .fin-card');
+    const row=document.querySelector('#finBodyV15 .fin-actions') || filtersCard?.querySelector('.fin-actions');
+    if(!row) return;
+    const wrap=document.createElement('div');
+    wrap.id='finProductClassFilterWrapV10169';
+    wrap.innerHTML='<label>تصنيف المنتج</label><select id="finProductClassFilterV10169"><option value="">كل التصنيفات</option><option value="منتج">منتج</option><option value="أصل">أصل</option></select>';
+    row.appendChild(wrap);
+    $('finProductClassFilterV10169').onchange=()=>{ try{renderFixedProductList();}catch(_){} };
+  }
+
   function patch(){
     const old=window.financeProRenderProductListV15;
     window.financeProRenderProductListV15=function(){
@@ -951,7 +969,7 @@
       return typeof old==='function'?old.apply(this,arguments):undefined;
     };
   }
-  function boot(){ patch(); if($('finProductListV15')) renderFixedProductList(); }
+  function boot(){ patch(); ensureProductClassFilter10169(); if($('finProductListV15')) renderFixedProductList(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
   window.addEventListener('load',()=>setTimeout(boot,800),{once:true});
   console.log('Loaded v10158 product filters hard fix');

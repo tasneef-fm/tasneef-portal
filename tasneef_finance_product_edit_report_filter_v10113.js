@@ -110,6 +110,17 @@
   const movementLabels={
     out:['صرف','خارج'], consume:['مستهلك','استهلاك'], damaged:['تالف'], waste:['مهدور','هدر'], scrap:['سكراب'], return:['مرتجع'], in:['داخل','دخول']
   };
+  function ensureReportProductClassFilterV10169(){
+    const reportBox=$('finReportWindowV15'); if(!reportBox) return;
+    const filters=reportBox.closest('.fin-card')?.querySelector('.fin-actions') || document.querySelector('#finBodyV15 .fin-actions');
+    if(!filters || $('finReportProductClassV10169')) return;
+    const wrap=document.createElement('div');
+    wrap.id='finReportProductClassWrapV10169';
+    wrap.innerHTML='<label>تصنيف المنتج</label><select id="finReportProductClassV10169"><option value="">كل التصنيفات</option><option value="منتج">منتج</option><option value="أصل">أصل</option></select>';
+    const printBtn=[...filters.querySelectorAll('button')].find(b=>/طباعة/.test(S(b.textContent)));
+    if(printBtn) filters.insertBefore(wrap, printBtn); else filters.appendChild(wrap);
+    $('finReportProductClassV10169').addEventListener('change', applyReportMovementFilter);
+  }
   function ensureReportMovementFilter(){
     const reportBox=$('finReportWindowV15'); if(!reportBox) return;
     const filters=reportBox.closest('.fin-card')?.querySelector('.fin-actions') || document.querySelector('#finBodyV15 .fin-actions');
@@ -129,13 +140,15 @@
   }
   function applyReportMovementFilter(){
     const key=S($('finReportMovementTypeV10113')?.value);
+    const cls=S($('finReportProductClassV10169')?.value);
     const box=$('finReportWindowV15'); if(!box) return;
     box.querySelectorAll('tbody tr').forEach(tr=>{
       // keep total/empty rows visible unless there is a selected filter and the row clearly contains a movement type
       const txt=norm(tr.textContent);
-      if(!key){ tr.style.display=''; return; }
+      if(!key && !cls){ tr.style.display=''; return; }
       if(/لا توجد|مجموع|الإجمالي/.test(tr.textContent)){ tr.style.display=''; return; }
-      tr.style.display=rowMatchesMovement(tr,key)?'':'none';
+      const clsOk=!cls || norm(tr.textContent).includes(norm(cls));
+      tr.style.display=(rowMatchesMovement(tr,key)&&clsOk)?'':'none';
     });
     // Hide entire product/project cards with no visible data rows.
     box.querySelectorAll('.fin-card').forEach(card=>{
@@ -148,9 +161,9 @@
   function patchFinanceReportRerender(){
     if(window.__fp10113ReportPatched) return; window.__fp10113ReportPatched=true;
     const old=window.financeProRenderReportsV15;
-    window.financeProRenderReportsV15=function(){ const r=old?old.apply(this,arguments):undefined; setTimeout(()=>{ensureReportMovementFilter(); applyReportMovementFilter();},80); return r; };
+    window.financeProRenderReportsV15=function(){ const r=old?old.apply(this,arguments):undefined; setTimeout(()=>{ensureReportMovementFilter(); ensureReportProductClassFilterV10169(); applyReportMovementFilter();},80); return r; };
     const oldTab=window.financeProReportTabV15;
-    window.financeProReportTabV15=function(){ const r=oldTab?oldTab.apply(this,arguments):undefined; setTimeout(()=>{ensureReportMovementFilter(); applyReportMovementFilter();},120); return r; };
+    window.financeProReportTabV15=function(){ const r=oldTab?oldTab.apply(this,arguments):undefined; setTimeout(()=>{ensureReportMovementFilter(); ensureReportProductClassFilterV10169(); applyReportMovementFilter();},120); return r; };
     const oldPrint=window.financeProPrintReportV15;
     window.financeProPrintReportV15=function(){ applyReportMovementFilter(); return oldPrint?oldPrint.apply(this,arguments):undefined; };
   }
@@ -163,14 +176,14 @@
       .fp10113-card{width:min(720px,96vw);background:#fff;border-radius:22px;border:1px solid #d9e7e2;box-shadow:0 30px 100px rgba(0,0,0,.25);padding:18px;color:#073d31}
       .fp10113-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.fp10113-head h2{margin:0}.fp10113-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0}.fp10113-grid input,.fp10113-grid select{width:100%;border:1px solid #d9e7e2;border-radius:12px;padding:10px;background:#fff}.fp10113-note{background:#f4faf7;border:1px solid #d8ebe3;border-radius:12px;padding:10px;margin-top:12px}.fp10113-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}.fp10113-actions button,.fp10113-head button{border:0;border-radius:12px;padding:10px 14px;font-weight:800;background:#0b4f3a;color:#fff;cursor:pointer}.fp10113-actions .light{background:#eef7f3;color:#073d31}.fp10113-head .danger{background:#c73535;color:#fff}
       [data-v10113-edit-product]{background:#eef7f3!important;color:#073d31!important;border:1px solid #d8ebe3!important}
-      #finReportMovementTypeWrapV10113{min-width:170px}#finReportMovementTypeWrapV10113 select{min-width:160px}
+      #finReportMovementTypeWrapV10113,#finReportProductClassWrapV10169{min-width:170px}#finReportMovementTypeWrapV10113 select,#finReportProductClassWrapV10169 select{min-width:160px}
     `;
     document.head.appendChild(st);
   }
-  function boot(){ installStyle(); patchFinanceReportRerender(); installProductEditButtons(); ensureReportMovementFilter(); applyReportMovementFilter(); }
+  function boot(){ installStyle(); patchFinanceReportRerender(); installProductEditButtons(); ensureReportMovementFilter(); ensureReportProductClassFilterV10169(); applyReportMovementFilter(); }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot, {once:true}); else boot();
   window.addEventListener('load',()=>{boot(); setTimeout(boot,700); setTimeout(boot,1800);}, {once:true});
-  const mo=new MutationObserver(()=>{ if(isFinanceVisible()){ installProductEditButtons(); ensureReportMovementFilter(); applyReportMovementFilter(); }});
+  const mo=new MutationObserver(()=>{ if(isFinanceVisible()){ installProductEditButtons(); ensureReportMovementFilter(); ensureReportProductClassFilterV10169(); applyReportMovementFilter(); }});
   try{ mo.observe(document.documentElement,{childList:true,subtree:true}); }catch(_){ }
   console.log('Loaded '+VERSION);
 })();
