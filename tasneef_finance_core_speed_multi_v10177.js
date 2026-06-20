@@ -281,6 +281,9 @@
       .mb10159-sug-item:hover{background:#eef8f4;}
       .mb10159-sug-item small{display:block;color:#6d7f78;font-weight:600;margin-top:3px;}
       .mb10159-empty{padding:12px 14px;color:#777;}
+      .mb10177-date{display:flex;align-items:center;gap:8px;background:#eef7f3;border:1px solid #d7e9e2;border-radius:12px;padding:6px 10px;}
+      .mb10177-date label{font-weight:800;color:#073f32;white-space:nowrap;}
+      .mb10177-date input{min-width:150px;}
     `;
     document.head.appendChild(stl);
   }
@@ -439,7 +442,7 @@
       const cards=[...body.querySelectorAll('.fin-card')]; const oldMovement=cards.find(c=>S(c.textContent).includes('صرف منتج وتوزيع استهلاكه'));
       if(oldMovement)oldMovement.classList.add('mb10177-old-hidden');
       if($('finMultiBoxes10177')){renderBlocks();return;}
-      const html=`<div id="finMultiBoxes10177" class="fin-card mb10177-wrap"><h3>حركة متعددة المنتجات</h3><p class="fin-soft">كل منتج له بوكس مستقل وتوزيعه تحته. اكتب اسم المنتج مباشرة بدل البحث الطويل، ثم أضف الكمية والتوزيع، وفي النهاية اضغط <b>حفظ الحركة</b>.</p><div class="mb10177-toolbar"><button type="button" onclick="financeMultiBoxesAddProduct10177()">+ إضافة منتج</button><button type="button" class="light" onclick="financeMultiBoxesSave10177(this)">حفظ الحركة</button><button type="button" class="danger" onclick="financeMultiBoxesClear10177()">تفريغ</button></div><div id="finMultiBoxesRows10177"></div></div>`;
+      const html=`<div id="finMultiBoxes10177" class="fin-card mb10177-wrap"><h3>حركة متعددة المنتجات</h3><p class="fin-soft">كل منتج له بوكس مستقل وتوزيعه تحته. اكتب اسم المنتج مباشرة بدل البحث الطويل، ثم أضف الكمية والتوزيع، وفي النهاية اضغط <b>حفظ الحركة</b>.</p><div class="mb10177-toolbar"><div class="mb10177-date"><label>تاريخ الحركة</label><input type="date" id="finMoveDateV15" value="${today()}"></div><button type="button" onclick="financeMultiBoxesAddProduct10177()">+ إضافة منتج</button><button type="button" class="light" onclick="financeMultiBoxesSave10177(this)">حفظ الحركة</button><button type="button" class="danger" onclick="financeMultiBoxesClear10177()">تفريغ</button></div><div id="finMultiBoxesRows10177"></div></div>`;
       if(oldMovement) oldMovement.insertAdjacentHTML('beforebegin',html); else body.insertAdjacentHTML('afterbegin',html);
       renderBlocks();
     }catch(e){console.warn('movement unified failed',e);}
