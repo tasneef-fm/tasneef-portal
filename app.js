@@ -19990,3 +19990,71 @@ function financePrintReport(kind){
   }
 })();
 
+
+
+/* ===== V10175: WhatsApp daily log message + photo share fields ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefDailyPhotoWhatsappV10175) return;
+  window.__tasneefDailyPhotoWhatsappV10175=true;
+  const S=v=>String(v==null?'':v).trim();
+  function E(v){ try{return typeof esc==='function'?esc(v):S(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}catch(_){return S(v);} }
+  function logDateOf(row){ return S(row&&row.log_date)||S(row&&row.visit_date)||S(row&&row.attendance_date)||S(row&&row.work_date)||S(row&&row.date)||S(row&&row.check_in).slice(0,10)||S(row&&row.created_at).slice(0,10)|| (typeof today==='function'?today():new Date().toISOString().slice(0,10)); }
+  function timeOf(row,type){ const v=type==='out'?(row&&row.check_out):(row&&row.check_in); try{return typeof timeOnly==='function'?timeOnly(v):new Date(v).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'});}catch(_){return '-';} }
+  function visitLabel(v){ v=S(v); try{ if(typeof visitTypeText==='function') return visitTypeText(v)||v; }catch(_){} if(v==='deep') return 'نظافة عميقة'; if(v==='surface') return 'نظافة سطحية'; return v||'-'; }
+  function normName(v){return S(v).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').toLowerCase();}
+  function workersForLogV10175(row){
+    try{
+      const pid=S(row&&row.project_id), sid=S(row&&row.supervisor_id);
+      const map=new Map();
+      (window.data&&data.workers||[]).forEach(w=>{
+        const st=S(w.status||'active').toLowerCase(); if(st==='inactive'||st==='deleted'||st==='موقوف') return;
+        let ok=false;
+        try{ if(pid && typeof workerProjectId==='function' && S(workerProjectId(w))===pid) ok=true; }catch(_){}
+        if(!ok && pid && S(w.project_id||w.assigned_project_id)===pid) ok=true;
+        try{ if(!ok && sid && typeof workerSupId==='function' && S(workerSupId(w))===sid) ok=true; }catch(_){}
+        if(!ok && sid && S(w.supervisor_id||w.app_supervisor_id)===sid) ok=true;
+        const name=S(w.name||w.full_name||w.worker_name); const key=normName(name);
+        if(ok && key && !map.has(key)) map.set(key,name);
+      });
+      return [...map.values()].join('، ')||'-';
+    }catch(_){ return '-'; }
+  }
+  function projectLabel(row){ try{return projectName(row&&row.project_id)||S(row&&row.project_name)||'-';}catch(_){return S(row&&row.project_name)||'-';} }
+  function supervisorLabel(row){ try{return supervisorName(row&&row.supervisor_id)||S(row&&row.supervisor_name)||'-';}catch(_){return S(row&&row.supervisor_name)||'-';} }
+  window.buildLogWhatsAppMessage=function(row,type){
+    type=type||((row&&row.check_out)?'out':'in');
+    return [
+      type==='out'?'تم تسجيل خروج':'تم تسجيل دخول',
+      '',
+      'اسم المشروع: '+projectLabel(row),
+      'اسم المشرف: '+supervisorLabel(row),
+      'التاريخ: '+logDateOf(row),
+      'الوقت: '+timeOf(row,type),
+      'أسماء العمال: '+workersForLogV10175(row),
+      'نوع التنظيف: '+visitLabel(row&&row.visit_type)
+    ].join('\n');
+  };
+  function dataUrlToFileV10175(dataUrl,name){
+    const parts=S(dataUrl).split(','); const mime=(parts[0].match(/:(.*?);/)||[])[1]||'image/jpeg';
+    const bin=atob(parts[1]||''); const arr=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    return new File([arr],name||'tasneef-log-photo.jpg',{type:mime,lastModified:Date.now()});
+  }
+  function photoForRow(row,type){ const src= type==='out' ? (row&&row.check_out_photo) : (row&&row.check_in_photo); return /^data:image\//i.test(S(src)) ? src : ''; }
+  async function shareLogV10175(row,type){
+    const text=window.buildLogWhatsAppMessage(row,type);
+    const photo=photoForRow(row,type);
+    try{ await navigator.clipboard?.writeText(text); }catch(_){}
+    if(photo && navigator.share){
+      try{ const file=dataUrlToFileV10175(photo,'tasneef-log-'+Date.now()+'.jpg'); if(!navigator.canShare || navigator.canShare({files:[file]})){ await navigator.share({title:'تصنيف',text,files:[file]}); return; } }catch(_){}
+    }
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');
+  }
+  window.sendLogWhatsapp=function(id,type){
+    const row=(window.data&&data.logs||[]).find(x=>String(x.id)===String(id));
+    if(!row){ try{msg('لم يتم العثور على سجل الدخول والخروج','err');}catch(_){} return; }
+    return shareLogV10175(row,type||((row&&row.check_out)?'out':'in'));
+  };
+  try{ window.sendLogWhatsappFromRow = sendLogWhatsappFromRow = function(row,type){ return shareLogV10175(row,type||((row&&row.check_out)?'out':'in')); }; }catch(_){ window.sendLogWhatsappFromRow=function(row,type){ return shareLogV10175(row,type); }; }
+})();

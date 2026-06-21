@@ -184,21 +184,28 @@
     if(!names.length) names=await readSupabaseWorkerNames();
     return uniqueNames(names).slice(0,25);
   }
+  function cleaningTypeLabelV10175(v){
+    v=S(v);
+    if(!v) return '-';
+    if(typeof window.visitTypeText==='function'){ try{return window.visitTypeText(v)||v;}catch(_){ } }
+    if(v==='deep') return 'نظافة عميقة';
+    if(v==='surface') return 'نظافة سطحية';
+    return v;
+  }
   async function dailyMediaMessage(kind,time){
     const p=projectInfo();
-    const action=kind==='in'?'تسجيل دخول':'تسجيل خروج';
     const workers=await currentWorkerNamesForMessage();
+    const title=kind==='out'?'تم تسجيل خروج':'تم تسجيل دخول';
     const lines=[
-      'شركة تصنيف لإدارة المرافق',
-      action,
-      'المشرف: '+userName(),
-      'المشروع: '+(p.name||p.id||'-'),
-      'نوع الزيارة: '+visitType(),
+      title,
+      '',
+      'اسم المشروع: '+(p.name||p.id||'-'),
+      'اسم المشرف: '+userName(),
       'التاريخ: '+logDate(),
-      'الوقت: '+displayTime(time||timeNow())
+      'الوقت: '+displayTime(time||timeNow()),
+      'أسماء العمال: '+(workers.length?workers.join('، '):'-'),
+      'نوع التنظيف: '+cleaningTypeLabelV10175(visitType())
     ];
-    if(workers.length) lines.push('العمال: '+workers.join('، '));
-    lines.push('تم إرفاق صورة موثقة بالتاريخ والوقت');
     return lines.join('\n');
   }
   function fileToImage(file){
@@ -223,7 +230,8 @@
       action+' - شركة تصنيف لإدارة المرافق',
       'المشرف: '+userName(),
       'المشروع: '+(p.name||p.id||'-'),
-      'التاريخ: '+logDate()+'   الوقت: '+displayTime(time||timeNow())
+      'التاريخ: '+logDate()+'   الوقت: '+displayTime(time||timeNow()),
+      'نوع التنظيف: '+cleaningTypeLabelV10175(visitType())
     ];
     const pad=Math.max(14,Math.round(w*0.018));
     const fs=Math.max(18,Math.round(w*0.028));
@@ -261,7 +269,8 @@
       action+' - شركة تصنيف لإدارة المرافق',
       'المشرف: '+userName(),
       'المشروع: '+(p.name||p.id||'-'),
-      'التاريخ: '+logDate()+'   الوقت: '+displayTime(time||timeNow())
+      'التاريخ: '+logDate()+'   الوقت: '+displayTime(time||timeNow()),
+      'نوع التنظيف: '+cleaningTypeLabelV10175(visitType())
     ];
     const pad=Math.max(14,Math.round(w*0.018));
     const fs=Math.max(18,Math.round(w*0.028));
@@ -348,25 +357,50 @@
       }
     });
   }
+  function showWhatsAppImageFallbackV10175(photoFile,text){
+    try{
+      const old=document.getElementById('tasneefWaImageFallbackV10175');
+      if(old) old.remove();
+      const url=photoFile?URL.createObjectURL(photoFile):'';
+      const box=document.createElement('div');
+      box.id='tasneefWaImageFallbackV10175';
+      box.style.cssText='position:fixed;inset:0;z-index:1000002;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:16px;direction:rtl;font-family:Tahoma,Arial,sans-serif';
+      box.innerHTML=`<div style="width:min(520px,96vw);background:#fff;border-radius:18px;padding:14px;box-shadow:0 18px 60px rgba(0,0,0,.35);color:#0A4033">
+        <h3 style="margin:0 0 8px">إرفاق الصورة مع رسالة واتساب</h3>
+        <p style="margin:0 0 10px;line-height:1.7;color:#40524b">إذا لم يفتح جهازك مشاركة واتساب بالصورة تلقائيًا، اضغط تحميل الصورة ثم أرفقها في واتساب. تم نسخ الرسالة تلقائيًا.</p>
+        ${url?`<img src="${url}" style="width:100%;max-height:260px;object-fit:contain;border:1px solid #dce6e2;border-radius:12px;background:#f7fbfa">`:''}
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          ${url?`<a id="waDownloadImgV10175" download="${photoFile.name}" href="${url}" style="flex:1;text-align:center;text-decoration:none;background:#0A4033;color:white;border-radius:12px;padding:11px;font-weight:900">تحميل الصورة</a>`:''}
+          <button id="waOpenV10175" style="flex:1;background:#128C7E;color:white;border:0;border-radius:12px;padding:11px;font-weight:900">فتح واتساب</button>
+          <button id="waCloseV10175" style="background:#b83232;color:white;border:0;border-radius:12px;padding:11px;font-weight:900">إغلاق</button>
+        </div>
+      </div>`;
+      document.body.appendChild(box);
+      box.querySelector('#waOpenV10175').onclick=()=>window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');
+      box.querySelector('#waCloseV10175').onclick=()=>{ try{ if(url) URL.revokeObjectURL(url); }catch(_){ } box.remove(); };
+    }catch(_){ }
+  }
   async function shareDailyWhatsapp(kind,time,photoFile){
     const text=await dailyMediaMessage(kind,time);
+    try{ await navigator.clipboard?.writeText(text); }catch(_){ }
     try{
-      if(photoFile && navigator.canShare && navigator.canShare({files:[photoFile]})){
-        await navigator.share({files:[photoFile],text:titleSafe(text),title:'تصنيف - '+(kind==='in'?'تسجيل دخول':'تسجيل خروج')});
-        return;
+      if(photoFile && navigator.share){
+        const sharePayload={title:'تصنيف - '+(kind==='in'?'تسجيل دخول':'تسجيل خروج'), text:text, files:[photoFile]};
+        if(!navigator.canShare || navigator.canShare({files:[photoFile]})){
+          await navigator.share(sharePayload);
+          smartToast('تم تجهيز الرسالة والصورة للمشاركة في واتساب');
+          return;
+        }
       }
     }catch(e){
-      // إذا أغلق المستخدم المشاركة لا نلغي التسجيل؛ الحفظ تم فعلاً بعد وجود الصورة.
+      // إذا أغلق المستخدم نافذة المشاركة لا نلغي التسجيل؛ الحفظ تم فعلاً بعد وجود الصورة.
     }
     try{
       const url='https://wa.me/?text='+encodeURIComponent(text);
       window.open(url,'_blank','noopener');
       if(photoFile){
-        const a=document.createElement('a');
-        a.href=URL.createObjectURL(photoFile); a.download=photoFile.name;
-        a.style.display='none'; document.body.appendChild(a); a.click();
-        setTimeout(()=>{try{URL.revokeObjectURL(a.href);a.remove();}catch(_){ }},3000);
-        smartToast('تم فتح واتساب، والصورة نزلت لإرفاقها إذا لم يرسلها الجهاز تلقائياً','wait');
+        showWhatsAppImageFallbackV10175(photoFile,text);
+        smartToast('تم فتح واتساب ونسخ الرسالة. أرفق الصورة من النافذة إذا لم تُرفق تلقائيًا','wait');
       }
     }catch(_){ }
   }
