@@ -101,8 +101,24 @@ function supervisorName(id){ return data.users.find(u=>String(u.id)===String(id)
 function projectName(id){ return data.projects.find(p=>String(p.id)===String(id))?.name || '-'; }
 function workerName(id){ return data.workers.find(w=>String(w.id)===String(id))?.name || '-'; }
 function getProjectSupervisorId(pid){ return data.projects.find(p=>String(p.id)===String(pid))?.supervisor_id || ''; }
-function dateTime(date, time){ return date && time ? new Date(`${date}T${time}:00`).toISOString() : null; }
-function minutesBetween(a,b){ if(!a||!b) return 0; return Math.max(0, Math.round((new Date(b)-new Date(a))/60000)); }
+function normalizeLogTimeInput(time){
+  let t=String(time||'').trim();
+  if(!t) return '';
+  t=t.replace(/[٠-٩]/g,ch=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(ch)))
+     .replace(/[۰-۹]/g,ch=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(ch)))
+     .replace(/صباحًا|صباحا|ص\b|AM/ig,' AM')
+     .replace(/مساءً|مساء|م\b|PM/ig,' PM');
+  const m=t.match(/(\d{1,2})\s*:\s*(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if(!m) return '';
+  let h=Number(m[1])||0;
+  const mer=String(m[3]||'').toUpperCase();
+  if(mer==='PM' && h<12) h+=12;
+  if(mer==='AM' && h===12) h=0;
+  h=Math.max(0,Math.min(23,h));
+  return String(h).padStart(2,'0')+':'+String(m[2]).padStart(2,'0');
+}
+function dateTime(date, time){ const hm=normalizeLogTimeInput(time); return date && hm ? new Date(`${date}T${hm}:00`).toISOString() : null; }
+function minutesBetween(a,b){ if(!a||!b) return 0; const diff=Math.round((new Date(b)-new Date(a))/60000); return Number.isFinite(diff) ? Math.max(0,diff) : 0; }
 function logActualMinutes(l){ const saved = Number(l.duration_minutes); if(Number.isFinite(saved) && saved > 0) return saved; return minutesBetween(l.check_in, l.check_out); }
 function logRequiredMinutes(l){ const logDate = l.log_date || String(l.check_in||'').slice(0,10); const current = l.project_id ? requiredMinutesForLog(l.project_id, logDate) : 0; if(current > 0) return current; const saved = Number(l.required_minutes); if(Number.isFinite(saved) && saved > 0) return saved; return 0; }
 async function initAdmin(){ requireRole('admin'); await refreshAll(); }
@@ -210,7 +226,53 @@ function logWhatsappButtons(l){
   return `<button class="small" style="background:#128C7E;color:#fff" onclick="sendLogWhatsapp(${l.id},'in')">واتساب دخول</button>`;
 }
 function onLogProjectChange(){ const pid=$('logProject')?.value; const p=findProject(pid); if(p && $('logVisitType')) $('logVisitType').value=p.visit_type_default||'surface'; if(p && $('logSupervisor') && !$('logSupervisor').value) $('logSupervisor').value=p.supervisor_id||''; }
-async function saveTimeLog(){ const u=session(); const id=$('logId')?.value; const date=$('logDate')?.value || today(); let sup=$('logSupervisor')?.value || (u.role==='supervisor'?u.id:''); const project=$('logProject')?.value; if(!sup && project) sup=getProjectSupervisorId(project); const check_in=dateTime(date,$('logIn')?.value), check_out=dateTime(date,$('logOut')?.value); if(!project||!check_in) return msg('المشروع ووقت الدخول مطلوبان','err'); const actual=minutesBetween(check_in,check_out); const required=requiredMinutesForLog(project,date); const ts=calcTimeStatus(actual,required); const autoTravel=calculateTravelMinutes(sup,date,check_in,id); const row={user_id:u.id, supervisor_id:Number(sup)||null, project_id:Number(project), check_in, check_out, log_date:date, duration_minutes:actual, travel_minutes:autoTravel, visit_type:$('logVisitType')?.value||findProject(project)?.visit_type_default||'surface', required_minutes:required, time_difference_minutes:ts.diff, time_status:ts.status, notes:$('logNotes')?.value||''}; let res = id ? await sb.from('time_logs').update(row).eq('id',id).select('*').maybeSingle() : await sb.from('time_logs').insert(row).select('*').single(); if(res.error) return msg(res.error.message,'err'); const savedRow = res.data ? res.data : Object.assign({id:Number(id)||0}, row); playAppSound(check_out ? 'checkout' : 'checkin'); msg('تم حفظ التسجيل وحساب حالة الوقت ووقت التنقل تلقائياً'); sendLogWhatsappFromRow(savedRow, check_out ? 'out' : 'in'); clearLogForm(); await refreshAll(); }
+async function saveTimeLog(){
+  const u=session();
+  const id=$('logId')?.value;
+  const original=id ? (data.logs||[]).find(x=>String(x.id)===String(id)) : null;
+  const date=(original&&original.log_date) || $('logDate')?.value || today();
+  const project=(original&&original.project_id) || $('logProject')?.value;
+  let sup=(original&&original.supervisor_id) || $('logSupervisor')?.value || (u.role==='supervisor'?u.id:'');
+  if(!sup && project) sup=getProjectSupervisorId(project);
+  const visitType=(original&&original.visit_type) || $('logVisitType')?.value || findProject(project)?.visit_type_default || 'surface';
+  const check_in=dateTime(date,$('logIn')?.value);
+  const check_out=dateTime(date,$('logOut')?.value);
+  if(!project||!check_in) return msg('المشروع ووقت الدخول مطلوبان','err');
+  const actual=minutesBetween(check_in,check_out);
+  const required=requiredMinutesForLog(project,date);
+  const ts=calcTimeStatus(actual,required);
+  const travelInput=$('logTravel')?.value;
+  const travelValue=travelInput!==undefined && String(travelInput).trim()!=='' ? Number(travelInput) : Number(original&&original.travel_minutes);
+  const autoTravel=id ? (Number.isFinite(travelValue)?travelValue:0) : calculateTravelMinutes(sup,date,check_in,id);
+  const row={
+    user_id:(original&&original.user_id)||u.id,
+    supervisor_id:Number(sup)||null,
+    project_id:Number(project),
+    check_in,
+    check_out,
+    log_date:date,
+    duration_minutes:actual,
+    travel_minutes:autoTravel,
+    visit_type:visitType,
+    required_minutes:required,
+    time_difference_minutes:ts.diff,
+    time_status:ts.status,
+    notes:$('logNotes')?.value||''
+  };
+  const res = id ? await sb.from('time_logs').update(row).eq('id',id).select('*').maybeSingle() : await sb.from('time_logs').insert(row).select('*').single();
+  if(res.error) return msg(res.error.message,'err');
+  const savedRow=res.data ? res.data : Object.assign({},original||{},row,{id:Number(id)||0});
+  const idx=(data.logs||[]).findIndex(x=>String(x.id)===String(savedRow.id));
+  if(idx>=0) data.logs[idx]=Object.assign({},data.logs[idx],savedRow);
+  else data.logs.unshift(savedRow);
+  if($('dailyDate')) $('dailyDate').value=date;
+  if($('logDate')) $('logDate').value=date;
+  playAppSound(check_out ? 'checkout' : 'checkin');
+  msg('تم حفظ التسجيل وحساب حالة الوقت ووقت التنقل تلقائياً');
+  if(!id) sendLogWhatsappFromRow(savedRow, check_out ? 'out' : 'in');
+  if(typeof window.fetchTimeLogsRangeV232==='function') await window.fetchTimeLogsRangeV232(date,date,{limit:1500});
+  renderAll();
+}
 function filterLogs(){ let rows=[...data.logs].filter(l=>String(l.visit_type||'')!=='technician_attendance'); const d=$('dailyDate')?.value, s=$('dailySupervisor')?.value, p=$('dailyProject')?.value, q=($('dailySearch')?.value||'').trim(); if(d) rows=rows.filter(l=>(l.log_date||String(l.check_in||'').slice(0,10))===d); if(s) rows=rows.filter(l=>String(l.supervisor_id)===String(s)); if(p) rows=rows.filter(l=>String(l.project_id)===String(p)); if(q) rows=rows.filter(l=>[supervisorName(l.supervisor_id),projectName(l.project_id),visitTypeText(l.visit_type),timeStatusText(l.time_status),l.notes].join(' ').includes(q)); return rows; }
 function renderTimeLogs(){ const body=$('logsBody'); if(!body) return; const isSupervisorPage = !document.getElementById('daily'); const rows=filterLogs(); body.innerHTML = rows.map(l=>{ const logDate=l.log_date||String(l.check_in||'').slice(0,10); const actual=Number(l.duration_minutes||minutesBetween(l.check_in,l.check_out)); const required=logRequiredMinutes(l); const diff=(l.time_difference_minutes!==null&&l.time_difference_minutes!==undefined)?Number(l.time_difference_minutes):(actual-required); const status=l.time_status||calcTimeStatus(actual,required).status; const badge=`<span class="badge ${timeStatusClass(status)}">${timeStatusText(status)}</span>`; if(isSupervisorPage){ return `<tr><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${minsToText(actual)}</td><td>${badge}</td><td class="row-actions">${logWhatsappButtons(l)}</td></tr>`; } return `<tr><td>${esc(logDate)}</td><td>${esc(supervisorName(l.supervisor_id))}</td><td>${esc(projectName(l.project_id))}</td><td>${visitTypeText(l.visit_type)}</td><td>${timeOnly(l.check_in)}</td><td>${timeOnly(l.check_out)}</td><td>${minsToText(required)}</td><td>${minsToText(actual)}</td><td>${diffText(diff)}</td><td>${badge}</td><td>${l.travel_minutes||0}</td><td>${esc(l.notes)}</td><td class="row-actions">${logWhatsappButtons(l)}</td><td class="row-actions"><button onclick="editTimeLog(${l.id})">تعديل</button><button class="danger" onclick="deleteRow('time_logs',${l.id})">حذف</button></td></tr>`; }).join('') || (isSupervisorPage?'<tr><td colspan="8">لا توجد بيانات</td></tr>':'<tr><td colspan="14">لا توجد بيانات</td></tr>'); }
 function editTimeLog(id){ const l=data.logs.find(x=>x.id===id); if(!l) return; $('logId').value=l.id; $('logDate').value=l.log_date||String(l.check_in||'').slice(0,10); if($('logSupervisor')) $('logSupervisor').value=l.supervisor_id||''; $('logProject').value=l.project_id||''; if($('logVisitType')) $('logVisitType').value=l.visit_type||findProject(l.project_id)?.visit_type_default||'surface'; $('logIn').value=l.check_in?new Date(l.check_in).toTimeString().slice(0,5):''; $('logOut').value=l.check_out?new Date(l.check_out).toTimeString().slice(0,5):''; $('logTravel').value=l.travel_minutes||0; $('logNotes').value=l.notes||''; $('logFormTitle') && ($('logFormTitle').textContent='تعديل تسجيل'); window.scrollTo({top:0,behavior:'smooth'}); }

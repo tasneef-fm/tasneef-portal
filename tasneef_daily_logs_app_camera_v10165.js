@@ -845,6 +845,7 @@
     setTimeout(()=>{try{wRenderPanel();wRenderAttendanceWorkersCard();wRenderDailyWorkersCard();}catch(_){}},500);
     setInterval(()=>{try{wRenderPanel();wRenderDailyWorkersCard();}catch(_){}},30000);
     // حفظ يدوي بصيغة صحيحة: يحول HH:MM إلى تاريخ + وقت كامل قبل الإرسال إلى Supabase.
+    if(!(isAdminDailyEditAllowed() && document.getElementById('daily') && typeof window.saveTimeLog==='function')){
     window.saveTimeLog=async function(){
       if(!isAdminDailyEditAllowed()){ smartToast('التعديل مسموح للإدارة فقط','err'); return; }
       const key=opKey('manual'), l=lockRead(key);
@@ -914,6 +915,7 @@
         smartToast('تعذر حفظ التعديل: '+S(e.message||e),'err');
       }
     };
+    }
     console.log(VERSION,'installed - worker attendance project flow + admin edit preserve');
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(install,900)); else setTimeout(install,900);
