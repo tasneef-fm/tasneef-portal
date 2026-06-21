@@ -20058,3 +20058,83 @@ function financePrintReport(kind){
   };
   try{ window.sendLogWhatsappFromRow = sendLogWhatsappFromRow = function(row,type){ return shareLogV10175(row,type||((row&&row.check_out)?'out':'in')); }; }catch(_){ window.sendLogWhatsappFromRow=function(row,type){ return shareLogV10175(row,type); }; }
 })();
+
+
+/* ===== V10176: Clean daily WhatsApp message - only project/supervisor/workers/day/date/time/cleaning ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefCleanDailyWhatsappV10176) return;
+  window.__tasneefCleanDailyWhatsappV10176=true;
+  const S=v=>String(v==null?'':v).trim();
+  const badWorkerWords=[
+    'غسيل','تنظيف','رش','صهريج','صريج','خزان','خزانات','فلاتر','فلتر','مكيف','مكيفات','واجهات','واجهة','ممرات','ممر','مواقف','مكائن','ماكينة','مكنسة','مصاعد','مصعد','غرفة','غرف','سطح','اسطح','أسطح','مناور','بيارة','بيارات','صرف','مياة','مياه','اثاث','أثاث','مشتركة','مشترك','الدور','الارضي','الأرضي','الشارع','بيسمينت','البدروم','تلميع','جلي','مبيدات','مبيد','حرائق','دفاع مدني','علوية','أرضية','ارضية'
+  ];
+  function norm(v){return S(v).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ـ/g,'').replace(/\s+/g,' ').toLowerCase();}
+  function isRealWorkerName(name){
+    const n=S(name); if(!n || n==='-' || /^\d+$/.test(n)) return false;
+    const nn=norm(n);
+    if(badWorkerWords.some(w=>nn.includes(norm(w)))) return false;
+    const parts=n.split(/\s+/).filter(Boolean);
+    if(parts.length>4) return false;
+    if(n.length>38) return false;
+    return true;
+  }
+  function uniqueNames(list){ const m=new Map(); (list||[]).forEach(x=>{ const n=S(x); const k=norm(n); if(k && isRealWorkerName(n) && !m.has(k)) m.set(k,n); }); return [...m.values()]; }
+  function logDate(row){ return S(row&&row.log_date)||S(row&&row.visit_date)||S(row&&row.attendance_date)||S(row&&row.work_date)||S(row&&row.date)||S(row&&row.check_in).slice(0,10)||S(row&&row.created_at).slice(0,10)|| (typeof today==='function'?today():new Date().toISOString().slice(0,10)); }
+  function dayName(ds){ try{return new Date(ds+'T00:00:00').toLocaleDateString('ar-SA',{weekday:'long'});}catch(_){return '-';} }
+  function timeOf(row,type){ const v=type==='out'?(row&&row.check_out):(row&&row.check_in); try{return v?(new Date(v).toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit',hour12:false})):'-';}catch(_){return '-';} }
+  function visitLabel(v){ v=S(v); try{ if(typeof visitTypeText==='function') return visitTypeText(v)||v; }catch(_){} if(v==='deep') return 'نظافة عميقة'; if(v==='surface') return 'نظافة سطحية'; return v||'-'; }
+  function projectLabel(row){ try{return projectName(row&&row.project_id)||S(row&&row.project_name)||'-';}catch(_){return S(row&&row.project_name)||'-';} }
+  function supervisorLabel(row){ try{return supervisorName(row&&row.supervisor_id)||S(row&&row.supervisor_name)||'-';}catch(_){return S(row&&row.supervisor_name)||'-';} }
+  function workerDisplayNameById(id){ try{return workerName(id);}catch(_){ const w=(window.data&&data.workers||[]).find(x=>S(x.id)===S(id)); return S(w&&(w.name||w.full_name||w.worker_name)); } }
+  function workersForLog(row){
+    const pid=S(row&&row.project_id), sid=S(row&&row.supervisor_id), ds=logDate(row);
+    const attendanceRows=(window.data&&data.attendance||[]).filter(a=>{
+      const d=S(a.attendance_date||a.log_date||a.date||a.created_at).slice(0,10);
+      const present=!S(a.status) || /present|حاضر|موجود|yes|true/i.test(S(a.status));
+      const okDate=!ds || d===ds;
+      const okProject=!pid || S(a.project_id)===pid;
+      const okSup=!sid || S(a.supervisor_id)===sid;
+      return present && okDate && okProject && okSup;
+    });
+    let names=[];
+    if(attendanceRows.length){
+      names=attendanceRows.map(a=>S(a.worker_name||a.name||a.full_name)||workerDisplayNameById(a.worker_id));
+      const u=uniqueNames(names); if(u.length) return u.join('، ');
+    }
+    names=(window.data&&data.workers||[]).filter(w=>{
+      const st=S(w.status||'active').toLowerCase(); if(st==='inactive'||st==='deleted'||st==='موقوف') return false;
+      const wp=S((typeof workerProjectId==='function'?workerProjectId(w):(w.project_id||w.assigned_project_id))||'');
+      const ws=S((typeof workerSupId==='function'?workerSupId(w):(w.supervisor_id||w.app_supervisor_id))||'');
+      return (pid && wp===pid) || (!pid && sid && ws===sid) || (pid && sid && wp===pid && ws===sid);
+    }).map(w=>S(w.name||w.full_name||w.worker_name));
+    const u=uniqueNames(names);
+    return u.join('، ') || '-';
+  }
+  window.buildLogWhatsAppMessage=function(row,type){
+    type=type||((row&&row.check_out)?'out':'in');
+    const ds=logDate(row);
+    return [
+      'اسم المشروع: '+projectLabel(row),
+      'اسم المشرف: '+supervisorLabel(row),
+      'أسماء العمال: '+workersForLog(row),
+      'اليوم: '+dayName(ds),
+      'التاريخ: '+ds,
+      'الساعة: '+timeOf(row,type),
+      'نوع النظافة: '+visitLabel(row&&row.visit_type)
+    ].join('\n');
+  };
+  function photoForRow(row,type){ const src= type==='out' ? (row&&row.check_out_photo) : (row&&row.check_in_photo); return /^data:image\//i.test(S(src)) ? src : ''; }
+  function dataUrlToFile(dataUrl,name){ const parts=S(dataUrl).split(','); const mime=(parts[0].match(/:(.*?);/)||[])[1]||'image/jpeg'; const bin=atob(parts[1]||''); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); return new File([arr],name||'tasneef-log-photo.jpg',{type:mime,lastModified:Date.now()}); }
+  async function shareClean(row,type){
+    const text=window.buildLogWhatsAppMessage(row,type);
+    const photo=photoForRow(row,type);
+    try{ await navigator.clipboard?.writeText(text); }catch(_){ }
+    if(photo && navigator.share){
+      try{ const file=dataUrlToFile(photo,'tasneef-log-'+Date.now()+'.jpg'); if(!navigator.canShare || navigator.canShare({files:[file]})){ await navigator.share({title:'تصنيف',text,files:[file]}); return; } }catch(_){ }
+    }
+    window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener');
+  }
+  window.sendLogWhatsapp=function(id,type){ const row=(window.data&&data.logs||[]).find(x=>S(x.id)===S(id)); if(!row){ try{msg('لم يتم العثور على سجل الدخول والخروج','err');}catch(_){} return; } return shareClean(row,type||((row&&row.check_out)?'out':'in')); };
+  try{ window.sendLogWhatsappFromRow = sendLogWhatsappFromRow = function(row,type){ return shareClean(row,type||((row&&row.check_out)?'out':'in')); }; }catch(_){ window.sendLogWhatsappFromRow=function(row,type){ return shareClean(row,type); }; }
+})();

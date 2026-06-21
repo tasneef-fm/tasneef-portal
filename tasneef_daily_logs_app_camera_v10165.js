@@ -179,10 +179,23 @@
       return uniqueNames(names);
     }catch(_){ return []; }
   }
+
+  function isRealWorkerNameV10176(name){
+    const S2=v=>String(v==null?'':v).trim();
+    const n=S2(name); if(!n || n==='-' || /^\d+$/.test(n)) return false;
+    const nn=n.replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/ـ/g,'').replace(/\s+/g,' ').toLowerCase();
+    const bad=['غسيل','تنظيف','رش','صهريج','صريج','خزان','خزانات','فلاتر','فلتر','مكيف','مكيفات','واجهات','واجهة','ممرات','ممر','مواقف','مكائن','ماكينة','مصاعد','مصعد','غرفة','غرف','سطح','اسطح','أسطح','مناور','بيارة','بيارات','صرف','مياة','مياه','اثاث','أثاث','مشتركة','مشترك','الدور','الارضي','الأرضي','الشارع','بيسمينت','البدروم','تلميع','جلي','مبيدات','مبيد','حرائق','دفاع مدني','علوية','أرضية','ارضية'];
+    if(bad.some(w=>nn.includes(w.replace(/[أإآ]/g,'ا').replace(/ة/g,'ه').toLowerCase()))) return false;
+    const parts=n.split(/\s+/).filter(Boolean);
+    if(parts.length>4 || n.length>38) return false;
+    return true;
+  }
+  function dayNameV10176(ds){ try{return new Date(ds+'T00:00:00').toLocaleDateString('ar-SA',{weekday:'long'});}catch(_){return '-';} }
+
   async function currentWorkerNamesForMessage(){
-    let names=uniqueNames([...(window.__tasneefDailySelectedWorkers||[]).map(x=>typeof x==='string'?x:(x&&x.name)),...readDomWorkerNames(),...readLocalWorkerNames()]);
-    if(!names.length) names=await readSupabaseWorkerNames();
-    return uniqueNames(names).slice(0,25);
+    let names=uniqueNames([...(window.__tasneefDailySelectedWorkers||[]).map(x=>typeof x==='string'?x:(x&&x.name)),...readDomWorkerNames(),...readLocalWorkerNames()]).filter(isRealWorkerNameV10176);
+    if(!names.length) names=(await readSupabaseWorkerNames()).filter(isRealWorkerNameV10176);
+    return uniqueNames(names).filter(isRealWorkerNameV10176).slice(0,8);
   }
   function cleaningTypeLabelV10175(v){
     v=S(v);
@@ -195,16 +208,15 @@
   async function dailyMediaMessage(kind,time){
     const p=projectInfo();
     const workers=await currentWorkerNamesForMessage();
-    const title=kind==='out'?'تم تسجيل خروج':'تم تسجيل دخول';
+    const d=logDate();
     const lines=[
-      title,
-      '',
       'اسم المشروع: '+(p.name||p.id||'-'),
       'اسم المشرف: '+userName(),
-      'التاريخ: '+logDate(),
-      'الوقت: '+displayTime(time||timeNow()),
       'أسماء العمال: '+(workers.length?workers.join('، '):'-'),
-      'نوع التنظيف: '+cleaningTypeLabelV10175(visitType())
+      'اليوم: '+dayNameV10176(d),
+      'التاريخ: '+d,
+      'الساعة: '+displayTime(time||timeNow()),
+      'نوع النظافة: '+cleaningTypeLabelV10175(visitType())
     ];
     return lines.join('\n');
   }
