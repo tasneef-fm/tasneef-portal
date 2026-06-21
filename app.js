@@ -20628,3 +20628,131 @@ function financePrintReport(kind){
   window.TASNEEF_ATTENDANCE_ROOT_FIX_BUILD=BUILD;
   console.log('Tasneef '+BUILD+' loaded');
 })();
+
+
+/* ===== TASNEEF V10187 ATTENDANCE ORDER + TECHNICIANS RESTORE ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefV10187AttendanceOrderTechRestore) return;
+  window.__tasneefV10187AttendanceOrderTechRestore = true;
+  const BUILD='v10187-attendance-ordered-workers-and-technicians';
+  const $id=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  const A=v=>Array.isArray(v)?v:[];
+  const E=s=>S(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const ds=()=>window.data || (typeof data!=='undefined'?data:{}) || {};
+  function norm(v){ return S(v).toLowerCase().replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim(); }
+  function todayStr(){ try{ if(typeof today==='function') return today(); }catch(_){} const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function recDate(r){ return S(r?.attendance_date||r?.log_date||r?.date||r?.work_date||r?.check_in||r?.created_at).slice(0,10); }
+  function recMonth(r){ return recDate(r).slice(0,7); }
+  function workerById(id){ return A(ds().workers).find(w=>S(w.id)===S(id)) || {}; }
+  function userById(id){ return A(ds().users).find(u=>S(u.id)===S(id)) || A(ds().supervisors).find(u=>S(u.id)===S(id)) || A(ds().technicians).find(u=>S(u.id)===S(id)) || {}; }
+  function projectById(id){ return A(ds().projects).find(p=>S(p.id)===S(id)) || {}; }
+  function nameFromIdentity(identity){ const x=S(identity).replace(/^worker[_:\-]*/i,'').replace(/^tech[_:\-]*/i,'').replace(/^id[_:\-]*/i,'').replace(/_/g,' ').trim(); return /[a-zA-Z\u0600-\u06FF]/.test(x) ? x : ''; }
+  function workerName(id){ const w=workerById(id); return S(w.name||w.full_name||w.worker_name); }
+  function userName(id){ const u=userById(id); return S(u.full_name||u.name||u.username); }
+  function projectName2(id){ const p=projectById(id); try{ return (typeof projectName==='function' && projectName(id)) || S(p.name||p.project_name||id||'-'); }catch(_){ return S(p.name||p.project_name||id||'-')||'-'; } }
+  function userName2(id){ const u=userById(id); try{ return (typeof supervisorName==='function' && supervisorName(id)) || S(u.full_name||u.name||u.username||id||'-'); }catch(_){ return S(u.full_name||u.name||u.username||id||'-')||'-'; } }
+  function projectIdForWorker(w){ return w.project_id || w.assigned_project_id || w.current_project_id || ''; }
+  function supervisorIdForWorker(w){ const p=projectById(projectIdForWorker(w)); return w.app_supervisor_id || w.supervisor_id || p.supervisor_id || ''; }
+  function isTechLog(l){ return S(l?.visit_type)==='technician_attendance' || S(l?.notes).startsWith('فني:') || S(l?.entry_type)==='technician_attendance'; }
+  function techIdFromLog(l){ return l?.technician_id || l?.user_id || l?.created_by || l?.supervisor_id || l?.app_user_id || ''; }
+  function asTechAttendance(l){
+    const uid=techIdFromLog(l); const u=userById(uid);
+    const nm=S(l?.technician_name||l?.user_name||u.full_name||u.name||u.username||nameFromIdentity(l?.worker_identity));
+    if(!recDate(l) || !nm) return null;
+    return {__tech:true,__source:'time_logs',id:'techlog_'+S(l.id||uid+'_'+recDate(l)),attendance_date:recDate(l),worker_identity:'tech_'+norm(nm),worker_id:'tech_'+S(uid||nm),project_id:l.project_id||'',supervisor_id:uid||'',status:'present',notes:l.notes||'',__name:nm,__type:'فني'};
+  }
+  function allAttendanceRecords(){
+    const out=[];
+    A(ds().attendance).forEach(r=>out.push(r));
+    A(ds().logs).filter(isTechLog).forEach(l=>{ const r=asTechAttendance(l); if(r) out.push(r); });
+    return out;
+  }
+  function recordPerson(r){
+    const explicitTech = r?.__tech || S(r?.person_type||r?.employee_type||r?.type||r?.role).toLowerCase()==='technician' || norm(r?.person_type||r?.employee_type||r?.type||r?.role).includes('فني');
+    const rawId=S(r?.worker_id||'');
+    const w=!rawId.startsWith('tech_') ? workerById(rawId) : {};
+    const uid = rawId.startsWith('tech_') ? rawId.replace(/^tech_/,'') : (r?.technician_id || r?.user_id || r?.app_user_id || (explicitTech?rawId:''));
+    const u=userById(uid);
+    let name=S(r?.__name||w.name||w.full_name||w.worker_name||r?.worker_name||r?.name||r?.worker||u.full_name||u.name||u.username||nameFromIdentity(r?.worker_identity));
+    let type='عامل';
+    const workerType=norm(w.worker_type||w.type||w.job_type||r?.worker_type);
+    if(explicitTech || S(u.role)==='technician' || rawId.startsWith('tech_')) type='فني';
+    else if(workerType.includes('فني')) type='فني';
+    else if(workerType.includes('مساند') || workerType.includes('بديل') || S(w.is_support)==='true') type='بديل / مساند';
+    const projectId=r?.project_id || r?.assigned_project_id || projectIdForWorker(w) || '';
+    const supervisorId=r?.supervisor_id || r?.app_supervisor_id || supervisorIdForWorker(w) || (type==='فني' ? (uid||'') : '') || projectById(projectId).supervisor_id || '';
+    const identity=S(r?.worker_identity) || (type==='فني' ? 'tech_'+norm(name||uid) : 'worker_'+norm(name||rawId));
+    if(!name && rawId) name=(type==='فني'?'فني':'عامل')+' رقم '+rawId.replace(/^tech_/,'');
+    return {name,type,projectId,supervisorId,identity};
+  }
+  function statusInfo(st){ const n=norm(st); if(['present','حاضر','حضور','true','1'].includes(n)) return {label:'حاضر',short:'ح',cls:'green',kind:'p',rank:2}; if(['absent','غائب','غياب','false','0'].includes(n)) return {label:'غائب',short:'غ',cls:'red',kind:'a',rank:4}; if(['leave','اجازه','اجازة','إجازة'].map(norm).includes(n)) return {label:'إجازة',short:'ج',cls:'amber',kind:'l',rank:3}; if(['transfer','نقل','منقول'].includes(n)) return {label:'نقل',short:'ن',cls:'',kind:'t',rank:1}; return {label:'لم يسجل',short:'-',cls:'',kind:'',rank:0}; }
+  function bestRecord(records){ return A(records).slice().sort((a,b)=>statusInfo(b?.status).rank-statusInfo(a?.status).rank || Number(String(b?.id||'').replace(/\D/g,''))-Number(String(a?.id||'').replace(/\D/g,'')))[0] || {}; }
+  function uniqueText(vals){ const out=[], seen=new Set(); vals.map(S).filter(Boolean).forEach(v=>{ const k=norm(v); if(k&&!seen.has(k)){seen.add(k); out.push(v);} }); return out.join('، ') || '-'; }
+  function extractShift(n){ const m=S(n).match(/الفترة\s*:\s*([^|]+)/); return m?S(m[1]):''; }
+  function sortGroup(a,b){
+    const pa=recordPerson(bestRecord(a.records)), pb=recordPerson(bestRecord(b.records));
+    const av=[projectName2(pa.projectId), userName2(pa.supervisorId), pa.type, a.name].map(norm).join('|');
+    const bv=[projectName2(pb.projectId), userName2(pb.supervisorId), pb.type, b.name].map(norm).join('|');
+    return av.localeCompare(bv,'ar');
+  }
+  function setHeadHtml(head, days){
+    head.innerHTML='<tr><th>الاسم</th><th>النوع</th><th>المشرف / الفني</th><th>المشروع</th><th>الفترة</th>'+Array.from({length:days},(_,i)=>`<th>${String(i+1).padStart(2,'0')}</th>`).join('')+'<th>حضور</th><th>غياب</th><th>إجازة</th><th>نقل</th><th>النسبة</th></tr>';
+  }
+  function installStyle(){ if($id('tasneefV10187AttendanceStyle')) return; const st=document.createElement('style'); st.id='tasneefV10187AttendanceStyle'; st.textContent='.attendance-matrix-v10187 th,.attendance-matrix-v10187 td{text-align:center;white-space:nowrap}.attendance-matrix-v10187 th:first-child,.attendance-matrix-v10187 td:first-child{position:sticky;right:0;background:#fff;z-index:3;text-align:right;min-width:150px}.attendance-matrix-v10187 th:nth-child(2),.attendance-matrix-v10187 td:nth-child(2){min-width:90px}.attendance-matrix-v10187 th:nth-child(3),.attendance-matrix-v10187 td:nth-child(3){min-width:120px}.attendance-matrix-v10187 th:nth-child(4),.attendance-matrix-v10187 td:nth-child(4){min-width:140px}.att-name-muted{display:block;font-size:11px;color:#64748b;margin-top:2px}@media print{.attendance-matrix-v10187{font-size:10px!important}.side,.nav,.actions,.filters button,#globalMsg{display:none!important}}'; document.head.appendChild(st); }
+
+  window.renderAttendanceMonthly=function(){
+    installStyle();
+    const body=$id('attendanceMatrixBody'), head=$id('attendanceMatrixHead'); if(!body||!head) return;
+    const mEl=$id('attendanceMatrixMonth'); if(mEl&&!mEl.value) mEl.value=todayStr().slice(0,7);
+    const month=mEl?.value||todayStr().slice(0,7); const sid=$id('attendanceMatrixSupervisor')?.value||''; const q=norm($id('attendanceMatrixSearch')?.value||'');
+    const y=Number(month.slice(0,4)), m=Number(month.slice(5,7)); const days=new Date(y,m,0).getDate()||31;
+    let recs=allAttendanceRecords().filter(r=>recMonth(r)===month);
+    recs=recs.map(r=>({r,p:recordPerson(r)})).filter(x=>x.p.name && x.p.identity && (!sid || S(x.p.supervisorId)===S(sid)));
+    if(q) recs=recs.filter(x=>norm([x.p.name,x.p.type,projectName2(x.p.projectId),userName2(x.p.supervisorId),x.r.notes].join(' ')).includes(q));
+    const groups=new Map();
+    recs.forEach(x=>{ const key=x.p.identity; if(!groups.has(key)) groups.set(key,{name:x.p.name,type:x.p.type,records:[]}); groups.get(key).records.push(x.r); });
+    const arr=[...groups.values()].sort(sortGroup);
+    setHeadHtml(head,days); body.closest('table')?.classList.add('attendance-matrix-v10187');
+    let totalP=0,totalA=0,totalL=0,totalT=0;
+    body.innerHTML=arr.map(g=>{
+      const sample=bestRecord(g.records); const p0=recordPerson(sample);
+      const byDate=new Map(); g.records.forEach(r=>{ const d=recDate(r); if(!d) return; if(!byDate.has(d)) byDate.set(d,[]); byDate.get(d).push(r); });
+      let p=0,a=0,l=0,t=0; const cells=[];
+      for(let d=1; d<=days; d++){
+        const ds2=month+'-'+String(d).padStart(2,'0'); const rec=bestRecord(byDate.get(ds2)||[]); const st=statusInfo(rec.status);
+        if(st.kind==='p') p++; else if(st.kind==='a') a++; else if(st.kind==='l') l++; else if(st.kind==='t') t++;
+        cells.push(`<td title="${E(st.label)}"><span class="att-cell ${E(st.cls)}">${E(st.short)}</span></td>`);
+      }
+      totalP+=p; totalA+=a; totalL+=l; totalT+=t; const denom=p+a+l+t; const pct=denom?p/denom*100:0; const cls=pct>=90?'green':(pct>=70?'amber':'red');
+      const supText=p0.type==='فني' ? (userName2(p0.supervisorId)||p0.name) : uniqueText(g.records.map(r=>recordPerson(r).supervisorId).filter(Boolean).map(userName2));
+      const projText=uniqueText(g.records.map(r=>recordPerson(r).projectId).filter(Boolean).map(projectName2));
+      const shiftText=uniqueText(g.records.map(r=>extractShift(r.notes)).filter(Boolean));
+      const merged=g.records.length>1?`<span class="att-name-muted">${g.records.length} سجل محفوظ</span>`:'';
+      return `<tr><td><b>${E(g.name)}</b>${merged}</td><td>${E(p0.type)}</td><td>${E(supText)}</td><td>${E(projText)}</td><td>${E(shiftText)}</td>${cells.join('')}<td><span class="badge green">${p}</span></td><td><span class="badge red">${a}</span></td><td><span class="badge amber">${l}</span></td><td><span class="badge">${t}</span></td><td><span class="badge ${E(cls)}">${pct.toFixed(1)}%</span></td></tr>`;
+    }).join('') || `<tr><td colspan="${days+10}">لا توجد سجلات حضور مطابقة للفلاتر المختارة</td></tr>`;
+    const denom=totalP+totalA+totalL+totalT; const pct=denom?totalP/denom*100:0; const sum=$id('attendanceMatrixSummary'); if(sum) sum.innerHTML=`<div class="kpi"><small>الأسماء بدون تكرار</small><b>${arr.length}</b></div><div class="kpi"><small>إجمالي الحضور</small><b>${totalP}</b></div><div class="kpi"><small>إجمالي الغياب</small><b>${totalA}</b></div><div class="kpi"><small>نسبة الحضور</small><b>${pct.toFixed(1)}%</b></div>`;
+  };
+  try{ renderAttendanceMonthly=window.renderAttendanceMonthly; }catch(_){ }
+
+  window.renderAttendance=function(){
+    const b=$id('attendanceBody'); if(!b) return;
+    const date=$id('attendanceFilterDate')?.value||''; const sid=$id('attendanceFilterSupervisor')?.value||''; const q=norm($id('attendanceSearch')?.value||'');
+    const table=b.closest('table'); const th=table?.querySelector('thead'); if(th) th.innerHTML='<tr><th>التاريخ</th><th>الاسم</th><th>النوع</th><th>المشرف / الفني</th><th>المشروع</th><th>الحالة</th><th>ملاحظات</th><th>إجراء</th></tr>';
+    let recs=allAttendanceRecords().filter(r=>(!date||recDate(r)===date)).map(r=>({r,p:recordPerson(r)})).filter(x=>x.p.name && (!sid||S(x.p.supervisorId)===S(sid)));
+    if(q) recs=recs.filter(x=>norm([x.p.name,x.p.type,projectName2(x.p.projectId),userName2(x.p.supervisorId),x.r.notes].join(' ')).includes(q));
+    const groups=new Map(); recs.forEach(x=>{ const key=recDate(x.r)+'|'+x.p.identity; if(!groups.has(key)) groups.set(key,{name:x.p.name,records:[]}); groups.get(key).records.push(x.r); });
+    const arr=[...groups.values()].sort(sortGroup);
+    b.innerHTML=arr.map(g=>{ const r=bestRecord(g.records); const p=recordPerson(r); const st=statusInfo(r.status); const supText=p.type==='فني'?(userName2(p.supervisorId)||p.name):uniqueText(g.records.map(x=>recordPerson(x).supervisorId).filter(Boolean).map(userName2)); const projText=uniqueText(g.records.map(x=>recordPerson(x).projectId).filter(Boolean).map(projectName2)); const notes=uniqueText(g.records.map(x=>x.notes).filter(Boolean)); const realId=String(r.id||'').startsWith('techlog_')?'':r.id; return `<tr><td>${E(recDate(r))}</td><td><b>${E(g.name)}</b></td><td>${E(p.type)}</td><td>${E(supText)}</td><td>${E(projText)}</td><td><span class="badge ${E(st.cls)}">${E(st.label)}</span></td><td>${E(notes)}</td><td class="row-actions">${realId?`<button onclick="editAttendance(${Number(realId)})">تعديل</button>`:''}</td></tr>`; }).join('') || '<tr><td colspan="8">لا توجد بيانات</td></tr>';
+    try{ window.renderAttendanceWorkersQuick&&window.renderAttendanceWorkersQuick(); }catch(_){ }
+  };
+  try{ renderAttendance=window.renderAttendance; }catch(_){ }
+
+  document.addEventListener('change',e=>{ if(e.target&&['attendanceFilterDate','attendanceFilterSupervisor','attendanceMatrixMonth','attendanceMatrixSupervisor'].includes(e.target.id)) setTimeout(()=>{try{window.renderAttendance();window.renderAttendanceMonthly();}catch(_){ }},30); });
+  document.addEventListener('input',e=>{ if(e.target&&['attendanceSearch','attendanceMatrixSearch'].includes(e.target.id)) setTimeout(()=>{try{window.renderAttendance();window.renderAttendanceMonthly();}catch(_){ }},30); });
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{try{window.renderAttendance&&window.renderAttendance();window.renderAttendanceMonthly&&window.renderAttendanceMonthly();}catch(e){console.warn(e)}},1600));
+  window.addEventListener('load',()=>setTimeout(()=>{try{window.renderAttendance&&window.renderAttendance();window.renderAttendanceMonthly&&window.renderAttendanceMonthly();}catch(e){console.warn(e)}},1200));
+  window.TASNEEF_ATTENDANCE_ORDER_TECH_BUILD=BUILD;
+  console.log('Tasneef '+BUILD+' loaded');
+})();
