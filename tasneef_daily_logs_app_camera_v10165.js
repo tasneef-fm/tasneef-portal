@@ -23,31 +23,9 @@
   function cleanTime(t){
     t=S(t);
     if(!t) return timeNow();
-    // يقبل ISO/timestamptz من قاعدة البيانات ويعيد HH:mm محليًا.
-    if(/T/.test(t)){
-      try{
-        const d=new Date(t);
-        if(!isNaN(d)){ const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes()); }
-      }catch(_){ }
-    }
-    // يقبل إدخال 12 ساعة: 03:26 PM / 03:26 م / 05:01 مساءً
-    const raw=t.replace(/[٠-٩]/g,ch=>'٠١٢٣٤٥٦٧٨٩'.indexOf(ch));
-    const m=raw.match(/(\d{1,2})\s*:\s*(\d{2})(?:\s*(:?\d{2}))?\s*(am|pm|a\.?m\.?|p\.?m\.?|ص|م|صباح(?:اً)?|مساء(?:ً)?)/i);
-    if(m){
-      let h=Number(m[1]);
-      const min=m[2];
-      const mer=S(m[4]).toLowerCase();
-      const isPm=/pm|p\.?m\.?|م|مساء/.test(mer);
-      const isAm=/am|a\.?m\.?|ص|صباح/.test(mer);
-      if(isPm && h<12) h+=12;
-      if(isAm && h===12) h=0;
-      return String(h).padStart(2,'0')+':'+min;
-    }
-    const m24=raw.match(/(\d{1,2})\s*:\s*(\d{2})/);
-    if(m24){
-      let h=Number(m24[1]);
-      if(h>=0 && h<=23) return String(h).padStart(2,'0')+':'+m24[2];
-    }
+    if(/T/.test(t)){ try{ const d=new Date(t); if(!isNaN(d)){ const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes()); } }catch(_){ } }
+    const m=t.match(/(\d{1,2}):(\d{2})/);
+    if(m) return String(m[1]).padStart(2,'0')+':'+m[2];
     return timeNow();
   }
   function toDbTimestamp(t){
@@ -525,22 +503,12 @@
   function mergeManualPayloadWithOriginal(original,payload){
     const base=Object.assign({},original||{});
     const out={updated_at:nowIso()};
-    // عند تعديل وقت سجل موجود لا نغيّر التاريخ أو المشرف أو المشروع أو نوع الزيارة.
-    // هذا يمنع اختفاء السجل من جدول التسجيلات اليومية بعد الحفظ تحت فلاتر المشرف/المشروع/التاريخ.
+    // لا نرسل حقول فارغة فوق السجل القديم. نحافظ على تاريخ السجل الأصلي عند تعديل الوقت فقط.
     const effectiveDate=dateFromRow(base)||S(payload.log_date)||logDate();
     out.log_date=effectiveDate;
-
-    if(S(base.project_id)) out.project_id=base.project_id;
-    else if(S(payload.project_id)) out.project_id=payload.project_id;
-    if(S(base.project_name)) out.project_name=base.project_name;
-
-    if(S(base.supervisor_id)) out.supervisor_id=base.supervisor_id;
-    else if(S(payload.supervisor_id)) out.supervisor_id=payload.supervisor_id;
-    if(S(base.supervisor_name)) out.supervisor_name=base.supervisor_name;
-
-    if(S(base.visit_type)) out.visit_type=base.visit_type;
-    else if(S(payload.visit_type)) out.visit_type=payload.visit_type;
-
+    if(S(payload.project_id)) out.project_id=payload.project_id; else if(S(base.project_id)) out.project_id=base.project_id;
+    if(S(payload.supervisor_id)) out.supervisor_id=payload.supervisor_id; else if(S(base.supervisor_id)) out.supervisor_id=base.supervisor_id;
+    if(S(payload.visit_type)) out.visit_type=payload.visit_type; else if(S(base.visit_type)) out.visit_type=base.visit_type;
     if(Object.prototype.hasOwnProperty.call(payload,'travel_minutes')) out.travel_minutes=payload.travel_minutes;
     if(Object.prototype.hasOwnProperty.call(payload,'notes')) out.notes=payload.notes;
     if(Object.prototype.hasOwnProperty.call(payload,'check_in')) out.check_in=payload.check_in;
@@ -864,7 +832,8 @@
         lockWrite(key,{status:'done'});
         smartToast('تم تعديل السجل وبقي ظاهرًا');
         try{ if(typeof window.renderSupervisorDailySummary==='function') window.renderSupervisorDailySummary(); }catch(_){ }
-        try{ if(typeof window.renderTimeLogs==='function') await Promise.resolve(window.renderTimeLogs()); }catch(_){ }
+        try{ if(typeof window.renderTimeLogs==='function') window.renderTimeLogs(); }catch(_){ }
+        setTimeout(()=>{ try{ if(typeof window.renderTimeLogs==='function') window.renderTimeLogs(); }catch(_){ } },450);
       }catch(e){
         lockClear(key);
         smartToast('تعذر حفظ التعديل: '+S(e.message||e),'err');
