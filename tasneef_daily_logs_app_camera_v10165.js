@@ -23,21 +23,30 @@
   function cleanTime(t){
     t=S(t);
     if(!t) return timeNow();
-    if(/T/.test(t)){ try{ const d=new Date(t); if(!isNaN(d)){ const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes()); } }catch(_){ } }
-    const normalized=t
-      .replace(/[٠-٩]/g,ch=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(ch)))
-      .replace(/[۰-۹]/g,ch=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(ch)))
-      .replace(/صباحًا|صباحا|ص\b|AM/ig,' AM')
-      .replace(/مساءً|مساء|م\b|PM/ig,' PM');
-    const m=normalized.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+    // يقبل ISO/timestamptz من قاعدة البيانات ويعيد HH:mm محليًا.
+    if(/T/.test(t)){
+      try{
+        const d=new Date(t);
+        if(!isNaN(d)){ const z=n=>String(n).padStart(2,'0'); return z(d.getHours())+':'+z(d.getMinutes()); }
+      }catch(_){ }
+    }
+    // يقبل إدخال 12 ساعة: 03:26 PM / 03:26 م / 05:01 مساءً
+    const raw=t.replace(/[٠-٩]/g,ch=>'٠١٢٣٤٥٦٧٨٩'.indexOf(ch));
+    const m=raw.match(/(\d{1,2})\s*:\s*(\d{2})(?:\s*(:?\d{2}))?\s*(am|pm|a\.?m\.?|p\.?m\.?|ص|م|صباح(?:اً)?|مساء(?:ً)?)/i);
     if(m){
-      let h=Number(m[1])||0;
-      const min=String(m[2]).padStart(2,'0');
-      const mer=S(m[3]).toUpperCase();
-      if(mer==='PM' && h<12) h+=12;
-      if(mer==='AM' && h===12) h=0;
-      h=Math.max(0,Math.min(23,h));
+      let h=Number(m[1]);
+      const min=m[2];
+      const mer=S(m[4]).toLowerCase();
+      const isPm=/pm|p\.?m\.?|م|مساء/.test(mer);
+      const isAm=/am|a\.?m\.?|ص|صباح/.test(mer);
+      if(isPm && h<12) h+=12;
+      if(isAm && h===12) h=0;
       return String(h).padStart(2,'0')+':'+min;
+    }
+    const m24=raw.match(/(\d{1,2})\s*:\s*(\d{2})/);
+    if(m24){
+      let h=Number(m24[1]);
+      if(h>=0 && h<=23) return String(h).padStart(2,'0')+':'+m24[2];
     }
     return timeNow();
   }
@@ -431,23 +440,13 @@
   function hasOut(r){ return S(r.check_out||r.time_out||r.log_out||r.out_time||r.end_time); }
   function rowId(r){ return r.id||r.log_id||r.uuid||r.key; }
   function byNewest(a,b){ return S(b.created_at||b.updated_at||b.id).localeCompare(S(a.created_at||a.updated_at||a.id)); }
-  async function selectLogsByDate(date){
-    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
-    const cols=['log_date','visit_date','attendance_date','date'];
-    let last=null;
-    for(const col of cols){
-      const res=await sb.from(TABLE).select('*').eq(col,date).limit(1000);
-      if(!res.error) return res;
-      last=res;
-      const missing=unsupportedColumn(res.error);
-      if(missing===col || /does not exist|Could not find/i.test(S(res.error.message))) continue;
-      break;
-    }
-    return last || {data:[],error:null};
-  }
   async function fetchTodayRows(){
+    const sb=getClient(); if(!sb) throw new Error('Supabase غير جاهز');
     const d=logDate();
-    const res=await selectLogsByDate(d);
+    let res=await sb.from(TABLE).select('*').eq('log_date',d).limit(1000);
+    if(res.error){
+      res=await sb.from(TABLE).select('*').eq('date',d).limit(1000);
+    }
     if(res.error) throw res.error;
     const p=projectInfo();
     return (res.data||[]).filter(r=>sameProject(r,p)&&sameUser(r)&&sameVisit(r)).sort(byNewest);
@@ -507,7 +506,7 @@
     return null;
   }
   function dateFromRow(row){
-    const v=S(row&&row.log_date)||S(row&&row.visit_date)||S(row&&row.attendance_date)||S(row&&row.date)||S(row&&row.work_date)||S(row&&row.created_date);
+    const v=S(row&&row.log_date)||S(row&&row.date)||S(row&&row.work_date)||S(row&&row.created_date);
     if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
     const t=S(hasIn(row)||hasOut(row)||row&&row.created_at);
     if(/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0,10);
@@ -523,73 +522,30 @@
     try{ if(date && $('logDate')) $('logDate').value=date; }catch(_){ }
     try{ if(date && $('dailyDate')) $('dailyDate').value=date; }catch(_){ }
   }
-  function minutesOfTime(v){
-    const hm=cleanTime(v);
-    const m=hm.match(/^(\d{2}):(\d{2})$/);
-    return m ? Number(m[1])*60+Number(m[2]) : null;
-  }
-  function actualMinutesFromValues(checkIn,checkOut){
-    if(!S(checkIn)||!S(checkOut)) return null;
-    const a=minutesOfTime(checkIn), b=minutesOfTime(checkOut);
-    if(a==null||b==null) return null;
-    return Math.max(0,b>=a ? b-a : (b+1440)-a);
-  }
-  function requiredMinutesFromRow(row){
-    const raw=S(row&&(
-      row.required_minutes||row.required_time_minutes||row.required_duration_minutes||
-      row.required_time||row.required_duration||row.expected_time||row.expected_duration
-    ));
-    if(!raw) return null;
-    if(/^\d+(\.\d+)?$/.test(raw)) return Number(raw);
-    const h=raw.match(/(\d{1,2})\s*:\s*(\d{2})/);
-    if(h) return Number(h[1])*60+Number(h[2]);
-    const hours=raw.match(/(\d+(?:\.\d+)?)\s*(?:ساعة|ساعه|hour|hr)/i);
-    const mins=raw.match(/(\d+(?:\.\d+)?)\s*(?:دقيقة|دقيقه|min)/i);
-    return (hours?Number(hours[1])*60:0)+(mins?Number(mins[1]):0) || null;
-  }
-  function addDurationFields(out,base){
-    const actual=actualMinutesFromValues(out.check_in||hasIn(base),out.check_out||hasOut(base));
-    if(actual==null) return out;
-    const required=requiredMinutesFromRow(base);
-    ['actual_minutes','actual_time_minutes','duration_minutes'].forEach(k=>{
-      if(Object.prototype.hasOwnProperty.call(base,k)) out[k]=actual;
-    });
-    if(required!=null){
-      ['difference_minutes','diff_minutes'].forEach(k=>{
-        if(Object.prototype.hasOwnProperty.call(base,k)) out[k]=actual-required;
-      });
-      if(Object.prototype.hasOwnProperty.call(base,'time_status')){
-        out.time_status=actual>=required?'مكتمل':'ناقص';
-      }
-    }
-    return out;
-  }
-  async function refreshDailyLogsView(){
-    try{
-      if(typeof window.renderTimeLogs==='function'){
-        await Promise.resolve(window.renderTimeLogs());
-      }
-    }catch(_){ }
-    try{
-      if(typeof window.renderSupervisorDailySummary==='function'){
-        await Promise.resolve(window.renderSupervisorDailySummary());
-      }
-    }catch(_){ }
-  }
   function mergeManualPayloadWithOriginal(original,payload){
     const base=Object.assign({},original||{});
     const out={updated_at:nowIso()};
-    // لا نرسل حقول فارغة فوق السجل القديم. نحافظ على تاريخ السجل الأصلي عند تعديل الوقت فقط.
+    // عند تعديل وقت سجل موجود لا نغيّر التاريخ أو المشرف أو المشروع أو نوع الزيارة.
+    // هذا يمنع اختفاء السجل من جدول التسجيلات اليومية بعد الحفظ تحت فلاتر المشرف/المشروع/التاريخ.
     const effectiveDate=dateFromRow(base)||S(payload.log_date)||logDate();
     out.log_date=effectiveDate;
-    if(S(base.project_id)) out.project_id=base.project_id; else if(S(payload.project_id)) out.project_id=payload.project_id;
-    if(S(base.supervisor_id)) out.supervisor_id=base.supervisor_id; else if(S(payload.supervisor_id)) out.supervisor_id=payload.supervisor_id;
-    if(S(base.visit_type)) out.visit_type=base.visit_type; else if(S(payload.visit_type)) out.visit_type=payload.visit_type;
+
+    if(S(base.project_id)) out.project_id=base.project_id;
+    else if(S(payload.project_id)) out.project_id=payload.project_id;
+    if(S(base.project_name)) out.project_name=base.project_name;
+
+    if(S(base.supervisor_id)) out.supervisor_id=base.supervisor_id;
+    else if(S(payload.supervisor_id)) out.supervisor_id=payload.supervisor_id;
+    if(S(base.supervisor_name)) out.supervisor_name=base.supervisor_name;
+
+    if(S(base.visit_type)) out.visit_type=base.visit_type;
+    else if(S(payload.visit_type)) out.visit_type=payload.visit_type;
+
     if(Object.prototype.hasOwnProperty.call(payload,'travel_minutes')) out.travel_minutes=payload.travel_minutes;
     if(Object.prototype.hasOwnProperty.call(payload,'notes')) out.notes=payload.notes;
     if(Object.prototype.hasOwnProperty.call(payload,'check_in')) out.check_in=payload.check_in;
     if(Object.prototype.hasOwnProperty.call(payload,'check_out')) out.check_out=payload.check_out;
-    return addDurationFields(out,base);
+    return out;
   }
   function fillForm(kind,time,row){
     if(kind==='in' && $('logIn')) $('logIn').value=displayTime(time||hasIn(row)||timeNow());
@@ -845,7 +801,6 @@
     setTimeout(()=>{try{wRenderPanel();wRenderAttendanceWorkersCard();wRenderDailyWorkersCard();}catch(_){}},500);
     setInterval(()=>{try{wRenderPanel();wRenderDailyWorkersCard();}catch(_){}},30000);
     // حفظ يدوي بصيغة صحيحة: يحول HH:MM إلى تاريخ + وقت كامل قبل الإرسال إلى Supabase.
-    if(!(isAdminDailyEditAllowed() && document.getElementById('daily') && typeof window.saveTimeLog==='function')){
     window.saveTimeLog=async function(){
       if(!isAdminDailyEditAllowed()){ smartToast('التعديل مسموح للإدارة فقط','err'); return; }
       const key=opKey('manual'), l=lockRead(key);
@@ -854,7 +809,6 @@
       try{
         const id=S($('logId')&&$('logId').value);
         const p=projectInfo(); const u=currentUser();
-        const supSelect=S($('logSupervisor')&&$('logSupervisor').value);
         const inVal=S($('logIn')&&$('logIn').value);
         const outVal=S($('logOut')&&$('logOut').value);
         const original=id ? await fetchLogById(id) : null;
@@ -863,9 +817,9 @@
 
         const rawPayload={
           log_date:effectiveDate,
-          project_id:S(original&&original.project_id)||p.id||p.name,
-          supervisor_id:S(original&&original.supervisor_id)||supSelect||S(u.id||u.user_id||u.username||u.email||userName()),
-          visit_type:S(original&&original.visit_type)||visitType(),
+          project_id:p.id||p.name,
+          supervisor_id:S(u.id||u.user_id||u.username||u.email||userName()),
+          visit_type:visitType(),
           travel_minutes:Number(S($('logTravel')&&$('logTravel').value))||0,
           notes:S($('logNotes')&&$('logNotes').value),
           updated_at:nowIso()
@@ -907,15 +861,15 @@
             if(hasOut(saved)||insertPayload.check_out) fillForm('out',hasOut(saved)||insertPayload.check_out,saved);
           }
         }
-        lockClear(key);
+        lockWrite(key,{status:'done'});
         smartToast('تم تعديل السجل وبقي ظاهرًا');
-        await refreshDailyLogsView();
+        try{ if(typeof window.renderSupervisorDailySummary==='function') window.renderSupervisorDailySummary(); }catch(_){ }
+        try{ if(typeof window.renderTimeLogs==='function') await Promise.resolve(window.renderTimeLogs()); }catch(_){ }
       }catch(e){
         lockClear(key);
         smartToast('تعذر حفظ التعديل: '+S(e.message||e),'err');
       }
     };
-    }
     console.log(VERSION,'installed - worker attendance project flow + admin edit preserve');
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(install,900)); else setTimeout(install,900);
