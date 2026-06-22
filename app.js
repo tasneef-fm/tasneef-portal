@@ -21218,3 +21218,202 @@ function financePrintReport(kind){
   setTimeout(()=>{ try{ if($id('monthlyBody')) window.renderMonthly(); }catch(_){} }, 2000);
   console.log('Tasneef V10193 monthly current projects and times loaded');
 })();
+
+/* ===== V10194: Monthly source of truth = current projects table, not old logs/cache ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefMonthlyCurrentProjectsV10194) return;
+  window.__tasneefMonthlyCurrentProjectsV10194 = true;
+
+  const $ = id => document.getElementById(id);
+  const S = v => String(v ?? '').trim();
+  const N = v => { const n = Number(v || 0); return Number.isFinite(n) ? n : 0; };
+  const esc = v => S(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const DATA = () => { try { return window.data || data || {}; } catch(_) { return {}; } };
+  const setMsg = txt => { const m=$('mt52Message'); if(m){ m.classList.remove('hidden'); m.textContent=txt; } else if(typeof msg==='function') msg(txt); };
+  const monthValue = () => $('mt52Month')?.value || $('monthlyMonth')?.value || (typeof today==='function' ? today().slice(0,7) : new Date().toISOString().slice(0,7));
+  const supValue = () => $('mt52Supervisor')?.value || $('monthlySupervisor')?.value || '';
+  const projectValue = () => $('mt52Project')?.value || '';
+  const logDate = l => S(l.log_date || l.date || l.check_in || l.created_at).slice(0,10);
+  const pById = pid => (DATA().projects || []).find(p => S(p.id) === S(pid));
+  const userById = sid => (DATA().users || DATA().supervisors || []).find(u => S(u.id) === S(sid)) || {};
+  const pName = pid => { const p=pById(pid); if(p) return p.name || '-'; try{return projectName(pid)}catch(_){return '-'} };
+  const sName = sid => { try{return supervisorName(sid)}catch(_){ const u=userById(sid); return u.full_name || u.name || '-'; } };
+  const minsTxt = m => { try{return minsToText(m)}catch(_){return Math.round(N(m)).toLocaleString('en-US')+' دقيقة'} };
+  const pctTxt = p => { try{return percentText(p)}catch(_){return N(p).toFixed(1).replace(/\.0$/,'')+'%'} };
+  const norm = v => S(v).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
+
+  function isActiveProject(p){
+    const st = S(p.status || 'active').toLowerCase();
+    return !['inactive','deleted','archived','stopped','متوقف','محذوف'].includes(st) && !p.deleted_at && p.is_deleted !== true;
+  }
+  function workerProject(w){
+    try{ if(typeof workerProjectId==='function') return workerProjectId(w); }catch(_){}
+    return w.project_id || w.assigned_project_id || w.current_project_id || '';
+  }
+  function workersForProject(pid){
+    const m = new Map();
+    (DATA().workers || []).forEach(w=>{
+      const st=S(w.status||'active').toLowerCase();
+      if(['inactive','deleted','archived','محذوف','متوقف'].includes(st) || w.deleted_at || w.is_deleted===true) return;
+      if(S(workerProject(w)) !== S(pid)) return;
+      const name = S(w.name || w.full_name || w.worker_name);
+      const key = norm(name);
+      if(key && !m.has(key)) m.set(key, name);
+    });
+    return [...m.values()].sort((a,b)=>a.localeCompare(b,'ar'));
+  }
+  function actualMinutes(l){
+    try{ if(typeof logActualMinutes === 'function') return N(logActualMinutes(l)); }catch(_){}
+    try{ if(l.check_in && l.check_out && typeof minutesBetween === 'function') return N(minutesBetween(l.check_in,l.check_out)); }catch(_){}
+    return N(l.duration_minutes || l.actual_minutes || l.minutes);
+  }
+  function requiredMinutes(l){
+    try{ if(typeof logRequiredMinutes === 'function') return N(logRequiredMinutes(l)); }catch(_){}
+    return N(l.required_minutes || l.required_daily_minutes || l.daily_required_minutes);
+  }
+  function projectType(p){
+    const t = S(p.operation_type || p.project_type || p.work_type || '').toLowerCase();
+    if(t.includes('permanent') || t.includes('full') || t.includes('fixed') || t.includes('دوام')) return 'permanent';
+    return 'daily';
+  }
+  function status(diff, required){
+    try{ if(typeof monthlyStatusFromDiffV60==='function') return monthlyStatusFromDiffV60(diff, required); }catch(_){}
+    if(!N(required)) return {text:'لا يوجد وقت مسجل', cls:'neutral'};
+    if(diff < -5) return {text:'ناقص وقت', cls:'red'};
+    if(diff > 5) return {text:'زيادة وقت', cls:'amber'};
+    return {text:'ضمن الوقت', cls:'green'};
+  }
+
+  async function reloadFreshMonthlyDataV10194(){
+    if(!window.sb) return;
+    const month = monthValue();
+    const from = month + '-01';
+    const toDate = new Date(from + 'T00:00:00');
+    toDate.setMonth(toDate.getMonth()+1);
+    const to = toDate.toISOString().slice(0,10);
+    try{
+      const [projects, workers, users, logs] = await Promise.all([
+        sb.from('projects').select('*').order('id'),
+        sb.from('workers').select('*').order('id'),
+        sb.from('app_users').select('*').order('id'),
+        sb.from('time_logs').select('*').gte('log_date', from).lt('log_date', to).order('check_in',{ascending:false})
+      ]);
+      if(projects.error) throw projects.error;
+      const d = DATA();
+      d.projects = projects.data || [];
+      if(!workers.error) d.workers = workers.data || [];
+      if(!users.error){ d.users = users.data || []; d.supervisors = d.users.filter(u=>u.role==='supervisor' && u.is_active!==false); }
+      if(!logs.error) d.logs = logs.data || [];
+    }catch(e){ console.warn('V10194 monthly fresh load failed', e); }
+  }
+
+  function fillMonthlyFiltersV10194(){
+    const m=$('mt52Month'); if(m && !m.value) m.value=monthValue();
+    const sups = (DATA().supervisors || DATA().users || []).filter(u => !u.role || u.role==='supervisor');
+    const sup=$('mt52Supervisor');
+    if(sup && !sup.dataset.v10194Filled){
+      const cur=sup.value; sup.innerHTML='<option value="">كل المشرفين</option>'+sups.map(u=>`<option value="${esc(u.id)}">${esc(u.full_name||u.name||u.username)}</option>`).join(''); sup.value=cur; sup.dataset.v10194Filled='1';
+    }
+    const pro=$('mt52Project');
+    if(pro){
+      const cur=pro.value; pro.innerHTML='<option value="">كل المشاريع</option>'+(DATA().projects||[]).filter(isActiveProject).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); pro.value=cur;
+    }
+  }
+
+  function buildRowsV10194(){
+    const month=monthValue(), selectedSup=S(supValue()), selectedProject=S(projectValue());
+    const activeProjects=(DATA().projects||[]).filter(isActiveProject);
+    const activeIds=new Set(activeProjects.map(p=>S(p.id)));
+    const map=new Map();
+    activeProjects.forEach(p=>{
+      const sid=S(p.supervisor_id || '');
+      const pid=S(p.id);
+      if(selectedSup && sid!==selectedSup) return;
+      if(selectedProject && pid!==selectedProject) return;
+      map.set(pid, {s:sid, p:pid, project:p, type:projectType(p), a:0, r:0, t:0, c:0});
+    });
+    // مهم: لا نضيف أي مشروع من السجلات إذا كان محذوفًا أو غير موجود في جدول المشاريع الحالي.
+    (DATA().logs||[]).forEach(l=>{
+      const d=logDate(l); if(!d || d.slice(0,7)!==month) return;
+      const pid=S(l.project_id); if(!pid || !activeIds.has(pid)) return;
+      const row=map.get(pid); if(!row) return;
+      row.a += actualMinutes(l);
+      row.r += requiredMinutes(l);
+      row.t += N(l.travel_minutes || l.transfer_minutes);
+      row.c += 1;
+    });
+    const bySup={}; [...map.values()].forEach(r=>{ const sid=S(r.s); bySup[sid]=(bySup[sid]||0)+N(r.a); });
+    return [...map.values()].map(r=>{
+      const supTotal=bySup[S(r.s)]||0;
+      const percent=supTotal?N(r.a)/supTotal*100:0;
+      const commitment=N(r.r)?N(r.a)/N(r.r)*100:0;
+      const st=status(N(r.a)-N(r.r), r.r);
+      return {...r, supervisorName:sName(r.s), projectName:pName(r.p), workers:workersForProject(r.p), supTotal, percent, commitment, st:st.text, cls:st.cls};
+    }).sort((a,b)=>a.supervisorName.localeCompare(b.supervisorName,'ar') || a.projectName.localeCompare(b.projectName,'ar'));
+  }
+
+  function renderMt52V10194(rows){
+    const bySup=new Map(); rows.forEach(r=>{ const k=S(r.s); if(!bySup.has(k)) bySup.set(k,[]); bySup.get(k).push(r); });
+    const daily=rows.filter(r=>r.type!=='permanent');
+    const permanent=rows.filter(r=>r.type==='permanent');
+    const summary=$('mt52Summary');
+    if(summary){
+      summary.innerHTML=`<div class="kpi"><small>المشاريع الحالية</small><b>${rows.length}</b></div><div class="kpi"><small>مشاريع الزيارة</small><b>${daily.length}</b></div><div class="kpi"><small>دوام كامل</small><b>${permanent.length}</b></div><div class="kpi"><small>إجمالي الوقت</small><b>${minsTxt(rows.reduce((a,r)=>a+N(r.a),0))}</b></div><div class="kpi"><small>آخر تحديث</small><b>${new Date().toLocaleTimeString('ar-SA',{hour:'2-digit',minute:'2-digit'})}</b></div>`;
+    }
+    const grid=$('mt52VisitGrid');
+    if(grid){
+      grid.innerHTML=[...bySup.entries()].map(([sid,items])=>{
+        const total=items.reduce((a,r)=>a+N(r.a),0);
+        const trs=items.filter(r=>r.type!=='permanent').map(r=>`<tr><td>${esc(r.projectName)}</td><td>${Math.round(N(r.a)).toLocaleString('en-US')}</td><td>${pctTxt(r.percent)}</td></tr>`).join('') || '<tr><td colspan="3">لا توجد مشاريع زيارة</td></tr>';
+        const names=[...new Set(items.flatMap(r=>r.workers))].join('<br>') || '-';
+        return `<div class="mt52-card"><h3>${esc(sName(sid))}</h3><table><tbody>${trs}<tr><td><b>الإجمالي</b></td><td><b>${Math.round(total).toLocaleString('en-US')}</b></td><td><b>${total?'100%':'0%'}</b></td></tr></tbody></table><h4>أسماء العمال الحالية</h4><div>${names}</div></div>`;
+      }).join('') || '<div class="empty">لا توجد مشاريع حالية</div>';
+    }
+    const wg=$('mt52WorkersGrid');
+    if(wg){ wg.innerHTML=rows.map(r=>`<div class="mt52-card"><h3>${esc(r.projectName)}</h3><b>${esc(r.supervisorName)}</b><div style="margin-top:8px;line-height:1.7">${r.workers.length?r.workers.map(esc).join('<br>'):'-'}</div></div>`).join('') || '<div class="empty">لا توجد عمال</div>'; }
+    const body=$('mt52Body');
+    if(body){
+      body.innerHTML=rows.map(r=>`<tr><td>${esc(r.supervisorName)}</td><td>${esc(r.projectName)}</td><td>${r.workers.map(esc).join('، ')||'-'}</td><td>${Math.round(N(r.c)).toLocaleString('en-US')}</td><td>${Math.round(N(r.a)).toLocaleString('en-US')}</td><td>${minsTxt(r.a)}</td><td>${Math.round(N(r.t)).toLocaleString('en-US')} دقيقة</td><td>${pctTxt(r.percent)}</td><td>المشاريع الحالية</td><td>${new Date().toLocaleString('ar-SA')}</td><td>-</td></tr>`).join('') || '<tr><td colspan="11">لا توجد مشاريع حالية لهذا الفلتر</td></tr>';
+    }
+    const st=$('mt52Status'); if(st){st.textContent='محدث'; st.className='badge green';}
+  }
+
+  async function renderMonthlyCurrentProjectsV10194(){
+    await reloadFreshMonthlyDataV10194();
+    fillMonthlyFiltersV10194();
+    const rows=buildRowsV10194();
+    window.__tasneefMonthlyRowsV10194 = rows;
+    renderMt52V10194(rows);
+    const body=$('monthlyBody');
+    if(body){
+      const table=body.closest('table');
+      if(table?.tHead) table.tHead.innerHTML='<tr><th>المشرف الحالي</th><th>المشروع الحالي</th><th>أسماء العمال الحالية</th><th>عدد السجلات</th><th>الساعات الفعلية</th><th>وقت الانتقال</th><th>النسبة من إجمالي المشرف</th><th>الحالة</th></tr>';
+      body.innerHTML=rows.map(r=>`<tr><td>${esc(r.supervisorName)}</td><td>${esc(r.projectName)}</td><td>${r.workers.map(esc).join('، ')||'-'}</td><td>${Math.round(N(r.c)).toLocaleString('en-US')}</td><td>${minsTxt(r.a)}</td><td>${Math.round(N(r.t)).toLocaleString('en-US')} دقيقة</td><td>${pctTxt(r.percent)}</td><td><span class="badge ${r.cls}">${esc(r.st)}</span></td></tr>`).join('') || '<tr><td colspan="8">لا توجد مشاريع حالية لهذا الفلتر</td></tr>';
+    }
+  }
+
+  window.monthlyRowsV10194 = buildRowsV10194;
+  window.monthlyRowsV60 = buildRowsV10194;
+  window.monthlyReportRowsV58 = buildRowsV10194;
+  window.renderMonthly = renderMonthlyCurrentProjectsV10194;
+
+  window.exportMonthlyCSV = async function(){
+    await renderMonthlyCurrentProjectsV10194();
+    const rows=window.__tasneefMonthlyRowsV10194 || buildRowsV10194();
+    const lines=[['الشهر','المشرف الحالي','المشروع الحالي','أسماء العمال الحالية','عدد السجلات','الدقائق','الساعات','وقت الانتقال','النسبة'],...rows.map(r=>[monthValue(),r.supervisorName,r.projectName,r.workers.join('، '),r.c,Math.round(N(r.a)),minsTxt(r.a),Math.round(N(r.t)),pctTxt(r.percent)])];
+    const csv='\ufeff'+lines.map(row=>row.map(x=>'"'+S(x).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monthly_current_projects_'+monthValue()+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+  window.printMonthlyReportV57 = async function(){ await renderMonthlyCurrentProjectsV10194(); window.print(); };
+
+  function bind(){
+    ['mt52Refresh','mt52Rebuild'].forEach(id=>{ const b=$(id); if(b&&!b.dataset.v10194){ b.dataset.v10194='1'; b.addEventListener('click',()=>renderMonthlyCurrentProjectsV10194()); }});
+    const c=$('mt52Csv'); if(c&&!c.dataset.v10194){c.dataset.v10194='1'; c.addEventListener('click',()=>window.exportMonthlyCSV());}
+    const p=$('mt52Print'); if(p&&!p.dataset.v10194){p.dataset.v10194='1'; p.addEventListener('click',()=>window.printMonthlyReportV57());}
+    ['mt52Month','mt52Supervisor','mt52Project','monthlyMonth','monthlySupervisor'].forEach(id=>{const el=$(id); if(el&&!el.dataset.v10194){el.dataset.v10194='1'; el.addEventListener('change',()=>renderMonthlyCurrentProjectsV10194());}});
+  }
+  ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{bind(); if($('mt52Body')||$('monthlyBody')) renderMonthlyCurrentProjectsV10194();}, ev==='load'?1200:300)));
+  setTimeout(()=>{bind(); if($('mt52Body')||$('monthlyBody')) renderMonthlyCurrentProjectsV10194();},1800);
+  console.log('Tasneef V10194 monthly current projects source loaded');
+})();
