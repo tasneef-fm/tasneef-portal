@@ -657,10 +657,36 @@
     return wDedupeWorkers(filtered);
   }
   async function wPrepared(){
-    try{const r=await getClient().from(W_ATT).select('*').eq('attendance_date',logDate()).eq('supervisor_key',userId()).eq('status','present').limit(1000); if(r.error) throw r.error; return r.data||[];}catch(e){return []}
+    try{
+      const r=await getClient().from(W_ATT).select('*').eq('attendance_date',logDate()).eq('supervisor_key',userId()).eq('status','present').limit(1000);
+      if(r.error) throw r.error;
+      return r.data||[];
+    }catch(e){return []}
+  }
+  async function wAllOpen(){
+    try{
+      const r=await getClient().from(W_MOV).select('*').eq('supervisor_key',userId()).eq('status','open').limit(2000);
+      if(r.error) throw r.error;
+      return r.data||[];
+    }catch(e){return []}
   }
   async function wOpen(){
-    try{const r=await getClient().from(W_MOV).select('*').eq('supervisor_key',userId()).eq('status','open').limit(1000); if(r.error) throw r.error; return r.data||[];}catch(e){return []}
+    // المهم: العامل المتاح/يعمل الآن يحسب من تاريخ اليوم فقط، وليس من حركات قديمة مفتوحة.
+    // بدون هذا الشرط تظهر المشكلة: عمال اليوم 7، يعملون الآن 7، المتاح 0 بسبب سجلات أمس المفتوحة.
+    try{
+      const r=await getClient().from(W_MOV).select('*').eq('movement_date',logDate()).eq('supervisor_key',userId()).eq('status','open').limit(1000);
+      if(r.error) throw r.error;
+      return r.data||[];
+    }catch(e){return []}
+  }
+  async function wCloseOldOpenMovements(){
+    try{
+      const rows=(await wAllOpen()).filter(x=>S(x.movement_date)!==S(logDate()));
+      for(const m of rows){
+        const end=m.end_at||m.updated_at||m.start_at||wNow();
+        await wSafeUpdate(W_MOV,{end_at:end,actual_minutes:wMin(m.start_at,end),status:'closed',close_reason:'إغلاق تلقائي لسجل يوم سابق',updated_at:wNow()},m.id);
+      }
+    }catch(e){console.warn('close old worker movements failed',e)}
   }
   function wProjectMatches(m,p){const vals=[m.project_key,m.project_name,m.project_id,m.project,m.group_name,m.group_key].map(S); return vals.includes(S(p.id))||vals.includes(S(p.name));}
   async function wGroups(){
@@ -689,13 +715,14 @@
   }
   function wToast(t){smartToast(t);}
   async function wStats(){
+    await wCloseOldOpenMovements();
     const prep=await wPrepared(), open=await wOpen();
-    const openKeys=new Set(open.map(x=>S(x.worker_key)));
+    const openByName=new Set(open.map(x=>wCleanWorkerName(x.worker_name).toLowerCase()).filter(Boolean));
     const preparedByName=new Map();
     (prep||[]).forEach(x=>{const n=wCleanWorkerName(x.worker_name); if(n&&!preparedByName.has(n.toLowerCase())) preparedByName.set(n.toLowerCase(),x);});
     const prepUniq=[...preparedByName.values()];
-    const preparedKeys=new Set(prepUniq.map(x=>S(x.worker_key)));
-    return {prepared:prepUniq.length, working:open.length, available:[...preparedKeys].filter(k=>!openKeys.has(k)).length, prep:prepUniq, open, openKeys};
+    const available=prepUniq.filter(x=>!openByName.has(wCleanWorkerName(x.worker_name).toLowerCase())).length;
+    return {prepared:prepUniq.length, working:open.length, available, prep:prepUniq, open, openKeys:new Set(open.map(x=>S(x.worker_key))), openByName};
   }
   async function wRenderPanel(){
     if(!document.getElementById('logProject')) return; wStyle();
@@ -726,6 +753,19 @@
     if(!m) return;
     const selected=[...m.querySelectorAll('input:checked')].map(i=>({key:i.value,name:i.dataset.name||i.value})); m.remove();
     if(!selected.length){wToast('حدد عامل واحد على الأقل'); return;}
+
+    // التحضير هو مصدر الحقيقة لليوم: أي عامل غير محدد لا يبقى محسوباً ضمن عمال اليوم.
+    // هذا يمنع بقاء أسماء قديمة من تحضير سابق لنفس اليوم.
+    const selectedKeys=new Set(selected.map(w=>S(w.key)));
+    const oldPresent=await wPrepared();
+    for(const old of oldPresent.filter(x=>!selectedKeys.has(S(x.worker_key)))){
+      try{await getClient().from(W_ATT).update({status:'absent',updated_at:wNow(),notes:'إزالة من تحضير اليوم'}).eq('id',old.id);}catch(_){ }
+      try{
+        const opened=(await wOpen()).filter(mm=>S(mm.worker_key)===S(old.worker_key)||wCleanWorkerName(mm.worker_name).toLowerCase()===wCleanWorkerName(old.worker_name).toLowerCase());
+        for(const om of opened){await wCloseMovement(om,'إزالة من تحضير اليوم',wNow());}
+      }catch(_){ }
+    }
+
     const rows=selected.map(w=>({attendance_date:logDate(),supervisor_key:userId(),supervisor_name:userName(),worker_key:w.key,worker_name:w.name,status:'present',prepared_at:wNow(),updated_at:wNow()}));
     const r=await getClient().from(W_ATT).upsert(rows,{onConflict:'attendance_date,supervisor_key,worker_key'});
     if(r.error){smartToast('شغل ملف SQL الخاص بتحضير العمال أولاً: '+r.error.message,'err'); return;}
@@ -734,8 +774,8 @@
   async function wAskIn(){
     const st=await wStats();
     if(!st.prepared){ await wPrepare(); }
-    const st2=await wStats(); const openKeys=st2.openKeys;
-    const workers=st2.prep.filter(x=>!openKeys.has(S(x.worker_key))).map(x=>({key:S(x.worker_key),name:S(x.worker_name)}));
+    const st2=await wStats(); const openByName=st2.openByName||new Set();
+    const workers=st2.prep.filter(x=>!openByName.has(wCleanWorkerName(x.worker_name).toLowerCase())).map(x=>({key:S(x.worker_key),name:S(x.worker_name)}));
     if(!workers.length){smartToast('لا يوجد عمال متاحين. كل العمال يعملون الآن أو لم يتم تحضيرهم.','err'); return null;}
     const p=projectInfo();
     const list=workers.map(w=>`<label class="wf64-worker"><input type="checkbox" value="${wEsc(w.key)}" data-name="${wEsc(w.name)}">${wEsc(w.name)}</label>`).join('');
@@ -757,9 +797,10 @@
   }
   async function wCloseMovement(m,reason,t){const end=t||wNow(); const mins=wMin(m.start_at,end); const r=await wSafeUpdate(W_MOV,{end_at:end,actual_minutes:mins,status:'closed',close_reason:reason||'خروج',updated_at:end},m.id); if(r.error) throw r.error; return r.data;}
   async function wStartMovements(workers,row){
-    if(!workers||!workers.length) return; const target=await wTarget(); const open=await wOpen(); const now=wNow();
+    if(!workers||!workers.length) return; const target=await wTarget(); const open=await wAllOpen(); const now=wNow();
     for(const w of workers){
-      for(const m of open.filter(x=>S(x.worker_key)===S(w.key))){ await wCloseMovement(m,'نقل تلقائي',now); }
+      const wname=wCleanWorkerName(w.name).toLowerCase();
+      for(const m of open.filter(x=>S(x.worker_key)===S(w.key)||wCleanWorkerName(x.worker_name).toLowerCase()===wname)){ await wCloseMovement(m,'نقل تلقائي',now); }
       const payload={idempotency_key:[logDate(),userId(),w.key,target.type,target.key,now.slice(0,16)].join('|'),movement_date:logDate(),supervisor_key:userId(),supervisor_name:userName(),worker_key:w.key,worker_name:w.name,target_type:target.type,project_key:target.type==='project'?target.key:null,project_name:target.name,group_key:target.type==='group'?target.key:null,group_name:target.type==='group'?target.name:null,allocation:target.allocation||[],visit_type:visitType(),time_log_id:S(rowId(row)||($('logId')&&$('logId').value)),start_at:now,status:'open',notes:'دخول من التسجيلات اليومية',created_at:now,updated_at:now};
       const r=await wSafeInsert(W_MOV,payload); if(r.error && !/duplicate|unique/i.test(S(r.error.message))) console.warn('worker movement insert failed',r.error);
     }
