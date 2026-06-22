@@ -500,7 +500,7 @@
     }
     if(res.error) throw res.error;
     const p=projectInfo();
-    return (res.data||[]).filter(r=>sameProject(r,p)&&sameUser(r)&&sameVisit(r)).sort(byNewest);
+    return (res.data||[]).filter(r=>sameProject(r,p)&&sameVisit(r)).sort(byNewest);
   }
   function isAdminDailyEditAllowed(){
     const u=currentUser();
@@ -670,11 +670,14 @@
       return r.data||[];
     }catch(e){return []}
   }
-  async function wOpen(){
+  async function wOpen(allSupervisors){
     // المهم: العامل المتاح/يعمل الآن يحسب من تاريخ اليوم فقط، وليس من حركات قديمة مفتوحة.
-    // بدون هذا الشرط تظهر المشكلة: عمال اليوم 7، يعملون الآن 7، المتاح 0 بسبب سجلات أمس المفتوحة.
+    // allSupervisors=true يستخدم عند الخروج فقط حتى تستطيع الإدارة إغلاق عمال مشروع فتحه المشرف،
+    // وحتى نسخة المشرف لا تفشل إذا تغيّر user_id أو supervisor_key.
     try{
-      const r=await getClient().from(W_MOV).select('*').eq('movement_date',logDate()).eq('supervisor_key',userId()).eq('status','open').limit(1000);
+      let q=getClient().from(W_MOV).select('*').eq('movement_date',logDate()).eq('status','open').limit(1000);
+      if(!allSupervisors) q=q.eq('supervisor_key',userId());
+      const r=await q;
       if(r.error) throw r.error;
       return r.data||[];
     }catch(e){return []}
@@ -787,7 +790,7 @@
     wSetSelectedWorkers(selected); return selected;
   }
   async function wAskOut(){
-    const p=projectInfo(); const rows=(await wOpen()).filter(m=>wProjectMatches(m,p));
+    const p=projectInfo(); const rows=(await wOpen(true)).filter(m=>wProjectMatches(m,p));
     if(!rows.length){ wSetSelectedWorkers([]); return []; }
     const list=rows.map(m=>`<label class="wf64-worker"><input type="checkbox" value="${wEsc(m.id)}" data-key="${wEsc(m.worker_key)}" data-name="${wEsc(m.worker_name)}" checked>${wEsc(m.worker_name)}</label>`).join('');
     const m=await wModal('عمال المشروع الحالي',`<div class="wf64-note">اختر العمال الذين سيتم تسجيل خروجهم من <b>${wEsc(p.name||p.id)}</b>. الافتراضي إخراج الجميع.</div><div class="wf64-list" id="workersForProject">${list}</div>`,'اعتماد العمال والمتابعة للتصوير');
@@ -808,9 +811,26 @@
   }
   async function wCloseSelected(selected){
     if(!selected||!selected.length) return; const ids=new Set(selected.map(x=>S(x.id)).filter(Boolean)); const keys=new Set(selected.map(x=>S(x.key)).filter(Boolean)); const now=wNow();
-    const rows=await wOpen();
+    const rows=await wOpen(true);
     for(const m of rows.filter(x=>(ids.has(S(x.id))||keys.has(S(x.worker_key))) && wProjectMatches(x,projectInfo()))){ await wCloseMovement(m,'خروج',now); }
     await wRenderPanel();
+  }
+  async function wCloseProjectMovements(openRow,savedRow){
+    // جسر أمان: عند الخروج من الإدارة أو من نسخة مشرف تغير مفتاحه، أغلق كل حركات العمال المفتوحة لنفس المشروع ونفس اليوم.
+    try{
+      const p=projectInfo(); const now=wNow();
+      const logIds=new Set([rowId(openRow), rowId(savedRow), S($('logId')&&$('logId').value)].map(S).filter(Boolean));
+      const rows=await wOpen(true);
+      for(const m of rows.filter(x=>{
+        const byLog=logIds.size && logIds.has(S(x.time_log_id));
+        const byProject=wProjectMatches(x,p);
+        return byLog || byProject;
+      })){
+        await wCloseMovement(m,'خروج المشروع',now);
+      }
+      await wRenderPanel();
+      try{ await wRenderDailyWorkersCard(); }catch(_){ }
+    }catch(e){ console.warn('close project worker movements failed',e); }
   }
   async function wSummary(){
     const st=await wStats(); const p=projectInfo();
@@ -869,7 +889,7 @@
     try{
       const rows=await fetchTodayRows();
       const open=rows.find(r=>hasIn(r)&&!hasOut(r));
-      if(open){ const selectedWorkers=await wAskOut(); if(selectedWorkers===null){ lockClear(key); return; } const t=timeNow(); const photo=await captureDailyPhoto('out',t); const row=await updateCheckOut(open,t); fillForm('out',t,row); await wCloseSelected(selectedWorkers); lockWrite(key,{status:'done'}); smartToast('تم تسجيل الخروج'); await shareDailyWhatsapp('out',t,photo); return; }
+      if(open){ const selectedWorkers=await wAskOut(); if(selectedWorkers===null){ lockClear(key); return; } const t=timeNow(); const photo=await captureDailyPhoto('out',t); const row=await updateCheckOut(open,t); fillForm('out',t,row); await wCloseSelected(selectedWorkers); await wCloseProjectMovements(open,row); lockWrite(key,{status:'done'}); smartToast('تم تسجيل الخروج'); await shareDailyWhatsapp('out',t,photo); return; }
       const already=rows.find(r=>hasIn(r)&&hasOut(r));
       if(already){ fillForm('out',hasOut(already),already); lockWrite(key,{status:'done'}); smartToast('تم تسجيل الخروج مسبقاً'); return; }
       lockClear(key); smartToast('لا يوجد تسجيل دخول مفتوح لهذا المشروع اليوم','err');
@@ -921,7 +941,7 @@
           keepDailyFiltersOn(dateFromRow(saved)||effectiveDate);
           if($('logId')) $('logId').value=rowId(saved)||id;
           fillForm('in',hasIn(saved)||updatePayload.check_in,saved);
-          if(hasOut(saved)||updatePayload.check_out) fillForm('out',hasOut(saved)||updatePayload.check_out,saved);
+          if(hasOut(saved)||updatePayload.check_out){ fillForm('out',hasOut(saved)||updatePayload.check_out,saved); try{ await wCloseProjectMovements((typeof original!=='undefined'&&original)||(typeof open!=='undefined'&&open)||saved,saved); }catch(_){ } }
         }else{
           const rows=await fetchTodayRows();
           const open=rows.find(r=>hasIn(r)&&!hasOut(r));
@@ -932,7 +952,7 @@
             const saved=result.data||Object.assign({},open,updatePayload);
             keepDailyFiltersOn(dateFromRow(saved));
             fillForm('in',hasIn(saved)||updatePayload.check_in,saved);
-            if(hasOut(saved)||updatePayload.check_out) fillForm('out',hasOut(saved)||updatePayload.check_out,saved);
+            if(hasOut(saved)||updatePayload.check_out){ fillForm('out',hasOut(saved)||updatePayload.check_out,saved); try{ await wCloseProjectMovements((typeof original!=='undefined'&&original)||(typeof open!=='undefined'&&open)||saved,saved); }catch(_){ } }
           }else{
             const insertPayload=Object.assign({},rawPayload,{log_date:logDate(),created_at:nowIso()});
             if(inVal) insertPayload.check_in=toDbTimestampOnDate(insertPayload.log_date,inVal);
@@ -942,7 +962,7 @@
             const saved=result.data||insertPayload;
             keepDailyFiltersOn(dateFromRow(saved)||insertPayload.log_date);
             fillForm('in',hasIn(saved)||insertPayload.check_in,saved);
-            if(hasOut(saved)||insertPayload.check_out) fillForm('out',hasOut(saved)||insertPayload.check_out,saved);
+            if(hasOut(saved)||insertPayload.check_out){ fillForm('out',hasOut(saved)||insertPayload.check_out,saved); try{ await wCloseProjectMovements(saved,saved); }catch(_){ } }
           }
         }
         lockWrite(key,{status:'done'});
