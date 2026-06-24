@@ -811,7 +811,8 @@ async function saveSupervisorAttendance(){ const u=session(); const date=$('atte
     if(kind==='open') rows=rows.filter(t=>t.status!=='closed' && !t.claimed_by);
     if(kind==='mine') rows=rows.filter(t=>String(t.claimed_by||'')===String(u.id) && t.status!=='closed');
     if(kind==='done') rows=rows.filter(t=>String(t.closed_by||'')===String(u.id) || (t.status==='closed' && String(t.closed_by_name||'')===String(currentTechName())));
-    return rows.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const order = $('techTicketSortOrder')?.value || 'newest';
+    return rows.sort((a,b)=>{ const da=+new Date(a.created_at||0), db=+new Date(b.created_at||0); return order==='oldest' ? da-db : db-da; });
   }
   function renderTechList(kind, bodyId){
     const b=$(bodyId); if(!b) return;
@@ -1234,7 +1235,8 @@ window.showSupervisorWindow = function(id, btn){
     if(kind==='open') rows=rows.filter(t=>t.status!=='closed' && !t.claimed_by);
     if(kind==='mine') rows=rows.filter(t=>String(t.claimed_by||'')===String(u.id) && t.status!=='closed');
     if(kind==='done') rows=rows.filter(t=>String(t.closed_by||'')===String(u.id) || (t.status==='closed' && String(t.closed_by_name||'')===String(_currentTechName())));
-    return rows.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const order = $('techTicketSortOrder')?.value || 'newest';
+    return rows.sort((a,b)=>{ const da=+new Date(a.created_at||0), db=+new Date(b.created_at||0); return order==='oldest' ? da-db : db-da; });
   }
   function _renderTechList(kind, bodyId){
     const b=$(bodyId); if(!b) return;
@@ -16379,12 +16381,16 @@ function financePrintReport(kind){
       if(!$('ticketFilterTitle')){
         $('ticketSearch').insertAdjacentHTML('beforebegin','<input id="ticketFilterTitle" oninput="renderTickets()" placeholder="فلتر عنوان التكت">');
       }
+      if(!$('ticketSortOrder')){
+        $('ticketSearch').insertAdjacentHTML('beforebegin','<select id="ticketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>');
+      }
       setOptions($('ticketFilterProject'), A(window.data && window.data.projects), p=>p.name || '-', 'كل المشاريع');
     }
     const supFilters = $('supTicketSearch')?.closest('.filters');
     if(supFilters){
       if(!$('supTicketFilterPriority')) $('supTicketSearch').insertAdjacentHTML('beforebegin','<select id="supTicketFilterPriority" onchange="renderTickets()"><option value="">كل الأولويات</option><option value="urgent">عاجل</option><option value="high">مهم</option><option value="normal">عادي</option><option value="low">منخفض</option></select>');
       if(!$('supTicketFilterTitle')) $('supTicketSearch').insertAdjacentHTML('beforebegin','<input id="supTicketFilterTitle" oninput="renderTickets()" placeholder="فلتر عنوان التكت">');
+      if(!$('supTicketSortOrder')) $('supTicketSearch').insertAdjacentHTML('beforebegin','<select id="supTicketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>');
     }
   }
   function ticketFilters(){
@@ -16406,7 +16412,8 @@ function financePrintReport(kind){
     if(f.search){
       list = list.filter(t => [ticketNo(t), t.title, t.description, projectNameSafe(t.project_id), supervisorNameSafe(t.supervisor_id), statusText(t.status), priorityText(t.priority), t.claimed_by_name, t.closed_by_name, t.closure_note].join(' ').toLowerCase().includes(f.search));
     }
-    return list.sort((a,b)=>(Date.parse(b.created_at||b.opened_at||'')||0)-(Date.parse(a.created_at||a.opened_at||'')||0));
+    const order = S($('ticketSortOrder')?.value || $('supTicketSortOrder')?.value || 'newest');
+    return list.sort((a,b)=>{ const da=(Date.parse(a.created_at||a.opened_at||'')||0), db=(Date.parse(b.created_at||b.opened_at||'')||0); return order==='oldest' ? da-db : db-da; });
   }
   function ticketSummaryHtml(list){
     const open=list.filter(t=>S(t.status||'open')==='open').length;
@@ -21723,4 +21730,81 @@ function financePrintReport(kind){
   };
   try{ initSupervisor=window.initSupervisor; }catch(_){ }
   document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{try{window.renderSupervisorAttendanceList()}catch(_){ }},1200));
+})();
+
+
+/* ===== V10222: unified ticket title dropdown + newest/oldest filters ===== */
+(function(){
+  const OPTIONS = ['صيانة','سباكة','تعطير','تشجير','كهرباء','صواريخ','دفاع مدني','مصاعد'];
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function makeSelect(id, current){
+    const sel = document.createElement('select');
+    sel.id = id;
+    sel.innerHTML = '<option value="">اختر نوع المشكلة</option>' + OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
+    if(current && OPTIONS.includes(current)) sel.value = current;
+    return sel;
+  }
+  function replaceInputWithSelect(id){
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(el.tagName === 'SELECT'){
+      const v = el.value;
+      el.innerHTML = '<option value="">اختر نوع المشكلة</option>' + OPTIONS.map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('');
+      if(OPTIONS.includes(v)) el.value = v;
+      return;
+    }
+    const current = (el.value || '').trim();
+    const sel = makeSelect(id, current);
+    el.replaceWith(sel);
+  }
+  function ensureTicketTitleDropdowns(){
+    replaceInputWithSelect('ticketTitle');
+    replaceInputWithSelect('techNewTicketTitle');
+  }
+  function ensureSortFilters(){
+    const adminSearch = document.getElementById('ticketSearch');
+    if(adminSearch && !document.getElementById('ticketSortOrder')) adminSearch.insertAdjacentHTML('beforebegin','<select id="ticketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>');
+    const supSearch = document.getElementById('supTicketSearch');
+    if(supSearch && !document.getElementById('supTicketSortOrder')) supSearch.insertAdjacentHTML('beforebegin','<select id="supTicketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>');
+    const techStatus = document.getElementById('techTicketStatus');
+    if(techStatus && !document.getElementById('techTicketSortOrder')) techStatus.insertAdjacentHTML('afterend','<select id="techTicketSortOrder" onchange="renderTechnicianTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>');
+  }
+  const oldClear = window.clearTicketForm;
+  window.clearTicketForm = function(){
+    if(typeof oldClear === 'function') oldClear.apply(this, arguments);
+    ensureTicketTitleDropdowns();
+    const t=document.getElementById('ticketTitle'); if(t) t.value='';
+  };
+  const oldEdit = window.editTicket;
+  window.editTicket = function(id){
+    if(typeof oldEdit === 'function') oldEdit.apply(this, arguments);
+    setTimeout(()=>{
+      ensureTicketTitleDropdowns();
+      const t = (window.data?.tickets||[]).find(x=>String(x.id)===String(id));
+      const el=document.getElementById('ticketTitle');
+      if(el && t?.title){
+        if(!OPTIONS.includes(t.title)) el.insertAdjacentHTML('beforeend',`<option value="${esc(t.title)}">${esc(t.title)}</option>`);
+        el.value=t.title;
+      }
+    },50);
+  };
+  const oldSave = window.saveTicket;
+  window.saveTicket = async function(){
+    ensureTicketTitleDropdowns();
+    const title = (document.getElementById('ticketTitle')?.value || '').trim();
+    if(!title) return (typeof msg==='function'?msg('الرجاء اختيار نوع المشكلة','err'):alert('الرجاء اختيار نوع المشكلة'));
+    return oldSave.apply(this, arguments);
+  };
+  const oldTechSave = window.saveTechnicianTicket;
+  window.saveTechnicianTicket = async function(){
+    ensureTicketTitleDropdowns();
+    const title = (document.getElementById('techNewTicketTitle')?.value || '').trim();
+    if(!title) return (typeof msg==='function'?msg('الرجاء اختيار نوع المشكلة','err'):alert('الرجاء اختيار نوع المشكلة'));
+    return oldTechSave.apply(this, arguments);
+  };
+  const oldRender = window.renderTickets;
+  window.renderTickets = function(){ ensureTicketTitleDropdowns(); ensureSortFilters(); return oldRender && oldRender.apply(this, arguments); };
+  const oldTechRender = window.renderTechnicianTickets;
+  window.renderTechnicianTickets = function(){ ensureTicketTitleDropdowns(); ensureSortFilters(); return oldTechRender && oldTechRender.apply(this, arguments); };
+  window.addEventListener('load',()=>{ setTimeout(()=>{ ensureTicketTitleDropdowns(); ensureSortFilters(); },200); setTimeout(()=>{ ensureTicketTitleDropdowns(); ensureSortFilters(); },1200); });
 })();
