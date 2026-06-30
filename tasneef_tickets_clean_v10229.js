@@ -16,7 +16,7 @@
   const tickets = () => arr(d().tickets);
   const projects = () => arr(d().projects);
   const users = () => arr(d().users || d().app_users);
-  const titleOptions = ['صيانة','سباكة','تعطير','تشجير','كهرباء','صواريخ','دفاع مدني','مصاعد'];
+  const titleOptions = ['صيانة','سباكة','تعطير','تشجير','كهرباء','نظافة','دفاع مدني','مصاعد'];
   const statusMap = {open:'مفتوح',processing:'تحت المعالجة',closed:'مغلق'};
   const priorityMap = {normal:'عادي',high:'مهم',urgent:'عاجل',low:'منخفض'};
 
