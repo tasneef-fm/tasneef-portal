@@ -21959,3 +21959,120 @@ function financePrintReport(kind){
   window.addEventListener('load',()=>setTimeout(boot,700));
   setTimeout(boot,1400);
 })();
+
+/* ===== V10311: جذر إصلاح كشف الحضور للشهور السابقة - تحميل الشهر المختار كاملًا من القاعدة ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefAttendanceMonthExactV10311) return;
+  window.__tasneefAttendanceMonthExactV10311 = true;
+  const BUILD='V10311_ATTENDANCE_SELECTED_MONTH_EXACT_LOAD_2026_07_02';
+  const $id=id=>document.getElementById(id);
+  const A=v=>Array.isArray(v)?v:[];
+  const S=v=>String(v ?? '').trim();
+  const monthNow=()=>{ try{return (typeof today==='function'?today():new Date().toISOString().slice(0,10)).slice(0,7);}catch(_){return new Date().toISOString().slice(0,7);} };
+  const esc=s=>S(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  function monthEnd(month){ const [y,m]=S(month||monthNow()).split('-').map(Number); return new Date(y,m,0).toISOString().slice(0,10); }
+  function recMonth(r){ return S(r && (r.attendance_date||r.date||r.created_at)).slice(0,7); }
+  function keyOf(r,idx){ return r && r.id!=null ? 'id:'+r.id : ['k',r?.attendance_date||'',r?.worker_id||r?.worker_name||'',r?.project_id||'',r?.supervisor_id||'',idx||0].join('|'); }
+  function showLoadMsg(month){
+    const body=$id('attendanceMatrixBody');
+    if(body){
+      const days=Number((()=>{try{const [y,m]=month.split('-').map(Number); return new Date(y,m,0).getDate();}catch(_){return 31;}})());
+      body.innerHTML=`<tr><td colspan="${days+10}">جاري تحميل كشف شهر ${esc(month)} كاملًا من قاعدة البيانات...</td></tr>`;
+    }
+  }
+  function mergeExactMonth(month, rows){
+    if(!window.data) window.data={};
+    const others=A(data.attendance).filter(r=>recMonth(r)!==month);
+    const map=new Map();
+    A(rows).forEach((r,i)=>map.set(keyOf(r,i), r));
+    data.attendance = others.concat([...map.values()]);
+    data.__attendanceLoadedMonthsV10311 = data.__attendanceLoadedMonthsV10311 || {};
+    data.__attendanceLoadedMonthsV10311[month] = {at:Date.now(), count:rows.length};
+  }
+  async function fetchMonth(month){
+    if(!window.sb || !sb.from) return false;
+    const start=month+'-01', end=monthEnd(month);
+    let all=[], from=0, size=1000, loops=0;
+    while(loops < 20){
+      loops++;
+      const res = await sb.from('attendance')
+        .select('*')
+        .gte('attendance_date', start)
+        .lte('attendance_date', end)
+        .order('attendance_date', {ascending:true})
+        .range(from, from+size-1);
+      if(res.error) throw res.error;
+      const rows=res.data||[];
+      all=all.concat(rows);
+      if(rows.length < size) break;
+      from += size;
+    }
+    mergeExactMonth(month, all);
+    return true;
+  }
+  async function ensureMonthLoaded(month, force){
+    month = S(month||monthNow());
+    if(!month.match(/^20\d{2}-\d{2}$/)) return false;
+    const loaded = data?.__attendanceLoadedMonthsV10311?.[month];
+    if(loaded && !force) return true;
+    if(window.__attendanceMonthLoadingV10311===month) return false;
+    window.__attendanceMonthLoadingV10311=month;
+    try{
+      showLoadMsg(month);
+      await fetchMonth(month);
+      return true;
+    }catch(e){
+      console.error(BUILD, e);
+      try{ if(typeof msg==='function') msg('تعذر تحميل كشف الشهر كاملًا: '+(e.message||e),'err'); }catch(_){ }
+      return false;
+    }finally{
+      window.__attendanceMonthLoadingV10311='';
+    }
+  }
+  const oldRender = window.renderAttendanceMonthly || (typeof renderAttendanceMonthly==='function'?renderAttendanceMonthly:null);
+  window.renderAttendanceMonthly = async function(){
+    const mEl=$id('attendanceMatrixMonth');
+    if(mEl && !mEl.value) mEl.value=monthNow();
+    const month=mEl?.value || monthNow();
+    const loaded = data?.__attendanceLoadedMonthsV10311?.[month];
+    if(!loaded){
+      const ok = await ensureMonthLoaded(month, false);
+      if(!ok && !loaded) { if(typeof oldRender==='function') return oldRender.apply(this, arguments); return; }
+    }
+    if(typeof oldRender==='function') return oldRender.apply(this, arguments);
+  };
+  try{ renderAttendanceMonthly = window.renderAttendanceMonthly; }catch(_){ }
+
+  window.reloadAttendanceSelectedMonthV10311 = async function(){
+    const month=$id('attendanceMatrixMonth')?.value || monthNow();
+    await ensureMonthLoaded(month, true);
+    if(typeof oldRender==='function') oldRender(); else if(window.renderAttendanceMonthly) window.renderAttendanceMonthly();
+    try{ if(typeof msg==='function') msg('تم تحديث كشف شهر '+month+' كاملًا من قاعدة البيانات'); }catch(_){ }
+  };
+
+  function addRefreshButton(){
+    const sum=$id('attendanceMatrixSummary'); if(!sum) return;
+    let actions=sum.parentElement?.querySelector('.actions');
+    if(!actions) actions=sum.nextElementSibling;
+    if(!actions || actions.querySelector('[data-att-refresh-v10311]')) return;
+    const b=document.createElement('button');
+    b.type='button'; b.className='light'; b.dataset.attRefreshV10311='1';
+    b.textContent='تحديث الشهر كاملًا';
+    b.onclick=window.reloadAttendanceSelectedMonthV10311;
+    actions.appendChild(b);
+  }
+
+  document.addEventListener('change', function(e){
+    if(e.target && e.target.id==='attendanceMatrixMonth'){
+      const month=e.target.value||monthNow();
+      setTimeout(()=>ensureMonthLoaded(month,true).then(()=>{ try{ if(typeof oldRender==='function') oldRender(); else window.renderAttendanceMonthly(); }catch(_){ } }), 20);
+    }
+  });
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){ try{ addRefreshButton(); if($id('attendanceMatrixBody')) window.renderAttendanceMonthly(); }catch(e){console.warn(e);} }, 1200);
+  });
+  window.addEventListener('load', function(){ setTimeout(addRefreshButton, 1500); });
+  window.TASNEEF_ATTENDANCE_MONTH_BUILD=BUILD;
+  console.log('Tasneef '+BUILD+' loaded');
+})();
