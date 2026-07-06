@@ -23228,7 +23228,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   'use strict';
   if(window.__tasneefTicketSlaV10364) return;
   window.__tasneefTicketSlaV10364 = true;
-  const BUILD='v10364-ticket-priority-sla-bars';
+  const BUILD='v10366-ticket-sla-filter-roles';
   const STORE='tasneef_ticket_sla_hours_v10364';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
@@ -23272,18 +23272,18 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function normalizeFilterValue(v){ v=S(v); if(v==='red'||v==='late') return 'late'; if(v==='yellow'||v==='near') return 'near'; if(v==='green'||v==='standard') return 'standard'; return ''; }
   function ensureStyle(){ if($('ticketSlaStyleV10364')) return; const st=document.createElement('style'); st.id='ticketSlaStyleV10364'; st.textContent=`
     .ticket-sla-panel-v10364{border:1px solid #d8e9e3;background:#f7fbfa;border-radius:14px;padding:12px;margin:10px 0;display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;align-items:end}
-    .ticket-sla-panel-v10364 label{font-weight:900;color:#063d32;font-size:12px;margin:0!important}.ticket-sla-panel-v10364 input,.ticket-sla-panel-v10364 select{width:100%;border:1px solid #cfe2dc;border-radius:10px;padding:9px;background:white;color:#062f26;font-weight:800}.ticket-sla-panel-title{grid-column:1/-1;font-weight:900;color:#075342;margin-bottom:0}.ticket-sla-help{grid-column:1/-1;color:#657b72;font-size:12px;font-weight:700}.ticket-sla-card{position:relative;overflow:hidden;border-top:0!important}.ticket-sla-strip{height:8px;border-radius:999px;background:#edf3f1;margin:0 0 10px;overflow:hidden}.ticket-sla-fill{display:block;height:100%;border-radius:999px}.ticket-sla-card.sla-red{border-color:#efb8b8!important;background:#fff8f8!important}.ticket-sla-card.sla-yellow{border-color:#f0d98c!important;background:#fffdf3!important}.ticket-sla-card.sla-green{border-color:#b9e1c7!important;background:#f8fff9!important}.ticket-sla-fill.sla-red{background:#d92d20}.ticket-sla-fill.sla-yellow{background:#f0b429}.ticket-sla-fill.sla-green{background:#168a43}.ticket-sla-badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:5px 10px;font-weight:900;font-size:12px}.ticket-sla-badge.sla-red{background:#ffe8e8;color:#a40000}.ticket-sla-badge.sla-yellow{background:#fff4cf;color:#7a4b00}.ticket-sla-badge.sla-green{background:#e8f8ef;color:#086b32}.ticket-sla-missing{outline:2px solid #d92d20!important;background:#fff8f8!important}@media(max-width:900px){.ticket-sla-panel-v10364{grid-template-columns:1fr 1fr}.ticket-sla-panel-title,.ticket-sla-help{grid-column:1/-1}}`;
+    .ticket-sla-panel-v10364 label{font-weight:900;color:#063d32;font-size:12px;margin:0!important}.ticket-sla-panel-v10364 input,.ticket-sla-panel-v10364 select{width:100%;border:1px solid #cfe2dc;border-radius:10px;padding:9px;background:white;color:#062f26;font-weight:800}.ticket-sla-panel-title{grid-column:1/-1;font-weight:900;color:#075342;margin-bottom:0}.ticket-sla-help{grid-column:1/-1;color:#657b72;font-size:12px;font-weight:700}.ticket-sla-card{position:relative;overflow:hidden;border-top:0!important}.ticket-sla-strip{height:8px;border-radius:999px;background:#edf3f1;margin:0 0 10px;overflow:hidden}.ticket-sla-fill{display:block;height:100%;border-radius:999px}.ticket-sla-card.sla-red{border-color:#efb8b8!important;background:#fff8f8!important}.ticket-sla-card.sla-yellow{border-color:#f0d98c!important;background:#fffdf3!important}.ticket-sla-card.sla-green{border-color:#b9e1c7!important;background:#f8fff9!important}.ticket-sla-fill.sla-red{background:#d92d20}.ticket-sla-fill.sla-yellow{background:#f0b429}.ticket-sla-fill.sla-green{background:#168a43}.ticket-sla-badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:5px 10px;font-weight:900;font-size:12px}.ticket-sla-badge.sla-red{background:#ffe8e8;color:#a40000}.ticket-sla-badge.sla-yellow{background:#fff4cf;color:#7a4b00}.ticket-sla-badge.sla-green{background:#e8f8ef;color:#086b32}.ticket-sla-missing{outline:2px solid #d92d20!important;background:#fff8f8!important}@media(max-width:900px){.ticket-sla-panel-v10364{grid-template-columns:1fr 1fr}.ticket-sla-panel-title,.ticket-sla-help{grid-column:1/-1}}.ticket-sla-panel-limited-v10366{grid-template-columns:minmax(190px,280px) 1fr!important}.ticket-sla-panel-limited-v10366 .ticket-sla-help{grid-column:auto!important;align-self:center}`;
     document.head.appendChild(st);
   }
-  function panelHtml(prefix){ const c=cfg(); return `<div id="${prefix}TicketSlaPanelV10364" class="ticket-sla-panel-v10364"><div class="ticket-sla-panel-title">أوقات الأولوية والتنبيه</div><label>عاجل / ساعة<input type="number" min="1" id="${prefix}SlaUrgentV10364" value="${E(c.urgent)}"></label><label>مهم / ساعة<input type="number" min="1" id="${prefix}SlaHighV10364" value="${E(c.high)}"></label><label>عادي / ساعة<input type="number" min="1" id="${prefix}SlaNormalV10364" value="${E(c.normal)}"></label><label>فلتر الشريط<select id="${prefix}TicketSlaFilterV10364"><option value="">كل الأشرطة</option><option value="late">متأخر</option><option value="near">قارب</option><option value="standard">قياسي</option></select></label><div class="ticket-sla-help">الأحمر: متأخر عن الوقت المحدد، الأصفر: قارب انتهاء الوقت، الأخضر: قياسي أو تم إنجازه في الوقت.</div></div>`; }
+  function panelHtml(prefix, limited){ const c=cfg(); const filter=`<label>فلتر الشريط<select id="${prefix}TicketSlaFilterV10364"><option value="">كل الأشرطة</option><option value="late">متأخر</option><option value="near">قارب</option><option value="standard">قياسي</option></select></label>`; if(limited){ return `<div id="${prefix}TicketSlaPanelV10364" class="ticket-sla-panel-v10364 ticket-sla-panel-limited-v10366"><div class="ticket-sla-panel-title">فلتر الشريط</div>${filter}<div class="ticket-sla-help">الأحمر: متأخر، الأصفر: قارب، الأخضر: قياسي.</div></div>`; } return `<div id="${prefix}TicketSlaPanelV10364" class="ticket-sla-panel-v10364"><div class="ticket-sla-panel-title">أوقات الأولوية والتنبيه</div><label>عاجل / ساعة<input type="number" min="1" id="${prefix}SlaUrgentV10364" value="${E(c.urgent)}"></label><label>مهم / ساعة<input type="number" min="1" id="${prefix}SlaHighV10364" value="${E(c.high)}"></label><label>عادي / ساعة<input type="number" min="1" id="${prefix}SlaNormalV10364" value="${E(c.normal)}"></label>${filter}<div class="ticket-sla-help">الأحمر: متأخر عن الوقت المحدد، الأصفر: قارب انتهاء الوقت، الأخضر: قياسي أو تم إنجازه في الوقت.</div></div>`; }
   function bindPanel(prefix){
     [['Urgent','urgent'],['High','high'],['Normal','normal']].forEach(([id,k])=>{ const el=$(prefix+'Sla'+id+'V10364'); if(el&&!el.dataset.slaBound){ el.dataset.slaBound='1'; el.addEventListener('change',()=>{ setCfg(k,el.value); renderTicketsSafe(); }); } });
     const f=$(prefix+'TicketSlaFilterV10364'); if(f&&!f.dataset.slaBound){ f.dataset.slaBound='1'; f.addEventListener('change',()=>renderTicketsSafe()); }
   }
   function ensurePanels(){
     ensureStyle();
-    const adminBody=$('ticketsBody'); if(adminBody && !$('admTicketSlaPanelV10364')){ const card=adminBody.closest('.card')||adminBody.parentElement; const target=$('ticketFiltersV10246') || (card&&card.querySelector('.filters')) || adminBody; if(target){ target.insertAdjacentHTML('beforebegin',panelHtml('adm')); } }
-    const supBody=$('supTicketsBody'); if(supBody && !$('supTicketSlaPanelV10364')){ const card=supBody.closest('.card')||supBody.parentElement; const target=card && card.querySelector('.filters'); if(target){ target.insertAdjacentHTML('afterend',panelHtml('sup')); } }
+    const adminBody=$('ticketsBody'); if(adminBody && !$('admTicketSlaPanelV10364')){ const card=adminBody.closest('.card')||adminBody.parentElement; const target=$('ticketFiltersV10246') || (card&&card.querySelector('.filters')) || adminBody; if(target){ target.insertAdjacentHTML('beforebegin',panelHtml('adm', false)); } }
+    const supBody=$('supTicketsBody'); if(supBody && !$('supTicketSlaPanelV10364')){ const card=supBody.closest('.card')||supBody.parentElement; const target=card && card.querySelector('.filters'); if(target){ target.insertAdjacentHTML('afterend',panelHtml('sup', true)); } }
     bindPanel('adm'); bindPanel('sup');
   }
   function selectedSlaFilter(){ return normalizeFilterValue($('admTicketSlaFilterV10364')?.value || $('supTicketSlaFilterV10364')?.value); }
@@ -23413,4 +23413,53 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function bind(){ document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207,.ticket-pdf-v208,[data-ticket-pdf]').forEach(b=>{ b.textContent='تقرير PDF'; b.onclick=printReport; }); }
   document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,500)); window.addEventListener('load',()=>setTimeout(bind,1000)); setTimeout(bind,1800);
   console.log('Tasneef '+BUILD+' loaded');
+})();
+
+
+/* ===== V10366: Technician/Supervisor SLA controls visibility ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefTicketSlaRoleCleanV10366) return;
+  window.__tasneefTicketSlaRoleCleanV10366 = true;
+  const $=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  const STORE='tasneef_ticket_sla_hours_v10364';
+  function cfg(){ let c={urgent:4,high:12,normal:24}; try{c=Object.assign(c,JSON.parse(localStorage.getItem(STORE)||'{}'));}catch(_){ } return c; }
+  function priorityKey(p){ p=S(p); if(p==='urgent') return 'urgent'; if(p==='high') return 'high'; return 'normal'; }
+  function tNo(t){ return S(t.ticket_number||t.ticket_no||t.no)||('T-'+String(t.id||0).padStart(4,'0')); }
+  function slaState(t){ const c=cfg(); const due=(Number(c[priorityKey(t.priority)])||24)*60; const start=Date.parse(S(t.created_at||t.createdAt||t.date||t.updated_at)); const end=S(t.status)==='closed'?Date.parse(S(t.closed_at||t.updated_at)):Date.now(); const elapsed=(!isNaN(start)&&!isNaN(end))?Math.max(0,Math.round((end-start)/60000)):0; if(elapsed>due) return 'late'; if(elapsed>=due*0.8) return 'near'; return 'standard'; }
+  function stateClass(st){ return st==='late'?'sla-row-red':(st==='near'?'sla-row-yellow':'sla-row-green'); }
+  function normalize(v){ v=S(v); if(v==='late'||v==='red') return 'late'; if(v==='near'||v==='yellow') return 'near'; if(v==='standard'||v==='green') return 'standard'; return ''; }
+  function ensureTechFilter(){
+    if(!$('techTicketsTab') || $('techTicketSlaFilterV10366')) return;
+    const filters=$('techTicketStatus')?.closest('.filters') || document.querySelector('#techTicketsTab .filters');
+    if(!filters) return;
+    filters.insertAdjacentHTML('beforeend','<select id="techTicketSlaFilterV10366" title="فلتر الشريط"><option value="">كل الأشرطة</option><option value="late">متأخر</option><option value="near">قارب</option><option value="standard">قياسي</option></select>');
+    $('techTicketSlaFilterV10366').addEventListener('change',()=>{ if(typeof window.renderTechnicianTickets==='function') window.renderTechnicianTickets(); });
+  }
+  function ensureStyle(){ if($('ticketSlaRoleStyleV10366')) return; const st=document.createElement('style'); st.id='ticketSlaRoleStyleV10366'; st.textContent='.sla-row-red{box-shadow:inset -7px 0 #d92d20!important;background:#fff8f8!important}.sla-row-yellow{box-shadow:inset -7px 0 #f0b429!important;background:#fffdf3!important}.sla-row-green{box-shadow:inset -7px 0 #168a43!important;background:#f8fff9!important}.ticket-sla-panel-limited-v10366 input,.ticket-sla-panel-limited-v10366 label:has(input){display:none!important}'; document.head.appendChild(st); }
+  function applyTechFilter(){
+    ensureStyle(); ensureTechFilter();
+    const selected=normalize($('techTicketSlaFilterV10366')?.value);
+    const tickets=Array.isArray(window.data?.tickets)?window.data.tickets:[];
+    ['techOpenTicketsBody','techMyTicketsBody','techDoneTicketsBody'].forEach(id=>{
+      const body=$(id); if(!body) return;
+      [...body.querySelectorAll('tr')].forEach(tr=>{
+        const no=S(tr.querySelector('td b')?.textContent || tr.cells?.[0]?.textContent);
+        const t=tickets.find(x=>tNo(x)===no);
+        if(!t) return;
+        const st=slaState(t); tr.classList.remove('sla-row-red','sla-row-yellow','sla-row-green'); tr.classList.add(stateClass(st));
+        tr.style.display=(selected && st!==selected)?'none':'';
+      });
+    });
+  }
+  const wrap=()=>{
+    if(window.__techSlaRenderWrappedV10366) return;
+    const old=window.renderTechnicianTickets;
+    if(typeof old!=='function') return;
+    window.__techSlaRenderWrappedV10366=true;
+    window.renderTechnicianTickets=function(){ const r=old.apply(this,arguments); setTimeout(applyTechFilter,0); return r; };
+  };
+  function boot(){ ensureStyle(); ensureTechFilter(); wrap(); setTimeout(applyTechFilter,300); }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,800)); window.addEventListener('load',()=>setTimeout(boot,1200)); setTimeout(boot,2000);
 })();
