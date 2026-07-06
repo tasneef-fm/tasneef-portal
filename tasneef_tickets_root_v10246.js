@@ -367,3 +367,101 @@
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,700)); window.addEventListener('load',()=>setTimeout(boot,1100)); setTimeout(boot,1800);
   console.log('Tasneef '+BUILD+' loaded');
 })();
+
+
+/* ===== V10369: Force current account as ticket responsible/supervisor before save ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefTicketResponsibleFixV10369) return;
+  window.__tasneefTicketResponsibleFixV10369 = true;
+  const BUILD='V10369_TICKET_RESPONSIBLE_FIX';
+  const $=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  function msgx(t,type){ try{ if(typeof window.msg==='function') return window.msg(t,type||'err'); }catch(_){} try{ if(typeof window.notify==='function') return window.notify(t,type||'err'); }catch(_){} alert(t); }
+  function currentUser(){
+    try{ if(typeof window.session==='function'){ const u=window.session(); if(u) return u; } }catch(_){ }
+    try{ const u=JSON.parse(localStorage.getItem('tasneef_user')||'{}'); if(u && Object.keys(u).length) return u; }catch(_){ }
+    return window.currentUser || {};
+  }
+  function userId(u){ return S(u.id || u.user_id || u.uid || u.employee_id); }
+  function userName(u){ return S(u.full_name || u.name || u.display_name || u.username || u.email || userId(u)); }
+  function roleOf(u){ return S(u.role || u.user_role || u.type || '').toLowerCase(); }
+  function isFieldAccount(u){ const r=roleOf(u); return r.includes('supervisor') || r.includes('technician') || r.includes('مشرف') || r.includes('فني') || r.includes('tech'); }
+  function ensureCurrentOption(sel,u){
+    if(!sel || !isFieldAccount(u)) return false;
+    const uid=userId(u), uname=userName(u);
+    if(!uid && !uname) return false;
+    let match=null;
+    Array.from(sel.options||[]).forEach(opt=>{
+      const ov=S(opt.value), ot=S(opt.textContent).toLowerCase();
+      if((uid && ov===uid) || (uname && ot===uname.toLowerCase())) match=opt;
+    });
+    if(!match){
+      match=document.createElement('option');
+      match.value=uid || uname;
+      match.textContent=uname || uid;
+      match.dataset.autoCurrentAccount='1';
+      sel.appendChild(match);
+    }
+    sel.value=match.value;
+    sel.dataset.autoCurrentAccount='1';
+    try{ sel.dispatchEvent(new Event('change',{bubbles:true})); }catch(_){ }
+    return !!sel.value;
+  }
+  function ensureTicketSupervisorField(){
+    const u=currentUser();
+    let sel=$('ticketSupervisor');
+    const formProject=$('ticketProject');
+    const hasTicketForm=!!($('ticketFormTitle') && formProject);
+    if(!sel && hasTicketForm && isFieldAccount(u)){
+      sel=document.createElement('select');
+      sel.id='ticketSupervisor';
+      sel.name='ticketSupervisor';
+      sel.style.display='none';
+      formProject.insertAdjacentElement('afterend',sel);
+    }
+    if(sel && isFieldAccount(u)) ensureCurrentOption(sel,u);
+    const display=$('ticketCurrentSupervisorNameV10367') || $('ticketCurrentUserNameV10367');
+    if(display) display.value=userName(u) || '-';
+    return sel;
+  }
+  function ensureTechnicianProjectSupervisor(){
+    const u=currentUser();
+    const projectId=S($('techNewTicketProject')?.value);
+    if(!projectId || !isFieldAccount(u)) return;
+    const d=window.data || {};
+    const projects=Array.isArray(d.projects)?d.projects:[];
+    const p=projects.find(x=>S(x.id)===projectId);
+    if(p && !S(p.supervisor_id)){
+      p.supervisor_id=userId(u) || p.supervisor_id;
+      p.supervisor_name=userName(u) || p.supervisor_name;
+    }
+    const display=$('techCurrentTicketUserNameV10367');
+    if(display) display.value=userName(u) || '-';
+  }
+  function validateTicketBeforeSave(){
+    const projectVal=S($('ticketProject')?.value);
+    const supVal=S($('ticketSupervisor')?.value);
+    if(!projectVal){ msgx('لا يمكن رفع التكت. يرجى تحديد: المشروع','err'); return false; }
+    if(!supVal){ msgx('لا يمكن رفع التكت. يرجى تحديد: المشرف','err'); return false; }
+    return true;
+  }
+  const prevSaveTicket=window.saveTicket;
+  window.saveTicket=async function(){
+    ensureTicketSupervisorField();
+    if(!validateTicketBeforeSave()) return;
+    return typeof prevSaveTicket==='function' ? await prevSaveTicket.apply(this,arguments) : undefined;
+  };
+  const prevTechSave=window.saveTechnicianTicket;
+  window.saveTechnicianTicket=async function(){
+    ensureTechnicianProjectSupervisor();
+    return typeof prevTechSave==='function' ? await prevTechSave.apply(this,arguments) : undefined;
+  };
+  const prevClear=window.clearTicketForm;
+  window.clearTicketForm=function(){ const r=typeof prevClear==='function'?prevClear.apply(this,arguments):undefined; setTimeout(ensureTicketSupervisorField,60); return r; };
+  function boot(){ ensureTicketSupervisorField(); ensureTechnicianProjectSupervisor(); }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
+  window.addEventListener('load',()=>{ setTimeout(boot,800); setTimeout(boot,1800); });
+  setInterval(boot,2500);
+  console.log('Tasneef '+BUILD+' loaded');
+})();
