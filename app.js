@@ -23463,3 +23463,91 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function boot(){ ensureStyle(); ensureTechFilter(); wrap(); setTimeout(applyTechFilter,300); }
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,800)); window.addEventListener('load',()=>setTimeout(boot,1200)); setTimeout(boot,2000);
 })();
+
+/* ===== V10367: Auto show current user name in ticket creation ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefTicketCreatorNameV10367) return;
+  window.__tasneefTicketCreatorNameV10367 = true;
+  const BUILD='V10367_TICKET_CREATOR_NAME';
+  const $=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  function user(){
+    try{ if(typeof window.session==='function') return window.session() || {}; }catch(_){ }
+    try{ return JSON.parse(localStorage.getItem('tasneef_user')||'{}') || {}; }catch(_){ return window.currentUser || {}; }
+  }
+  function nameOfUser(u){ return S(u.full_name || u.name || u.display_name || u.username || u.email || ''); }
+  function roleOf(u){ return S(u.role || u.user_role || '').toLowerCase(); }
+  function isSupervisorOrTech(u){ const r=roleOf(u); return r.includes('supervisor') || r.includes('مشرف') || r.includes('technician') || r.includes('فني'); }
+  function matchSelectToCurrentUser(sel,u){
+    if(!sel || !u || !isSupervisorOrTech(u)) return;
+    const uid=S(u.id || u.user_id || u.uid);
+    const uname=nameOfUser(u).toLowerCase();
+    let found=false;
+    Array.from(sel.options||[]).forEach(opt=>{
+      const ov=S(opt.value), ot=S(opt.textContent).toLowerCase();
+      if((uid && ov===uid) || (uname && ot===uname)) { sel.value=opt.value; found=true; }
+    });
+    if(found){
+      sel.dataset.autoCurrentUser='1';
+      sel.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+  }
+  function ensureReadonlyField(afterEl,id,label){
+    if(!afterEl || $(id)) return $(id);
+    const wrap=document.createElement('div');
+    wrap.className='ticket-current-user-v10367';
+    wrap.innerHTML=`<label>${label}</label><input id="${id}" readonly placeholder="يظهر تلقائيًا حسب الحساب الحالي">`;
+    afterEl.insertAdjacentElement('afterend',wrap);
+    return $(id);
+  }
+  function decorate(){
+    const u=user();
+    const uname=nameOfUser(u);
+    const role=roleOf(u);
+    const isTech=role.includes('technician') || role.includes('فني');
+    const isSup=role.includes('supervisor') || role.includes('مشرف');
+
+    // الإدارة أو أي صفحة فيها select للمشرف
+    const ticketSup=$('ticketSupervisor');
+    if(ticketSup){
+      const field=ensureReadonlyField(ticketSup,'ticketCurrentUserNameV10367','المسؤول الحالي');
+      if(field) field.value=uname || '-';
+      if(isSup || isTech) matchSelectToCurrentUser(ticketSup,u);
+    }
+
+    // نسخة المشرف: لا يوجد select للمشرف، نعرض اسم الحساب فقط
+    const supFormTitle=$('ticketFormTitle');
+    const ticketProject=$('ticketProject');
+    if(supFormTitle && ticketProject && !ticketSup){
+      const field=ensureReadonlyField(ticketProject,'ticketCurrentSupervisorNameV10367','المشرف');
+      if(field) field.value=uname || '-';
+    }
+
+    // نسخة الفني: نموذج إنشاء تكت جديد
+    const techProject=$('techNewTicketProject');
+    if(techProject){
+      const field=ensureReadonlyField(techProject,'techCurrentTicketUserNameV10367','الفني');
+      if(field) field.value=uname || '-';
+    }
+  }
+  function beforeSave(){
+    decorate();
+    const u=user();
+    const sel=$('ticketSupervisor');
+    if(sel && isSupervisorOrTech(u)) matchSelectToCurrentUser(sel,u);
+  }
+  const oldSaveTicket=window.saveTicket;
+  window.saveTicket=async function(){ beforeSave(); return typeof oldSaveTicket==='function' ? await oldSaveTicket.apply(this,arguments) : undefined; };
+  const oldClear=window.clearTicketForm;
+  window.clearTicketForm=function(){ const r=typeof oldClear==='function'?oldClear.apply(this,arguments):undefined; setTimeout(decorate,80); return r; };
+  const oldTechClear=window.clearTechnicianTicketForm;
+  window.clearTechnicianTicketForm=function(){ const r=typeof oldTechClear==='function'?oldTechClear.apply(this,arguments):undefined; setTimeout(decorate,80); return r; };
+  const css=document.createElement('style');
+  css.textContent=`.ticket-current-user-v10367{margin:8px 0}.ticket-current-user-v10367 input{background:#f3f8f6!important;border:1px solid #cfe3dc!important;color:#064f41!important;font-weight:900!important;cursor:not-allowed}.ticket-current-user-v10367 label{font-weight:900;color:#064f41}`;
+  document.head.appendChild(css);
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(decorate,500));
+  window.addEventListener('load',()=>{ setTimeout(decorate,700); setTimeout(decorate,1800); });
+  setInterval(decorate,2500);
+  console.log('Tasneef '+BUILD+' loaded');
+})();
