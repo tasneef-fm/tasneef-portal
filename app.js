@@ -23649,3 +23649,65 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   setInterval(boot,2500);
   console.log('Tasneef '+BUILD+' loaded');
 })();
+
+/* V260 Client Portal: supervisor reports publish directly for client portal */
+(function(){
+  const S=v=>String(v??'');
+  const $id=id=>document.getElementById(id);
+  function token(){
+    try{ if(typeof genReportToken==='function') return genReportToken(); }catch(_){ }
+    return 'cr_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+  function no(){
+    try{ if(typeof genReportNo==='function') return genReportNo(); }catch(_){ }
+    const d=new Date(); return 'TSF-' + d.getFullYear() + '-' + String(Date.now()).slice(-6);
+  }
+  function day(){ try{ if(typeof today==='function') return today(); }catch(_){ } return new Date().toISOString().slice(0,10); }
+  function say(t,type){ try{ if(typeof v133Msg==='function') return v133Msg(t,type); if(typeof msg==='function') return msg(t,type); }catch(_){ } alert(t); }
+  async function findMonthly(projectId, reportDate){
+    const m=S(reportDate||day()).slice(0,7);
+    try{
+      const local=(window.data?.clientReports||[]).find(r=>S(r.project_id)===S(projectId) && S(r.report_date||'').startsWith(m));
+      if(local) return local;
+    }catch(_){ }
+    try{
+      const res=await sb.from('client_reports').select('*').eq('project_id',Number(projectId)).gte('report_date',m+'-01').lte('report_date',m+'-31').order('created_at',{ascending:true}).limit(1);
+      if(!res.error && res.data && res.data[0]) return res.data[0];
+    }catch(_){ }
+    return null;
+  }
+  function servicesCount(reportId){ try{ if(typeof getReportServices==='function') return (getReportServices(reportId)||[]).length; }catch(_){ } return 0; }
+  window.supClientSaveDailyReport = async function(btn){
+    try{
+      if(btn){ btn.disabled=true; btn.dataset.oldText=btn.innerHTML; btn.innerHTML='جاري الحفظ...'; }
+      const pid=$id('supClientReportProject')?.value;
+      if(!pid) throw new Error('اختر المشروع');
+      const valid=(window.supClientServicesState||[]).filter(s=>((s.before_images?.length||0)+(s.during_images?.length||0)+(s.after_images?.length||0))>0);
+      if(!valid.length) throw new Error('أضف صورًا لخدمة واحدة على الأقل');
+      const u=(typeof session==='function'?session():{})||{};
+      const p=(typeof projectName==='function'?projectName(Number(pid)):'')||'';
+      const reportDate=$id('supClientReportDate')?.value||day();
+      const summary=$id('supClientReportSummary')?.value||'تم توثيق الأعمال المنفذة في المشروع من قبل المشرف الميداني.';
+      const existing=await findMonthly(Number(pid), reportDate);
+      let reportId='', publicToken='';
+      if(existing?.id){
+        reportId=existing.id; publicToken=existing.public_token || token();
+        const upd={title:`تقرير شهري - ${p}`,report_type:'تقرير شهري من المشرف',report_date:reportDate,executive_summary:summary,status:'published',public_token:publicToken,published_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+        const r=await sb.from('client_reports').update(upd).eq('id',reportId).select('id,public_token').single(); if(r.error) throw r.error;
+      }else{
+        publicToken=token();
+        const reportRow={report_no:no(),project_id:Number(pid),project_name:p,chairman_name:'',chairman_phone:'',title:`تقرير شهري - ${p}`,report_type:'تقرير شهري من المشرف',report_date:reportDate,executive_summary:summary,status:'published',public_token:publicToken,published_at:new Date().toISOString()};
+        const r=await sb.from('client_reports').insert(reportRow).select('id,public_token').single(); if(r.error) throw r.error; reportId=r.data.id; publicToken=r.data.public_token||publicToken;
+      }
+      const currentCount=servicesCount(reportId);
+      const rows=valid.map((s,i)=>({report_id:reportId,sort_order:currentCount+i+1,service_type:s.service_type,title:s.title||s.service_type,service_description:'',scope_work:'',notes:`رفع بواسطة: ${u.full_name||u.username||'المشرف'}`,before_images:s.before_images||[],during_images:s.during_images||[],after_images:s.after_images||[]}));
+      const se=await sb.from('client_report_services').insert(rows); if(se.error) throw se.error;
+      say('تم حفظ التقرير ونشره مباشرة في بوابة العميل');
+      try{ if(typeof supClientReportReset==='function') supClientReportReset(); }catch(_){ }
+      try{ if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(_){ }
+      try{ if(typeof supClientRenderMyReports==='function') supClientRenderMyReports(); }catch(_){ }
+    }catch(e){ console.error('V260 supervisor direct publish failed',e); say(e.message||String(e),'err'); }
+    finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.oldText||'حفظ التقرير'; } }
+  };
+  console.log('Tasneef V260 client portal direct publish loaded');
+})();
