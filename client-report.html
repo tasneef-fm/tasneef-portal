@@ -41,8 +41,8 @@ function decodeToken(){const u=new URL(location.href);let t=u.searchParams.get('
 function reportTitle(r){return r?.title||r?.report_title||r?.report_no||'تقرير مشروع'}
 function serviceName(s){return s?.title||s?.service_title||s?.service_type||'خدمة منفذة'}
 function ticketNo(t){return n(t?.ticket_number||t?.ticket_no||(t?.id?('T-'+String(t.id).padStart(4,'0')):'-'))}
-function statusLabel(s){return ({open:'مفتوح',processing:'مفتوح',in_progress:'مفتوح',pending:'مفتوح',reopened:'مفتوح',closed:'مسكرة'}[String(s||'open')]||'مفتوح')}
-function statusClass(s){return String(s||'open')==='closed'?'green':(String(s||'')==='processing'||String(s||'')==='in_progress'?'amber':'red')}
+function statusLabel(s){return ({open:'مفتوحة',processing:'تحت المعالجة',in_progress:'تحت المعالجة',pending:'تحت المعالجة',reopened:'تحت المعالجة',closed:'مغلقة'}[String(s||'open')]||'مفتوحة')}
+function statusClass(s){return String(s||'open')==='closed'?'green':(['processing','in_progress','pending','reopened'].includes(String(s||''))?'amber':'red')}
 function asImages(v){if(!v)return[];if(Array.isArray(v))return v.filter(Boolean);try{const x=JSON.parse(v);return Array.isArray(x)?x.filter(Boolean):[]}catch(e){return[]}}
 function getSrc(x){return typeof x==='string'?x:(x?.url||x?.data||x?.src||'')}
 function before(s){return asImages(s.before_images||s.images_before)}function during(s){return asImages(s.during_images||s.images_during)}function after(s){return asImages(s.after_images||s.images_after||s.after)}
