@@ -23731,3 +23731,139 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   };
   console.log('Tasneef V260 client portal direct publish loaded');
 })();
+
+/* ===== V371: Supervisor project scope guard - show only assigned projects data ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefSupervisorProjectScopeV371) return;
+  window.__tasneefSupervisorProjectScopeV371 = true;
+  const BUILD='V371_SUPERVISOR_PROJECT_SCOPE_GUARD';
+  const $id=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  function currentUser(){
+    try{ if(typeof session==='function'){ const u=session(); if(u) return u; } }catch(_){ }
+    try{ const u=JSON.parse(localStorage.getItem('tasneef_user')||'{}'); if(u && Object.keys(u).length) return u; }catch(_){ }
+    return window.currentUser || {};
+  }
+  function isSupervisor(){ return S(currentUser().role).toLowerCase()==='supervisor'; }
+  function uid(){ return S(currentUser().id || currentUser().user_id || currentUser().uid); }
+  function pageIsSupervisor(){ return !!document.getElementById('supTitle') || location.pathname.toLowerCase().includes('supervisor'); }
+  function projectSupId(p){ return S(p?.supervisor_id || p?.app_supervisor_id || p?.manager_id || p?.supervisor_user_id); }
+  function workerSupIdSafe(w){
+    try{ if(typeof workerSupId==='function') return S(workerSupId(w)); }catch(_){ }
+    return S(w?.app_supervisor_id || w?.supervisor_id || w?.manager_id);
+  }
+  function assignedProjectSet(){
+    const sid=uid();
+    const d=window.data || data || {};
+    const projects=Array.isArray(d.projects)?d.projects:[];
+    const workers=Array.isArray(d.workers)?d.workers:[];
+    const set=new Set(projects.filter(p=>projectSupId(p)===sid).map(p=>S(p.id)));
+    // احتياط: لو العامل مربوط بالمشرف وفيه project_id، ندخل مشروعه ضمن نطاق المشرف.
+    workers.forEach(w=>{ if(workerSupIdSafe(w)===sid && S(w.project_id)) set.add(S(w.project_id)); });
+    return set;
+  }
+  function rowProjectId(r){ return S(r?.project_id || r?.project || r?.projectId); }
+  function rowSupervisorId(r){ return S(r?.supervisor_id || r?.app_supervisor_id || r?.created_by || r?.user_id); }
+  function filterByProject(rows,set){ return Array.isArray(rows) ? rows.filter(r=>set.has(rowProjectId(r))) : []; }
+  function applyScope(){
+    if(!pageIsSupervisor() || !isSupervisor()) return;
+    const d=window.data || data;
+    if(!d) return;
+    const sid=uid();
+    const pset=assignedProjectSet();
+    if(Array.isArray(d.projects)) d.projects = d.projects.filter(p=>pset.has(S(p.id)) || projectSupId(p)===sid);
+    const finalSet=new Set((d.projects||[]).map(p=>S(p.id)));
+    // بيانات المشرف تظهر فقط من مشاريعه
+    if(Array.isArray(d.workers)) d.workers = d.workers.filter(w=>finalSet.has(S(w.project_id)) || workerSupIdSafe(w)===sid);
+    if(Array.isArray(d.logs)) d.logs = d.logs.filter(l=>finalSet.has(rowProjectId(l)) && (rowSupervisorId(l)===sid || !rowSupervisorId(l)));
+    if(Array.isArray(d.attendance)) d.attendance = d.attendance.filter(a=>finalSet.has(rowProjectId(a)) || rowSupervisorId(a)===sid);
+    if(Array.isArray(d.tickets)) d.tickets = d.tickets.filter(t=>finalSet.has(rowProjectId(t)) || rowSupervisorId(t)===sid);
+    if(Array.isArray(d.inventoryRequests)) d.inventoryRequests = d.inventoryRequests.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
+    if(Array.isArray(d.contractServices)) d.contractServices = d.contractServices.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
+    if(Array.isArray(d.clientReports)) d.clientReports = d.clientReports.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
+    window.__tasneefSupervisorProjectIdsV371 = finalSet;
+    refillSupervisorProjectSelects(finalSet);
+  }
+  function getProjectsInScope(){
+    const d=window.data || data || {};
+    const set=window.__tasneefSupervisorProjectIdsV371 || assignedProjectSet();
+    return (Array.isArray(d.projects)?d.projects:[]).filter(p=>set.has(S(p.id)));
+  }
+  function setSelectProjects(id, allLabel){
+    const el=$id(id); if(!el) return;
+    const old=el.value;
+    const rows=getProjectsInScope();
+    el.innerHTML=(allLabel!==null?`<option value="">${allLabel||'اختر المشروع'}</option>`:'') + rows.map(p=>`<option value="${String(p.id).replace(/"/g,'&quot;')}">${String(p.name||'-').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</option>`).join('');
+    if([...el.options].some(o=>o.value===old)) el.value=old;
+  }
+  function refillSupervisorProjectSelects(){
+    if(!pageIsSupervisor() || !isSupervisor()) return;
+    setSelectProjects('logProject','اختر المشروع');
+    setSelectProjects('attendanceProject','اختر المشروع');
+    setSelectProjects('ticketProject','اختر المشروع');
+    setSelectProjects('supOrderProjectV10061','اختر المشروع');
+    setSelectProjects('supOrderFilterProjectV10061','كل المشاريع');
+    setSelectProjects('supInventoryRequestProject','اختر المشروع');
+    setSelectProjects('supClientReportProject','اختر المشروع');
+    // إخفاء/ضبط مشرف التكت على الحساب الحالي
+    const supSel=$id('ticketSupervisor');
+    if(supSel){
+      let opt=[...supSel.options].find(o=>S(o.value)===uid());
+      if(!opt){ opt=document.createElement('option'); opt.value=uid(); opt.textContent=currentUser().full_name||currentUser().username||'المشرف الحالي'; supSel.appendChild(opt); }
+      supSel.value=uid();
+    }
+  }
+  function projectAllowed(pid){
+    if(!isSupervisor()) return true;
+    const set=window.__tasneefSupervisorProjectIdsV371 || assignedProjectSet();
+    return set.has(S(pid));
+  }
+  function say(t,type){ try{ if(typeof msg==='function') return msg(t,type||'err'); }catch(_){ } alert(t); }
+
+  const oldLoadAll=window.loadAll;
+  if(typeof oldLoadAll==='function'){
+    window.loadAll=async function(){ const r=await oldLoadAll.apply(this,arguments); applyScope(); return r; };
+  }
+  const oldRefreshAll=window.refreshAll;
+  if(typeof oldRefreshAll==='function'){
+    window.refreshAll=async function(){ const r=await oldRefreshAll.apply(this,arguments); applyScope(); return r; };
+  }
+  const oldInitSupervisor=window.initSupervisor;
+  if(typeof oldInitSupervisor==='function'){
+    window.initSupervisor=async function(){ const r=await oldInitSupervisor.apply(this,arguments); applyScope(); refillSupervisorProjectSelects(); try{ if(typeof renderSupervisorAttendanceList==='function') renderSupervisorAttendanceList(); }catch(_){ } try{ if(typeof renderTimeLogs==='function') renderTimeLogs(); }catch(_){ } try{ if(typeof renderTickets==='function') renderTickets(); }catch(_){ } return r; };
+  }
+  const oldSaveTimeLog=window.saveTimeLog;
+  if(typeof oldSaveTimeLog==='function'){
+    window.saveTimeLog=async function(){ if(isSupervisor() && !projectAllowed($id('logProject')?.value)){ say('هذا المشروع غير مرتبط بحسابك كمشرف','err'); return; } const r=await oldSaveTimeLog.apply(this,arguments); applyScope(); return r; };
+  }
+  const oldSaveTicket=window.saveTicket;
+  if(typeof oldSaveTicket==='function'){
+    window.saveTicket=async function(){
+      if(isSupervisor()){
+        if(!projectAllowed($id('ticketProject')?.value)){ say('لا يمكنك رفع تكت إلا على مشاريعك فقط','err'); return; }
+        let sup=$id('ticketSupervisor');
+        if(sup) sup.value=uid();
+      }
+      const r=await oldSaveTicket.apply(this,arguments); applyScope(); return r;
+    };
+  }
+  const oldSaveSupervisorAttendance=window.saveSupervisorAttendance;
+  if(typeof oldSaveSupervisorAttendance==='function'){
+    window.saveSupervisorAttendance=async function(){ if(isSupervisor() && $id('attendanceProject')?.value && !projectAllowed($id('attendanceProject')?.value)){ say('لا يمكنك حفظ حضور على مشروع غير مرتبط بك','err'); return; } const r=await oldSaveSupervisorAttendance.apply(this,arguments); applyScope(); return r; };
+  }
+  const oldSupClientSave=window.supClientSaveDailyReport;
+  if(typeof oldSupClientSave==='function'){
+    window.supClientSaveDailyReport=async function(btn){ if(isSupervisor() && !projectAllowed($id('supClientReportProject')?.value)){ say('لا يمكنك رفع تقرير إلا على مشاريعك فقط','err'); return; } const r=await oldSupClientSave.apply(this,arguments); applyScope(); return r; };
+  }
+  const oldSupOrdersSave=window.supOrdersSaveV10061;
+  if(typeof oldSupOrdersSave==='function'){
+    window.supOrdersSaveV10061=async function(btn){ if(isSupervisor() && !projectAllowed($id('supOrderProjectV10061')?.value)){ say('لا يمكنك رفع أوردر إلا على مشاريعك فقط','err'); return; } const r=await oldSupOrdersSave.apply(this,arguments); applyScope(); return r; };
+  }
+
+  function boot(){ applyScope(); refillSupervisorProjectSelects(); }
+  document.addEventListener('DOMContentLoaded',()=>{ setTimeout(boot,300); setTimeout(boot,1200); setTimeout(boot,2500); });
+  window.addEventListener('load',()=>{ setTimeout(boot,600); setTimeout(boot,1800); });
+  setInterval(boot,3000);
+  console.log('Tasneef '+BUILD+' loaded');
+})();
