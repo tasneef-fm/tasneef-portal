@@ -1,4 +1,4 @@
-/* V403 clean monthly times - June from Excel JSON, other months from time_logs/Supabase, landscape print */
+/* V403 clean monthly times - approved version: reads other months from time_logs and worker names/codes from workers section */
 (function(){
   'use strict';
   const VERSION='403';
@@ -23,7 +23,9 @@
   function projectName(p){return S(p?.name||p?.project_name||p?.title||p?.project||'-')}
   function userName(u){return S(u?.full_name||u?.name||u?.username||u?.app_name||'-')}
   function employeeCode(x){return S(x?.employee_code||x?.code||x?.worker_code||x?.employee_id_code||x?.employee_id||'')}
-  function workerName(w){const code=employeeCode(w); const name=S(w?.app_name||w?.name||w?.full_name||w?.worker_name||w?.iqama_name||'-'); return code && !name.includes(code) ? `${code} - ${name}` : name;}
+  function workerName(w){const code=employeeCode(w); const name=S(w?.app_name||w?.employee_name||w?.name||w?.full_name||w?.worker_name||w?.iqama_name||'-'); return code && !name.includes(code) ? `${code} - ${name}` : name;}
+  function employeeDisplayByCode(code, empByCode){const c=S(code); if(!c) return ''; const e=empByCode&&empByCode.get(c); const name=S(e?.app_name||e?.employee_name||e?.name||e?.iqama_name||''); return name ? `${c} - ${name}` : c;}
+  function linkActiveInMonth(a, month){const r=monthRange(month); const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10); if(en && en<r.from) return false; if(st && st>=r.to) return false; const mk=S(a.month_key||a.month||''); return !mk || mk===month || (st<r.to && (!en || en>=r.from));}
   function projectSupervisorId(p){return S(p?.supervisor_id||p?.current_supervisor_id||p?.app_supervisor_id||p?.manager_id||'')}
   function forcedType(name, raw){const n=norm(name); if(dailyNames.some(x=>n.includes(norm(x)))) return 'زيارة يومية'; if(fullNames.some(x=>n.includes(norm(x)))) return 'دوام كامل'; const t=norm(raw||''); return (t.includes('دوام')||t.includes('full')||t.includes('permanent')||t.includes('fixed')||t.includes('24'))?'دوام كامل':'زيارة يومية';}
   function actualMinutes(l){
@@ -71,10 +73,12 @@
     DYNAMIC_DATA=[]; currentMonthLoaded=month;
     const sb=window.sb; if(!sb){return []}
     const r=monthRange(month);
-    const [projects,users,workers,assignments,logs1,logs2]=await Promise.all([
+    const [projects,users,workers,employees,monthLinks,assignments,logs1,logs2]=await Promise.all([
       safe(sb.from('projects').select('*').limit(5000)),
       safe(sb.from('app_users').select('*').limit(3000)),
       safe(sb.from('workers').select('*').limit(6000)),
+      safe(sb.from('employees_master_v386').select('*').limit(6000)),
+      safe(sb.from('worker_project_links_v386').select('*').limit(20000)),
       safe(sb.from('worker_project_assignments').select('*').limit(20000)),
       safe(sb.from('time_logs').select('*').gte('check_in',r.fromIso).lt('check_in',r.toIso).limit(20000)),
       safe(sb.from('time_logs').select('*').gte('log_date',r.from).lt('log_date',r.to).limit(20000))
@@ -83,21 +87,42 @@
     const pById=new Map(projects.map(p=>[S(p.id),p]));
     const uById=new Map(users.map(u=>[S(u.id),u]));
     const wById=new Map(workers.map(w=>[S(w.id),w]));
+    const empByCode=new Map(); employees.forEach(e=>{const c=employeeCode(e); if(c) empByCode.set(c,e);});
+    const linksForMonth=(monthLinks||[]).filter(a=>S(a.status||'نشط')!=='خارج العمل' && linkActiveInMonth(a,month));
+    const linksByProject=new Map();
+    linksForMonth.forEach(a=>{const k=S(a.project_id); if(!k) return; if(!linksByProject.has(k)) linksByProject.set(k,[]); linksByProject.get(k).push(a);});
+    function displayEmployeeFromLink(a){const c=S(a.employee_code||a.worker_code||a.code||''); const byCode=employeeDisplayByCode(c,empByCode); if(byCode) return byCode; const name=S(a.employee_name||a.app_name||a.worker_name||a.name||''); return c && name && !name.includes(c) ? `${c} - ${name}` : (name||c);}
     function workersForProject(pid){
       const names=new Map();
-      assignments.forEach(a=>{if(S(a.project_id)!==S(pid)) return; if(a.is_active===false||a.active===false||a.deleted_at) return;
-        const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10);
-        if(en && en<r.from) return; if(st && st>=r.to) return;
-        const w=wById.get(S(a.worker_id)); const n=w?workerName(w):S(a.worker_name||a.name||a.worker_code||''); if(n) names.set(norm(n),n);
+      // المصدر الأول: قسم العمال الجديد v386، لأنه يحفظ الكود واسم التطبيق حسب الشهر.
+      (linksByProject.get(S(pid))||[]).forEach(a=>{
+        const n=displayEmployeeFromLink(a);
+        if(n) names.set(norm(n),n);
       });
-      workers.forEach(w=>{const ids=[w.project_id,w.assigned_project_id,w.current_project_id,w.main_project_id].map(S).filter(Boolean); if(ids.includes(S(pid))){const n=workerName(w); if(n&&n!=='-') names.set(norm(n),n);}});
+      // المصدر الثاني احتياطي: الربط القديم إذا لم توجد روابط شهرية.
+      if(!names.size){
+        assignments.forEach(a=>{if(S(a.project_id)!==S(pid)) return; if(a.is_active===false||a.active===false||a.deleted_at) return;
+          const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10);
+          if(en && en<r.from) return; if(st && st>=r.to) return;
+          const w=wById.get(S(a.worker_id));
+          const c=employeeCode(w)||S(a.employee_code||a.worker_code||'');
+          const n=employeeDisplayByCode(c,empByCode) || (w?workerName(w):S(a.worker_name||a.name||a.worker_code||''));
+          if(n) names.set(norm(n),n);
+        });
+        workers.forEach(w=>{const ids=[w.project_id,w.assigned_project_id,w.current_project_id,w.main_project_id].map(S).filter(Boolean); if(ids.includes(S(pid))){const c=employeeCode(w); const n=employeeDisplayByCode(c,empByCode)||workerName(w); if(n&&n!=='-') names.set(norm(n),n);}});
+      }
       return [...names.values()].sort((a,b)=>a.localeCompare(b,'ar'));
     }
     const rowsByProject=new Map();
     logs.forEach(l=>{
       const pid=logProjectId(l); if(!pid) return; const p=pById.get(S(pid)); if(!p) return;
       const sid=projectSupervisorId(p); const sup=uById.get(S(sid)); const name=projectName(p); const k=S(pid);
-      if(!rowsByProject.has(k)) rowsByProject.set(k,{month,projectId:pid,projectName:name,projectType:forcedType(name,p.operation_type||p.project_type||p.type),supervisorId:sid,supervisorName:sup?userName(sup):S(p.supervisor_name||'-'),workers:workersForProject(pid),workerCodes:[],totalMinutes:0,requiredDailyMinutes:requiredFromProject(p),requiredMinutes:0,logsCount:0});
+      if(!rowsByProject.has(k)){
+        const mLinks=linksByProject.get(S(pid))||[];
+        const linkSup=S(mLinks.find(x=>S(x.supervisor_name))?.supervisor_name||'');
+        const linkSupId=S(mLinks.find(x=>S(x.supervisor_id))?.supervisor_id||'')||sid;
+        rowsByProject.set(k,{month,projectId:pid,projectName:name,projectType:forcedType(name,p.operation_type||p.project_type||p.type),supervisorId:linkSupId,supervisorName:linkSup||(sup?userName(sup):S(p.supervisor_name||'-')),workers:workersForProject(pid),workerCodes:[],totalMinutes:0,requiredDailyMinutes:requiredFromProject(p),requiredMinutes:0,logsCount:0});
+      }
       const row=rowsByProject.get(k); row.totalMinutes+=actualMinutes(l); row.requiredMinutes+=N(l.required_minutes||l.required_daily_minutes||0); row.logsCount+=1;
     });
     DYNAMIC_DATA=normalize([...rowsByProject.values()],month);
