@@ -75,60 +75,155 @@
     DYNAMIC_DATA=[]; currentMonthLoaded=month;
     const sb=window.sb; if(!sb){return []}
     const r=monthRange(month);
-    const [projects,users,workers,employees,monthLinks,assignments,logs1,logs2]=await Promise.all([
+
+    // نقرأ فقط بيانات الشهر المطلوب حتى لا نضغط على السيرفر.
+    const [projects,users,workers,employees,monthLinks,monthlyDistribution,distributionView,assignments,logs1,logs2]=await Promise.all([
       safe(sb.from('projects').select('*').limit(5000)),
       safe(sb.from('app_users').select('*').limit(3000)),
       safe(sb.from('workers').select('*').limit(6000)),
       safe(sb.from('employees_master_v386').select('*').limit(6000)),
       safe(sb.from('worker_project_links_v386').select('*').limit(20000)),
+      safe(sb.from('monthly_distribution').select('*').eq('month_key',month).limit(20000)),
+      safe(sb.from('monthly_distribution_view').select('*').eq('month_key',month).limit(20000)),
       safe(sb.from('worker_project_assignments').select('*').limit(20000)),
       safe(sb.from('time_logs').select('*').gte('check_in',r.fromIso).lt('check_in',r.toIso).limit(20000)),
       safe(sb.from('time_logs').select('*').gte('log_date',r.from).lt('log_date',r.to).limit(20000))
     ]);
-    const logsMap=new Map(); [...logs1,...logs2].forEach(l=>{const k=S(l.id||JSON.stringify(l)); logsMap.set(k,l);}); const logs=[...logsMap.values()].filter(l=>logDay(l).slice(0,7)===month);
+
+    const logsMap=new Map();
+    [...logs1,...logs2].forEach(l=>{const k=S(l.id||JSON.stringify(l)); logsMap.set(k,l);});
+    const logs=[...logsMap.values()].filter(l=>logDay(l).slice(0,7)===month);
+
     const pById=new Map(projects.map(p=>[S(p.id),p]));
+    const pByName=new Map(projects.map(p=>[norm(projectName(p)),p]));
     const uById=new Map(users.map(u=>[S(u.id),u]));
     const wById=new Map(workers.map(w=>[S(w.id),w]));
-    const empByCode=new Map(); const empByName=new Map(); employees.forEach(e=>{const c=employeeCode(e); if(c) empByCode.set(c,e); [e.app_name,e.employee_name,e.name,e.full_name,e.iqama_name].forEach(n=>{n=S(n); if(n) empByName.set(norm(n),e);});});
-    const linksForMonth=(monthLinks||[]).filter(a=>S(a.status||'نشط')!=='خارج العمل' && linkActiveInMonth(a,month));
+    const empByCode=new Map();
+    const empByName=new Map();
+    employees.forEach(e=>{
+      const c=employeeCode(e); if(c) empByCode.set(c,e);
+      [e.app_name,e.employee_name,e.name,e.full_name,e.iqama_name,e.display_name].forEach(n=>{n=S(n); if(n) empByName.set(norm(nameWithoutCode(n)),e);});
+    });
+
+    function displayFromCodeAndName(code,name){
+      const c=S(code);
+      const byCode=employeeDisplayByCode(c,empByCode);
+      if(byCode) return byCode;
+      const byName=employeeDisplayByName(nameWithoutCode(name),empByName);
+      if(byName) return byName;
+      const n=nameWithoutCode(name);
+      return c && n && !S(n).includes(c) ? `${c} - ${n}` : (n||c||'');
+    }
+
+    function normalizeDistributionRow(a){
+      const pid=S(a.project_id||a.projectId||'');
+      const pname=S(a.project_name||a.projectName||a.project||'');
+      const supCode=S(a.supervisor_employee_code||a.supervisor_code||a.supervisor_worker_code||'');
+      const supName=S(a.supervisor_name||a.supervisor||'');
+      const workerCode=S(a.worker_employee_code||a.employee_code||a.worker_code||a.code||'');
+      const workerName=S(a.worker_display_name||a.worker_name||a.employee_name||a.app_name||a.name||'');
+      return {
+        raw:a,
+        project_id: pid,
+        project_name: pname,
+        project_key: pid || norm(pname),
+        supervisor_employee_code: supCode,
+        supervisor_name: displayFromCodeAndName(supCode,supName) || supName || supCode,
+        worker_employee_code: workerCode,
+        worker_name: displayFromCodeAndName(workerCode,workerName) || workerName || workerCode,
+        status:S(a.status||'active'),
+        start_date:S(a.start_date||a.from_date||''),
+        end_date:S(a.end_date||a.to_date||'')
+      };
+    }
+
+    const distRows=[...monthlyDistribution,...distributionView].map(normalizeDistributionRow).filter(a=>{
+      if(!a.project_id && !a.project_name) return false;
+      const st=norm(a.status||'active');
+      if(['inactive','deleted','archived','خارج العمل','موقوف','محذوف'].includes(st)) return false;
+      if(a.end_date && a.end_date.slice(0,10)<r.from) return false;
+      if(a.start_date && a.start_date.slice(0,10)>=r.to) return false;
+      return true;
+    });
+
+    const legacyLinks=(monthLinks||[]).filter(a=>S(a.status||'نشط')!=='خارج العمل' && linkActiveInMonth(a,month)).map(a=>{
+      const pid=S(a.project_id||'');
+      const pname=S(a.project_name||a.project||'');
+      return {
+        raw:a,
+        project_id: pid,
+        project_name: pname,
+        project_key: pid || norm(pname),
+        supervisor_employee_code:S(a.supervisor_employee_code||a.supervisor_code||a.supervisor_id||''),
+        supervisor_name:displayFromCodeAndName(a.supervisor_employee_code||a.supervisor_code||'', a.supervisor_name||a.supervisor||'' ) || S(a.supervisor_name||a.supervisor||''),
+        worker_employee_code:S(a.employee_code||a.worker_code||a.code||''),
+        worker_name:displayFromCodeAndName(a.employee_code||a.worker_code||a.code||'', a.employee_name||a.app_name||a.worker_name||a.name||''),
+        status:S(a.status||'active'),
+        start_date:S(a.start_date||a.from_date||''),
+        end_date:S(a.end_date||a.to_date||'')
+      };
+    });
+
+    // الأولوية للتوزيع الجديد، ثم الربط القديم كاحتياط.
+    const allLinks=[...distRows,...legacyLinks];
     const linksByProject=new Map();
-    linksForMonth.forEach(a=>{const k=S(a.project_id); if(!k) return; if(!linksByProject.has(k)) linksByProject.set(k,[]); linksByProject.get(k).push(a);});
-    function displayEmployeeFromLink(a){const c=S(a.employee_code||a.worker_code||a.code||''); const byCode=employeeDisplayByCode(c,empByCode); if(byCode) return byCode; const name=S(a.employee_name||a.app_name||a.worker_name||a.name||''); const byName=employeeDisplayByName(nameWithoutCode(name),empByName); if(byName) return byName; return c && name && !name.includes(c) ? `${c} - ${name}` : (name||c);}
+    const linksByProjectName=new Map();
+    allLinks.forEach(a=>{
+      if(a.project_id){const k=S(a.project_id); if(!linksByProject.has(k)) linksByProject.set(k,[]); linksByProject.get(k).push(a);}
+      if(a.project_name){const n=norm(a.project_name); if(!linksByProjectName.has(n)) linksByProjectName.set(n,[]); linksByProjectName.get(n).push(a);}
+    });
+    function linksForProject(pid,pname){
+      const a=linksByProject.get(S(pid))||[];
+      const b=linksByProjectName.get(norm(pname))||[];
+      const seen=new Set(); const out=[];
+      [...a,...b].forEach(x=>{const k=[x.project_id,x.project_name,x.worker_employee_code,x.worker_name].join('|'); if(!seen.has(k)){seen.add(k); out.push(x);}});
+      return out;
+    }
+    function supervisorForProject(pid,pname,p){
+      const links=linksForProject(pid,pname);
+      const x=links.find(a=>S(a.supervisor_name)&&S(a.supervisor_name)!=='-') || links.find(a=>S(a.supervisor_employee_code));
+      if(x){return x.supervisor_name || displayFromCodeAndName(x.supervisor_employee_code,x.supervisor_name) || '-';}
+      const sid=projectSupervisorId(p); const sup=sid?uById.get(S(sid)):null;
+      return supervisorDisplay(sup?userName(sup):S(p?.supervisor_name||'-'));
+    }
     function supervisorDisplay(raw){const n=nameWithoutCode(raw); return employeeDisplayByName(n,empByName) || S(raw||'-');}
-    function workersForProject(pid){
+    function workersForProject(pid,pname){
       const names=new Map();
-      // المصدر الأول: قسم العمال الجديد v386، لأنه يحفظ الكود واسم التطبيق حسب الشهر.
-      (linksByProject.get(S(pid))||[]).forEach(a=>{
-        const n=displayEmployeeFromLink(a);
-        if(n) names.set(norm(n),n);
-      });
-      // المصدر الثاني احتياطي: الربط القديم إذا لم توجد روابط شهرية.
+      linksForProject(pid,pname).forEach(a=>{const n=a.worker_name||displayFromCodeAndName(a.worker_employee_code,a.worker_name); if(n) names.set(norm(n),n);});
       if(!names.size){
         assignments.forEach(a=>{if(S(a.project_id)!==S(pid)) return; if(a.is_active===false||a.active===false||a.deleted_at) return;
           const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10);
           if(en && en<r.from) return; if(st && st>=r.to) return;
           const w=wById.get(S(a.worker_id));
           const c=employeeCode(w)||S(a.employee_code||a.worker_code||'');
-          const rawName=w?workerName(w):S(a.worker_name||a.name||a.worker_code||''); const n=employeeDisplayByCode(c,empByCode) || employeeDisplayByName(nameWithoutCode(rawName),empByName) || rawName;
+          const rawName=w?workerName(w):S(a.worker_name||a.name||a.worker_code||'');
+          const n=employeeDisplayByCode(c,empByCode) || employeeDisplayByName(nameWithoutCode(rawName),empByName) || rawName;
           if(n) names.set(norm(n),n);
         });
         workers.forEach(w=>{const ids=[w.project_id,w.assigned_project_id,w.current_project_id,w.main_project_id].map(S).filter(Boolean); if(ids.includes(S(pid))){const c=employeeCode(w); const raw=workerName(w); const n=employeeDisplayByCode(c,empByCode)||employeeDisplayByName(nameWithoutCode(raw),empByName)||raw; if(n&&n!=='-') names.set(norm(n),n);}});
       }
       return [...names.values()].sort((a,b)=>a.localeCompare(b,'ar'));
     }
+
     const rowsByProject=new Map();
     logs.forEach(l=>{
-      const pid=logProjectId(l); if(!pid) return; const p=pById.get(S(pid)); if(!p) return;
-      const sid=projectSupervisorId(p); const sup=uById.get(S(sid)); const name=projectName(p); const k=S(pid);
+      let pid=logProjectId(l);
+      let p=pid ? pById.get(S(pid)) : null;
+      const logPName=S(l.project_name||l.projectName||l.project||'');
+      if(!p && logPName) p=pByName.get(norm(logPName));
+      if(!p && !pid && logPName){p={id:'name:'+norm(logPName),name:logPName,operation_type:''};}
+      if(!p) return;
+      pid=S(p.id||pid);
+      const name=projectName(p);
+      const k=S(pid)||norm(name);
       if(!rowsByProject.has(k)){
-        const mLinks=linksByProject.get(S(pid))||[];
-        const linkSup=S(mLinks.find(x=>S(x.supervisor_name))?.supervisor_name||'');
-        const linkSupId=S(mLinks.find(x=>S(x.supervisor_id))?.supervisor_id||'')||sid;
-        rowsByProject.set(k,{month,projectId:pid,projectName:name,projectType:forcedType(name,p.operation_type||p.project_type||p.type),supervisorId:linkSupId,supervisorName:supervisorDisplay(linkSup||(sup?userName(sup):S(p.supervisor_name||'-'))),workers:workersForProject(pid),workerCodes:[],totalMinutes:0,requiredDailyMinutes:requiredFromProject(p),requiredMinutes:0,logsCount:0});
+        rowsByProject.set(k,{month,projectId:pid,projectName:name,projectType:forcedType(name,p.operation_type||p.project_type||p.type),supervisorId:projectSupervisorId(p),supervisorName:supervisorForProject(pid,name,p),workers:workersForProject(pid,name),workerCodes:[],totalMinutes:0,requiredDailyMinutes:requiredFromProject(p),requiredMinutes:0,logsCount:0});
       }
       const row=rowsByProject.get(k); row.totalMinutes+=actualMinutes(l); row.requiredMinutes+=N(l.required_minutes||l.required_daily_minutes||0); row.logsCount+=1;
     });
-    DYNAMIC_DATA=normalize([...rowsByProject.values()],month);
+
+    // إذا كان هناك توزيع لشهر محدد ولم توجد سجلات لمشروعه بعد، لا نعرضه في الأوقات حتى لا تظهر أوقات صفر.
+    DYNAMIC_DATA=normalize([...rowsByProject.values()],month).filter(x=>N(x.totalMinutes)>0);
     return DYNAMIC_DATA;
   }
   async function getRows(){const m=selectedMonth(); if(m==='2026-06') return normalize(await loadJune(),m); return await loadDynamicMonth(m);}
