@@ -1,244 +1,109 @@
-/* V403 clean monthly times - approved version: reads other months from time_logs and worker names/codes from workers section */
+/* V406 - Monthly times clean source rules
+   Project type: projects only. Supervisor/workers: monthly_distribution. Time: time_logs.
+   No destructive actions. June JSON is fallback only if DB has no rows for 2026-06. */
 (function(){
   'use strict';
-  const VERSION='403'; // approved same-version hotfix: worker codes for all months
-  const JUNE_URL='monthly_times_june_2026_v401.json?v=403-' + Date.now();
-  let JUNE_DATA=[];
-  let DYNAMIC_DATA=[];
-  let currentMonthLoaded='';
-  let loading=false;
+  const VERSION='406';
+  const JUNE_URL='monthly_times_june_2026_v401.json?v=406-'+Date.now();
   const $=id=>document.getElementById(id);
-  const S=v=>(v==null?'':String(v).trim());
+  const S=v=>(v==null?'':String(v)).trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0};
   const esc=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=v=>S(v).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
   const minsText=m=>{m=Math.round(N(m)); const h=Math.floor(m/60), mm=m%60; if(!h) return mm+' دقيقة'; if(!mm) return h+' ساعة'; return h+' ساعة و '+mm+' دقيقة';};
   const pct=v=>{const n=N(v); return (Math.round(n*10)/10).toString().replace(/\.0$/,'')+'%';};
-  const isFull=r=>S(r.projectType).includes('دوام');
-  const fullNames=['وجود الياسمين','الرمز 17 a','الرمز a17','الرمز','العجلان ريفيرا 19','العجلان 19','الماجدية 88','صفاء 28','صفاء 65','العجلان 30','مكين 37','برج جوديا صباح'];
-  const dailyNames=['الشعلان 50','الشعلان 51'];
-  function selectedMonth(){return $('mc401Month')?.value || new Date().toISOString().slice(0,7);}
-  function monthRange(m){const from=m+'-01'; const d=new Date(from+'T00:00:00'); d.setMonth(d.getMonth()+1); const to=d.toISOString().slice(0,10); return {from,to,fromIso:from+'T00:00:00',toIso:to+'T00:00:00'};}
-  function setVersion(){document.querySelectorAll('*').forEach(el=>{if(el.children.length===0 && /^V\d+$/i.test((el.textContent||'').trim())) el.textContent='V'+VERSION;});}
-  function projectName(p){return S(p?.name||p?.project_name||p?.title||p?.project||'-')}
-  function userName(u){return S(u?.full_name||u?.name||u?.username||u?.app_name||'-')}
-  function employeeCode(x){return S(x?.employee_code||x?.code||x?.worker_code||x?.employee_id_code||x?.employee_id||'')}
-  function workerName(w){const code=employeeCode(w); const name=S(w?.app_name||w?.employee_name||w?.name||w?.full_name||w?.worker_name||w?.iqama_name||'-'); return code && !name.includes(code) ? `${code} - ${name}` : name;}
-  function employeeDisplayByCode(code, empByCode){const c=S(code); if(!c) return ''; const e=empByCode&&empByCode.get(c); const name=S(e?.app_name||e?.employee_name||e?.name||e?.iqama_name||''); return name ? `${c} - ${name}` : c;}
-  function employeeDisplayByName(name, empByName){const n=S(name); if(!n) return ''; const e=empByName&&empByName.get(norm(n)); if(!e) return ''; const c=employeeCode(e); const app=S(e.app_name||e.employee_name||e.name||e.iqama_name||n); return c ? `${c} - ${app}` : app;}
-  function nameWithoutCode(v){return S(v).replace(/TS-\d+\s*-\s*/i,'').replace(/TS-\d+/ig,'').replace(/[()（）]/g,'').trim();}
-  function linkActiveInMonth(a, month){const r=monthRange(month); const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10); if(en && en<r.from) return false; if(st && st>=r.to) return false; const mk=S(a.month_key||a.month||''); return !mk || mk===month || (st<r.to && (!en || en>=r.from));}
-  function projectSupervisorId(p){return S(p?.supervisor_id||p?.current_supervisor_id||p?.app_supervisor_id||p?.manager_id||'')}
-  function forcedType(name, raw){const n=norm(name); if(dailyNames.some(x=>n.includes(norm(x)))) return 'زيارة يومية'; if(fullNames.some(x=>n.includes(norm(x)))) return 'دوام كامل'; const t=norm(raw||''); return (t.includes('دوام')||t.includes('full')||t.includes('permanent')||t.includes('fixed')||t.includes('24'))?'دوام كامل':'زيارة يومية';}
+  const sb=()=>window.sb||window.supabaseClient||null;
+  let loading=false, employeesCache=[], usersCache=[];
+
+  function month(){return $('mc401Month')?.value || new Date().toISOString().slice(0,7)}
+  function monthRange(m){const from=m+'-01'; const d=new Date(from+'T00:00:00'); d.setMonth(d.getMonth()+1); return {from,to:d.toISOString().slice(0,10),fromIso:from+'T00:00:00',toIso:d.toISOString().slice(0,10)+'T00:00:00'};}
+  async function safe(promise,label){try{const r=await promise; if(r?.error){console.warn('V406',label,r.error.message); return [];} return r?.data||[];}catch(e){console.warn('V406',label,e?.message||e); return [];}}
+  function codeOf(e){return S(e.employee_code||e.code||e.worker_code||e.employee_id_code||e.employee_id||'')}
+  function empName(e){return S(e.app_name||e.employee_name||e.name||e.full_name||e.worker_name||e.iqama_name||'')}
+  function cleanName(v){return S(v).replace(/TS-\d+\s*-\s*/ig,'').replace(/TS-\d+/ig,'').replace(/[()（）]/g,'').trim();}
+  function buildEmpMaps(){const byCode=new Map(), byName=new Map(); employeesCache.forEach(e=>{const c=codeOf(e); if(c) byCode.set(c,e); const n=norm(empName(e)); if(n) byName.set(n,e);}); return {byCode,byName};}
+  function labelFrom(code,name){const {byCode,byName}=buildEmpMaps(); const c=S(code); if(c && byCode.has(c)){const e=byCode.get(c); return `${c} - ${empName(e) || S(name) || c}`;} if(c && S(name)) return `${c} - ${cleanName(name)}`; if(c) return c; const raw=cleanName(name); if(raw && byName.has(norm(raw))){const e=byName.get(norm(raw)); const ec=codeOf(e); return ec?`${ec} - ${empName(e)}`:empName(e);} return raw || '-';}
+  function projectName(p){return S(p?.name||p?.project_name||p?.title||'-')}
+  function projectId(p){return S(p?.id||p?.project_id||'')}
+  function projectTypeFromProjects(p){
+    const t=norm(p?.operation_type||p?.project_type||p?.work_type||p?.type||'');
+    if(t.includes('دوام')||t.includes('كامل')||t.includes('دائم')||t.includes('full')||t.includes('permanent')||t.includes('fixed')||t.includes('24')) return 'دوام كامل';
+    return 'زيارة يومية';
+  }
+  function isFull(r){return S(r.projectType).includes('دوام')}
   function actualMinutes(l){
-    const saved=N(l.duration_minutes||l.actual_minutes||l.minutes||l.total_minutes||l.work_minutes||l.actual_duration_minutes||0); if(saved>0) return saved;
-    const ci=l.check_in||l.checkin_at||l.in_time||l.start_time||l.created_at; const co=l.check_out||l.checkout_at||l.out_time||l.end_time;
-    if(ci&&co){const a=new Date(ci), b=new Date(co); const mins=(b-a)/60000; if(Number.isFinite(mins)&&mins>0) return mins;}
-    return 0;
+    const saved=N(l.duration_minutes||l.actual_minutes||l.minutes||l.total_minutes||l.work_minutes||0); if(saved>0) return saved;
+    const ci=l.check_in||l.checkin_at||l.in_time||l.start_time||l.created_at, co=l.check_out||l.checkout_at||l.out_time||l.end_time;
+    if(ci&&co){const a=new Date(ci), b=new Date(co); const m=(b-a)/60000; if(Number.isFinite(m)&&m>0) return m;} return 0;
   }
-  function logDay(l){return S(l.log_date||l.date||l.work_date||l.attendance_date||l.day||l.check_in||l.checkin_at||l.in_time||l.created_at).slice(0,10)}
-  function logProjectId(l){return S(l.project_id||l.projectId||l.project||l.projectID||'')}
-  function requiredFromProject(p){return N(p?.required_daily_minutes||p?.daily_required_minutes||p?.required_minutes||p?.monthly_required_minutes||0)}
-  function requiredMinutesForMonth(row){
-    if(!isFull(row)) return 0;
-    if(N(row.requiredMinutes)>0) return N(row.requiredMinutes);
-    const daily=N(row.requiredDailyMinutes||0); if(daily>0) return daily*26;
-    return N(row.totalMinutes)||1;
+  function logDate(l){return S(l.log_date||l.date||l.work_date||l.attendance_date||l.day||l.check_in||l.created_at).slice(0,10)}
+  function logPid(l){return S(l.project_id||l.projectId||l.project||l.projectID||'')}
+  function userNameById(id){const u=usersCache.find(x=>S(x.id)===S(id)); return S(u?.full_name||u?.name||u?.username||'')}
+  function projectSupervisorLabel(p){return labelFrom('', userNameById(p?.supervisor_id)||S(p?.supervisor_name||'-'))}
+  function workingDaysInMonth(m){const r=monthRange(m); const start=new Date(r.from+'T00:00:00'); const end=new Date(r.to+'T00:00:00'); let days=0; for(let d=new Date(start); d<end; d.setDate(d.getDate()+1)){ if(d.getDay()!==5) days++; } return days || 26;}
+  function requiredMonthly(p,m,total){const explicit=N(p.monthly_required_minutes||p.required_monthly_minutes); if(explicit>0) return explicit; const daily=N(p.required_daily_minutes||p.daily_required_minutes||p.required_minutes); if(daily>0) return daily*workingDaysInMonth(m); return N(total)||1;}
+
+  async function loadBase(){
+    const c=sb(); if(!c) return {projects:[],dist:[],logs:[]};
+    const m=month(), r=monthRange(m);
+    const projects=await safe(c.from('projects').select('*').order('id').limit(5000),'projects');
+    let emps=await safe(c.from('employees_master_v386').select('*').limit(10000),'employees_master_v386');
+    if(!emps.length) emps=await safe(c.from('workers').select('*').limit(10000),'workers');
+    employeesCache=emps;
+    usersCache=await safe(c.from('app_users').select('*').limit(3000),'app_users');
+    let dist=await safe(c.from('monthly_distribution').select('*').eq('month_key',m).limit(20000),'monthly_distribution');
+    if(!dist.length) dist=await safe(c.from('monthly_distribution_view').select('*').eq('month_key',m).limit(20000),'monthly_distribution_view');
+    let logs=await safe(c.from('time_logs').select('*').gte('log_date',r.from).lt('log_date',r.to).limit(20000),'time_logs log_date');
+    if(!logs.length) logs=await safe(c.from('time_logs').select('*').gte('check_in',r.fromIso).lt('check_in',r.toIso).limit(20000),'time_logs check_in');
+    return {projects,dist,logs};
   }
-  async function safe(q){try{const r=await q; if(r.error){console.warn('V403 supabase error',r.error.message); return [];} return r.data||[];}catch(e){console.warn('V403 supabase catch',e); return []}}
-  async function loadJune(){if(JUNE_DATA.length) return JUNE_DATA; try{const res=await fetch(JUNE_URL,{cache:'no-store'}); JUNE_DATA=await res.json();}catch(e){console.error('V403 June load failed',e); JUNE_DATA=[];} return JUNE_DATA;}
-  function normalize(rows, month){
-    const map=new Map();
-    (rows||[]).forEach(r=>{
-      const name=S(r.projectName||r.project_name||r.project||''); if(!name) return;
-      const key=month+'|'+norm(name);
-      const row=Object.assign({},r,{month,projectName:name});
-      row.totalMinutes=N(row.totalMinutes||row.minutes||row.actual_minutes||0);
-      row.projectType=forcedType(name,row.projectType||row.operation_type||row.type);
-      row.supervisorName=S(row.supervisorName||row.supervisor_name||row.supervisor||'-');
-      row.workers=Array.isArray(row.workers)?row.workers:(Array.isArray(row.workerCodes)?row.workerCodes:[]);
-      row.workerCodes=Array.isArray(row.workerCodes)?row.workerCodes:[];
-      row.requiredMinutes=N(row.requiredMinutes||row.required_minutes||0);
-      if(!map.has(key)) map.set(key,row);
-      else{const a=map.get(key); a.totalMinutes+=row.totalMinutes; a.requiredMinutes+=row.requiredMinutes; a.workers=[...new Set([...(a.workers||[]),...(row.workers||[])])]; a.workerCodes=[...new Set([...(a.workerCodes||[]),...(row.workerCodes||[])])];}
+  async function loadJuneFallback(){try{const res=await fetch(JUNE_URL,{cache:'no-store'}); return await res.json();}catch(_){return []}}
+  function byProjectNameMap(projects){const mp=new Map(); projects.forEach(p=>{const n=norm(projectName(p)); if(n&&!mp.has(n)) mp.set(n,p);}); return mp;}
+  function projectByName(projects,name){const nm=norm(name); const mp=byProjectNameMap(projects); if(mp.has(nm)) return mp.get(nm); return projects.find(p=>{const pn=norm(projectName(p)); return pn && (pn.includes(nm)||nm.includes(pn));});}
+
+  async function buildRows(){
+    const m=month();
+    const {projects,dist,logs}=await loadBase();
+    const pById=new Map(projects.map(p=>[projectId(p),p]));
+    const rows=new Map();
+    function ensureRow(p){
+      if(!p) return null; const pid=projectId(p); if(!pid) return null;
+      if(!rows.has(pid)){ rows.set(pid,{month:m,projectId:pid,projectName:projectName(p),projectType:projectTypeFromProjects(p),project:p,supervisorName:projectSupervisorLabel(p),workers:[],totalMinutes:0,requiredMinutes:0,logsCount:0}); }
+      return rows.get(pid);
+    }
+    // 1) توزيع الشهر يحدد المشرف والعمال فقط.
+    const distByPid=new Map();
+    dist.forEach(d=>{
+      const pid=S(d.project_id); if(!pid) return; const p=pById.get(pid) || projectByName(projects,d.project_name); const row=ensureRow(p || {id:pid,name:d.project_name,operation_type:'daily_visit'}); if(!row) return;
+      if(S(d.supervisor_employee_code)||S(d.supervisor_name)) row.supervisorName=labelFrom(d.supervisor_employee_code,d.supervisor_name);
+      const w=labelFrom(d.worker_employee_code,d.worker_name); if(w&&w!=='-') row.workers.push(w);
+      if(!distByPid.has(row.projectId)) distByPid.set(row.projectId,[]); distByPid.get(row.projectId).push(d);
     });
-    const out=[...map.values()];
+    // 2) السجلات تحدد الوقت فقط.
+    logs.forEach(l=>{const d=logDate(l); if(!d||d.slice(0,7)!==m) return; const pid=logPid(l); const p=pById.get(pid); if(!p) return; const row=ensureRow(p); if(!row) return; row.totalMinutes+=actualMinutes(l); row.requiredMinutes+=N(l.required_minutes||l.required_daily_minutes||0); row.logsCount+=1;});
+    // 3) مشاريع موجودة في التوزيع بدون سجلات تظهر حتى لا يختفي العامل.
+    // 4) إذا شهر 6 لا توجد سجلات في قاعدة البيانات، نحافظ على بيانات الشهر الموجودة سابقًا كاحتياط تاريخي فقط.
+    if(m==='2026-06' && !logs.length && !rows.size){
+      const june=await loadJuneFallback();
+      june.forEach(x=>{const p=projectByName(projects,x.projectName||x.project_name); if(!p) return; const row=ensureRow(p); row.totalMinutes+=N(x.totalMinutes||x.minutes||0); row.requiredMinutes+=N(x.requiredMinutes||x.required_minutes||0); row.supervisorName=S(x.supervisorName||x.supervisor_name||row.supervisorName); row.workers=[...new Set([...(row.workers||[]),...((x.workers||x.workerCodes||[]).map(w=>S(w)))])]; row.logsCount+=N(x.logsCount||0);});
+    }
+    const out=[...rows.values()].map(r=>{r.workers=[...new Set((r.workers||[]).filter(Boolean))]; if(isFull(r)){r.requiredMinutes = N(r.requiredMinutes)>0?N(r.requiredMinutes):requiredMonthly(r.project,m,r.totalMinutes); r.percentage=r.requiredMinutes?N(r.totalMinutes)/N(r.requiredMinutes)*100:0; r.calcNote='دوام كامل: الوقت المستغرق ÷ الوقت المطلوب للمشروع من قسم المشاريع';} else {r.calcNote='زيارة يومية: مدة المشروع ÷ إجمالي مدة المشرف';} return r;});
     const dailyTotals={}; out.filter(r=>!isFull(r)).forEach(r=>{const k=r.supervisorName||'-'; dailyTotals[k]=(dailyTotals[k]||0)+N(r.totalMinutes);});
-    out.forEach(r=>{if(isFull(r)){r.requiredMinutes=requiredMinutesForMonth(r); r.percentage=r.requiredMinutes?(N(r.totalMinutes)/N(r.requiredMinutes)*100):0; r.calcNote='دوام كامل: الوقت المستغرق ÷ الوقت المطلوب للمشروع نفسه';}
-      else{const total=dailyTotals[r.supervisorName||'-']||0; r.percentage=total?(N(r.totalMinutes)/total*100):0; r.calcNote='زيارة يومية: مدة المشروع ÷ إجمالي مدة المشرف';}
-      r.hoursText=r.hoursText||minsText(r.totalMinutes);
-    });
-    return out.sort((a,b)=>S(a.supervisorName).localeCompare(S(b.supervisorName),'ar')||S(a.projectName).localeCompare(S(b.projectName),'ar'));
+    out.filter(r=>!isFull(r)).forEach(r=>{const total=dailyTotals[r.supervisorName||'-']||0; r.percentage=total?N(r.totalMinutes)/total*100:0;});
+    return out.sort((a,b)=>(isFull(a)-isFull(b))||S(a.supervisorName).localeCompare(S(b.supervisorName),'ar')||S(a.projectName).localeCompare(S(b.projectName),'ar'));
   }
-  async function loadDynamicMonth(month){
-    if(currentMonthLoaded===month && DYNAMIC_DATA.length) return DYNAMIC_DATA;
-    DYNAMIC_DATA=[]; currentMonthLoaded=month;
-    const sb=window.sb; if(!sb){return []}
-    const r=monthRange(month);
 
-    // نقرأ فقط بيانات الشهر المطلوب حتى لا نضغط على السيرفر.
-    const [projects,users,workers,employees,monthLinks,monthlyDistribution,distributionView,assignments,logs1,logs2]=await Promise.all([
-      safe(sb.from('projects').select('*').limit(5000)),
-      safe(sb.from('app_users').select('*').limit(3000)),
-      safe(sb.from('workers').select('*').limit(6000)),
-      safe(sb.from('employees_master_v386').select('*').limit(6000)),
-      safe(sb.from('worker_project_links_v386').select('*').limit(20000)),
-      safe(sb.from('monthly_distribution').select('*').eq('month_key',month).limit(20000)),
-      safe(sb.from('monthly_distribution_view').select('*').eq('month_key',month).limit(20000)),
-      safe(sb.from('worker_project_assignments').select('*').limit(20000)),
-      safe(sb.from('time_logs').select('*').gte('check_in',r.fromIso).lt('check_in',r.toIso).limit(20000)),
-      safe(sb.from('time_logs').select('*').gte('log_date',r.from).lt('log_date',r.to).limit(20000))
-    ]);
-
-    const logsMap=new Map();
-    [...logs1,...logs2].forEach(l=>{const k=S(l.id||JSON.stringify(l)); logsMap.set(k,l);});
-    const logs=[...logsMap.values()].filter(l=>logDay(l).slice(0,7)===month);
-
-    const pById=new Map(projects.map(p=>[S(p.id),p]));
-    const pByName=new Map(projects.map(p=>[norm(projectName(p)),p]));
-    const uById=new Map(users.map(u=>[S(u.id),u]));
-    const wById=new Map(workers.map(w=>[S(w.id),w]));
-    const empByCode=new Map();
-    const empByName=new Map();
-    employees.forEach(e=>{
-      const c=employeeCode(e); if(c) empByCode.set(c,e);
-      [e.app_name,e.employee_name,e.name,e.full_name,e.iqama_name,e.display_name].forEach(n=>{n=S(n); if(n) empByName.set(norm(nameWithoutCode(n)),e);});
-    });
-
-    function displayFromCodeAndName(code,name){
-      const c=S(code);
-      const byCode=employeeDisplayByCode(c,empByCode);
-      if(byCode) return byCode;
-      const byName=employeeDisplayByName(nameWithoutCode(name),empByName);
-      if(byName) return byName;
-      const n=nameWithoutCode(name);
-      return c && n && !S(n).includes(c) ? `${c} - ${n}` : (n||c||'');
-    }
-
-    function normalizeDistributionRow(a){
-      const pid=S(a.project_id||a.projectId||'');
-      const pname=S(a.project_name||a.projectName||a.project||'');
-      const supCode=S(a.supervisor_employee_code||a.supervisor_code||a.supervisor_worker_code||'');
-      const supName=S(a.supervisor_name||a.supervisor||'');
-      const workerCode=S(a.worker_employee_code||a.employee_code||a.worker_code||a.code||'');
-      const workerName=S(a.worker_display_name||a.worker_name||a.employee_name||a.app_name||a.name||'');
-      return {
-        raw:a,
-        project_id: pid,
-        project_name: pname,
-        project_key: pid || norm(pname),
-        supervisor_employee_code: supCode,
-        supervisor_name: displayFromCodeAndName(supCode,supName) || supName || supCode,
-        worker_employee_code: workerCode,
-        worker_name: displayFromCodeAndName(workerCode,workerName) || workerName || workerCode,
-        status:S(a.status||'active'),
-        start_date:S(a.start_date||a.from_date||''),
-        end_date:S(a.end_date||a.to_date||'')
-      };
-    }
-
-    const distRows=[...monthlyDistribution,...distributionView].map(normalizeDistributionRow).filter(a=>{
-      if(!a.project_id && !a.project_name) return false;
-      const st=norm(a.status||'active');
-      if(['inactive','deleted','archived','خارج العمل','موقوف','محذوف'].includes(st)) return false;
-      if(a.end_date && a.end_date.slice(0,10)<r.from) return false;
-      if(a.start_date && a.start_date.slice(0,10)>=r.to) return false;
-      return true;
-    });
-
-    const legacyLinks=(monthLinks||[]).filter(a=>S(a.status||'نشط')!=='خارج العمل' && linkActiveInMonth(a,month)).map(a=>{
-      const pid=S(a.project_id||'');
-      const pname=S(a.project_name||a.project||'');
-      return {
-        raw:a,
-        project_id: pid,
-        project_name: pname,
-        project_key: pid || norm(pname),
-        supervisor_employee_code:S(a.supervisor_employee_code||a.supervisor_code||a.supervisor_id||''),
-        supervisor_name:displayFromCodeAndName(a.supervisor_employee_code||a.supervisor_code||'', a.supervisor_name||a.supervisor||'' ) || S(a.supervisor_name||a.supervisor||''),
-        worker_employee_code:S(a.employee_code||a.worker_code||a.code||''),
-        worker_name:displayFromCodeAndName(a.employee_code||a.worker_code||a.code||'', a.employee_name||a.app_name||a.worker_name||a.name||''),
-        status:S(a.status||'active'),
-        start_date:S(a.start_date||a.from_date||''),
-        end_date:S(a.end_date||a.to_date||'')
-      };
-    });
-
-    // الأولوية للتوزيع الجديد، ثم الربط القديم كاحتياط.
-    const allLinks=[...distRows,...legacyLinks];
-    const linksByProject=new Map();
-    const linksByProjectName=new Map();
-    allLinks.forEach(a=>{
-      if(a.project_id){const k=S(a.project_id); if(!linksByProject.has(k)) linksByProject.set(k,[]); linksByProject.get(k).push(a);}
-      if(a.project_name){const n=norm(a.project_name); if(!linksByProjectName.has(n)) linksByProjectName.set(n,[]); linksByProjectName.get(n).push(a);}
-    });
-    function linksForProject(pid,pname){
-      const a=linksByProject.get(S(pid))||[];
-      const b=linksByProjectName.get(norm(pname))||[];
-      const seen=new Set(); const out=[];
-      [...a,...b].forEach(x=>{const k=[x.project_id,x.project_name,x.worker_employee_code,x.worker_name].join('|'); if(!seen.has(k)){seen.add(k); out.push(x);}});
-      return out;
-    }
-    function supervisorForProject(pid,pname,p){
-      const links=linksForProject(pid,pname);
-      const x=links.find(a=>S(a.supervisor_name)&&S(a.supervisor_name)!=='-') || links.find(a=>S(a.supervisor_employee_code));
-      if(x){return x.supervisor_name || displayFromCodeAndName(x.supervisor_employee_code,x.supervisor_name) || '-';}
-      const sid=projectSupervisorId(p); const sup=sid?uById.get(S(sid)):null;
-      return supervisorDisplay(sup?userName(sup):S(p?.supervisor_name||'-'));
-    }
-    function supervisorDisplay(raw){const n=nameWithoutCode(raw); return employeeDisplayByName(n,empByName) || S(raw||'-');}
-    function workersForProject(pid,pname){
-      const names=new Map();
-      linksForProject(pid,pname).forEach(a=>{const n=a.worker_name||displayFromCodeAndName(a.worker_employee_code,a.worker_name); if(n) names.set(norm(n),n);});
-      if(!names.size){
-        assignments.forEach(a=>{if(S(a.project_id)!==S(pid)) return; if(a.is_active===false||a.active===false||a.deleted_at) return;
-          const st=S(a.start_date||a.from_date||'0000-01-01').slice(0,10); const en=S(a.end_date||a.to_date||'9999-12-31').slice(0,10);
-          if(en && en<r.from) return; if(st && st>=r.to) return;
-          const w=wById.get(S(a.worker_id));
-          const c=employeeCode(w)||S(a.employee_code||a.worker_code||'');
-          const rawName=w?workerName(w):S(a.worker_name||a.name||a.worker_code||'');
-          const n=employeeDisplayByCode(c,empByCode) || employeeDisplayByName(nameWithoutCode(rawName),empByName) || rawName;
-          if(n) names.set(norm(n),n);
-        });
-        workers.forEach(w=>{const ids=[w.project_id,w.assigned_project_id,w.current_project_id,w.main_project_id].map(S).filter(Boolean); if(ids.includes(S(pid))){const c=employeeCode(w); const raw=workerName(w); const n=employeeDisplayByCode(c,empByCode)||employeeDisplayByName(nameWithoutCode(raw),empByName)||raw; if(n&&n!=='-') names.set(norm(n),n);}});
-      }
-      return [...names.values()].sort((a,b)=>a.localeCompare(b,'ar'));
-    }
-
-    const rowsByProject=new Map();
-    logs.forEach(l=>{
-      let pid=logProjectId(l);
-      let p=pid ? pById.get(S(pid)) : null;
-      const logPName=S(l.project_name||l.projectName||l.project||'');
-      if(!p && logPName) p=pByName.get(norm(logPName));
-      if(!p && !pid && logPName){p={id:'name:'+norm(logPName),name:logPName,operation_type:''};}
-      if(!p) return;
-      pid=S(p.id||pid);
-      const name=projectName(p);
-      const k=S(pid)||norm(name);
-      if(!rowsByProject.has(k)){
-        rowsByProject.set(k,{month,projectId:pid,projectName:name,projectType:forcedType(name,p.operation_type||p.project_type||p.type),supervisorId:projectSupervisorId(p),supervisorName:supervisorForProject(pid,name,p),workers:workersForProject(pid,name),workerCodes:[],totalMinutes:0,requiredDailyMinutes:requiredFromProject(p),requiredMinutes:0,logsCount:0});
-      }
-      const row=rowsByProject.get(k); row.totalMinutes+=actualMinutes(l); row.requiredMinutes+=N(l.required_minutes||l.required_daily_minutes||0); row.logsCount+=1;
-    });
-
-    // إذا كان هناك توزيع لشهر محدد ولم توجد سجلات لمشروعه بعد، لا نعرضه في الأوقات حتى لا تظهر أوقات صفر.
-    DYNAMIC_DATA=normalize([...rowsByProject.values()],month).filter(x=>N(x.totalMinutes)>0);
-    return DYNAMIC_DATA;
+  function ensureCss(){
+    if($('mc406Css')) return; const st=document.createElement('style'); st.id='mc406Css'; st.textContent=`
+    .mc406-daily-card{border:2px solid #0A4033;border-radius:16px;padding:14px;margin:12px 0;background:#fff;break-inside:avoid}.mc406-daily-head{display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid #dce6e2;padding-bottom:8px;margin-bottom:8px}.mc406-daily-head h3{margin:0;color:#0A4033}.mc406-mini{display:flex;gap:6px;flex-wrap:wrap}.mc406-mini span{background:#eef8f5;border:1px solid #cfe2dc;border-radius:999px;padding:6px 9px;font-weight:900}.mc406-table{width:100%;border-collapse:collapse}.mc406-table th{background:#f2f8f5;color:#0A4033}.mc406-table th,.mc406-table td{padding:9px;border-bottom:1px solid #edf1ef;text-align:right}.mc406-progress{height:8px;background:#edf3f1;border-radius:999px;overflow:hidden}.mc406-progress i{display:block;height:100%;background:#0A4033}.mc406-workers{margin-top:9px}.mc406-pill{display:inline-block;background:#eef8f5;border:1px solid #d5e9e2;border-radius:999px;padding:5px 9px;margin:3px;font-weight:800;color:#0A4033}@page{size:A4 landscape;margin:8mm}`; document.head.appendChild(st);
   }
-  async function getRows(){const m=selectedMonth(); if(m==='2026-06') return normalize(await loadJune(),m); return await loadDynamicMonth(m);}
-  async function fillSelectors(rows){const supSel=$('mc401Supervisor'); if(supSel){const cur=supSel.value; supSel.innerHTML='<option value="">كل المشرفين</option>'+[...new Set(rows.map(r=>r.supervisorName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''); supSel.value=cur;}}
-  function fullCard(r){const p=N(r.percentage); return `<article class="mc401-card full"><h3>${esc(r.projectName)}</h3><div class="mc401-row"><span>المشرف</span><b>${esc(r.supervisorName||'-')}</b></div><div class="mc401-row"><span>نوع المشروع</span><b>${esc(r.projectType)}</b></div><div class="mc401-row"><span>الوقت المستغرق</span><b>${esc(r.hoursText||minsText(r.totalMinutes))}</b></div><div class="mc401-row"><span>إجمالي الدقائق</span><b>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</b></div><div class="mc401-row"><span>الوقت المطلوب</span><b>${r.requiredMinutes?esc(minsText(r.requiredMinutes)):'-'}</b></div><div class="mc401-row"><span>نسبة المشروع</span><b>${pct(p)}</b></div><div class="mc401-bar"><i style="width:${Math.max(0,Math.min(100,p)).toFixed(0)}%"></i></div><div class="mc401-workers">${(r.workers||[]).map(w=>`<span class="mc401-pill">${esc(w)}</span>`).join('')||'<span class="mc401-pill">لا يوجد عمال</span>'}</div></article>`;}
-  function dailySupervisorBox(sup,list){const total=list.reduce((a,r)=>a+N(r.totalMinutes),0); const workers=[...new Set(list.flatMap(r=>r.workers||[]))]; return `<article class="mc402-daily-card"><div class="mc402-daily-head"><h3>${esc(sup)}</h3><div class="mc402-mini-kpis"><span class="mc402-mini-kpi">المشاريع: ${list.length}</span><span class="mc402-mini-kpi">إجمالي الوقت: ${esc(minsText(total))}</span><span class="mc402-mini-kpi">الدقائق: ${Math.round(total).toLocaleString('en-US')}</span></div></div><table class="mc402-project-table"><thead><tr><th>المشروع</th><th>الوقت المستغرق</th><th>الدقائق</th><th>النسبة</th><th>المعادلة</th></tr></thead><tbody>${list.map(r=>{const p=N(r.percentage);return `<tr><td><b>${esc(r.projectName)}</b></td><td>${esc(r.hoursText||minsText(r.totalMinutes))}</td><td>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</td><td><b>${pct(p)}</b><div class="mc402-progress"><i style="width:${Math.max(0,Math.min(100,p)).toFixed(0)}%"></i></div></td><td>مدة المشروع ÷ إجمالي مدة المشرف</td></tr>`}).join('')}</tbody></table><div class="mc402-workers-line"><b>العمال:</b> ${workers.map(w=>`<span class="mc401-pill">${esc(w)}</span>`).join('')||'<span class="mc401-pill">لا يوجد عمال</span>'}</div></article>`;}
-  async function render(){if(loading) return; loading=true; setVersion(); const month=selectedMonth(); const msg=$('mc401Message'); if(msg) msg.textContent='جاري قراءة بيانات شهر '+month+'...'; try{let rows=await getRows(); await fillSelectors(rows); const sup=$('mc401Supervisor')?.value||''; const type=$('mc401Type')?.value||''; rows=rows.filter(r=>{if(sup&&r.supervisorName!==sup)return false; if(type==='daily'&&isFull(r))return false; if(type==='full'&&!isFull(r))return false; return true;}); const daily=rows.filter(r=>!isFull(r)); const full=rows.filter(isFull); const total=rows.reduce((a,r)=>a+N(r.totalMinutes),0); const summary=$('mc401Summary'); if(summary)summary.innerHTML=[['الشهر',month],['إجمالي المشاريع',rows.length],['مشاريع الزيارة',daily.length],['مشاريع الدوام الكامل',full.length],['إجمالي الوقت',minsText(total)]].map(x=>`<div class="mc401-kpi"><small>${esc(x[0])}</small><b>${esc(x[1])}</b></div>`).join(''); if(msg)msg.textContent= month==='2026-06' ? `تم تحميل ${rows.length} مشروع من ملف شهر 6.` : `تم تحميل ${rows.length} مشروع من سجلات شهر ${month}.`;
-      const groups=new Map(); daily.forEach(r=>{const k=r.supervisorName||'-';if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);}); const dailyBox=$('mc401Daily'); if(dailyBox)dailyBox.innerHTML=daily.length?[...groups.entries()].map(([sup,list])=>dailySupervisorBox(sup,list)).join(''):'<div class="mc401-empty">لا توجد مشاريع زيارة يومية لهذا الشهر.</div>'; const fullBox=$('mc401Full'); if(fullBox){fullBox.className='mc401-grid'; fullBox.innerHTML=full.length?full.map(fullCard).join(''):'<div class="mc401-empty">لا توجد مشاريع دوام كامل لهذا الشهر.</div>';}
-      const body=$('mc401Body'); if(body)body.innerHTML=rows.map(r=>`<tr><td>${esc(r.month)}</td><td>${esc(r.supervisorName)}</td><td>${esc(r.projectName)}</td><td>${esc(r.projectType)}</td><td>${(r.workers||[]).map(esc).join('، ')||'-'}</td><td>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</td><td>${esc(r.hoursText||minsText(r.totalMinutes))}</td><td><b>${pct(r.percentage)}</b></td><td>${esc(r.calcNote||'')}</td></tr>`).join('')||'<tr><td colspan="9">لا توجد سجلات لهذا الشهر.</td></tr>'; window.tasneefMonthlyCleanV403Rows=rows; return rows;} finally{loading=false;}}
-  function csv(){const rows=window.tasneefMonthlyCleanV403Rows||[]; const lines=[['month','supervisor','project','type','workers','minutes','hours','percentage'].join(',')].concat(rows.map(r=>[r.month,r.supervisorName,r.projectName,r.projectType,(r.workers||[]).join(' | '),r.totalMinutes,r.hoursText,pct(r.percentage)].map(v=>`"${S(v).replace(/"/g,'""')}"`).join(','))); const blob=new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='monthly_times_'+selectedMonth()+'_v403.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-  async function printReport(){const rows=await render() || window.tasneefMonthlyCleanV403Rows || []; const month=selectedMonth(); const daily=rows.filter(r=>!isFull(r)), full=rows.filter(isFull), total=rows.reduce((a,r)=>a+N(r.totalMinutes),0); const groups=new Map(); daily.forEach(r=>{const k=r.supervisorName||'-'; if(!groups.has(k))groups.set(k,[]); groups.get(k).push(r);}); const logo=(document.querySelector('img[src*="tasneef_logo_print"]')?.src)||'tasneef_logo_print.png';
-    const style=`body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#061f18;margin:14px;background:#fff}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0A4033;padding-bottom:10px;margin-bottom:10px}.brand{display:flex;gap:12px;align-items:center}.brand img{width:64px;max-height:64px;object-fit:contain}.brand h1{margin:0;font-size:24px;color:#0A4033}.month{background:#0A4033;color:#fff;border-radius:14px;padding:9px 16px;text-align:center}.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0}.kpi{border:1px solid #cfe2dc;border-radius:12px;padding:8px;text-align:center;background:#fbfffd}.kpi b{font-size:18px;color:#0A4033}.section-title{margin:14px 0 8px;background:#eef8f5;border-right:6px solid #0A4033;padding:9px;border-radius:10px;color:#0A4033}.mc401-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.mc401-card{border:2px solid #0A4033;border-radius:12px;padding:9px;break-inside:avoid;page-break-inside:avoid}.mc401-card h3{text-align:center;margin:0 0 6px;font-size:17px}.mc401-row{display:grid;grid-template-columns:.9fr 1.3fr;border-top:1px solid #e7efec;padding:5px 0;font-size:12px}.mc401-pill{display:inline-block;background:#eef8f5;border:1px solid #d5e9e2;border-radius:999px;padding:3px 7px;margin:2px;font-weight:700;font-size:11px}.mc401-bar{height:7px;background:#edf3f1;border-radius:99px;overflow:hidden}.mc401-bar i{display:block;height:100%;background:#0A4033}.mc402-daily-card{border:2px solid #0A4033;border-radius:14px;padding:9px;margin:9px 0;break-inside:avoid;page-break-inside:avoid}.mc402-daily-head{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #dce6e2;padding-bottom:6px;margin-bottom:6px}.mc402-daily-head h3{margin:0;color:#0A4033;font-size:18px}.mc402-mini-kpis{display:flex;gap:5px;flex-wrap:wrap}.mc402-mini-kpi{background:#eef8f5;border:1px solid #cfe2dc;border-radius:9px;padding:5px 7px;font-weight:900;font-size:11px}.mc402-project-table{width:100%;border-collapse:collapse;font-size:12px}.mc402-project-table th{background:#0A4033;color:white}.mc402-project-table th,.mc402-project-table td{padding:6px;border:1px solid #dfeae6;text-align:right}.mc402-workers-line{margin-top:7px;font-size:12px}.mc402-progress{height:6px;background:#edf3f1;border-radius:99px;overflow:hidden}.mc402-progress i{display:block;height:100%;background:#0A4033}.footer{text-align:center;color:#60706a;border-top:1px solid #dce6e2;margin-top:12px;padding-top:8px;font-size:11px}@page{size:A4 landscape;margin:8mm}@media print{.mc401-card,.mc402-daily-card{break-inside:avoid}.mc401-grid{grid-template-columns:repeat(3,1fr)}}`;
-    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية ${month}</title><style>${style}</style></head><body><header class="head"><div class="brand"><img src="${logo}"><div><h1>تقرير الأوقات الشهرية</h1><div>شركة تصنيف لإدارة المرافق — نسخة V403</div></div></div><div class="month"><small>الشهر</small><b>${month}</b></div></header><section class="kpis"><div class="kpi"><small>المشاريع</small><b>${rows.length}</b></div><div class="kpi"><small>زيارة يومية</small><b>${daily.length}</b></div><div class="kpi"><small>دوام كامل</small><b>${full.length}</b></div><div class="kpi"><small>إجمالي الوقت</small><b>${minsText(total)}</b></div><div class="kpi"><small>طريقة الحساب</small><b>آلي</b></div></section><h2 class="section-title">مشاريع الزيارة اليومية</h2>${[...groups.entries()].map(([sup,list])=>dailySupervisorBox(sup,list)).join('')||'<p>لا توجد مشاريع زيارة يومية.</p>'}<h2 class="section-title">مشاريع الدوام الكامل</h2><div class="mc401-grid">${full.map(fullCard).join('')||'<p>لا توجد مشاريع دوام كامل.</p>'}</div><div class="footer">تم إنشاء التقرير من نظام شركة تصنيف لإدارة المرافق — طباعة بالعرض</div><script>setTimeout(()=>print(),500)<\/script></body></html>`;
-    const w=window.open('','_blank'); if(w){w.document.open(); w.document.write(html); w.document.close();}
-  }
-  function bind(){['mc401Show','mc401Supervisor','mc401Type','mc401Month'].forEach(id=>{const el=$(id); if(!el||el.dataset.v403==='1')return; el.dataset.v403='1'; el.addEventListener(id==='mc401Show'?'click':'change',()=>render());}); const p=$('mc401Print'); if(p&&p.dataset.v403!=='1'){p.dataset.v403='1'; p.addEventListener('click',printReport);} const e=$('mc401Export'); if(e&&e.dataset.v403!=='1'){e.dataset.v403='1'; e.addEventListener('click',csv);}}
-  document.addEventListener('DOMContentLoaded',()=>{bind(); loadJune().then(render);}); setTimeout(()=>{bind(); render();},1000);
+  function fullCard(r){const p=N(r.percentage); return `<article class="mc401-card full"><h3>${esc(r.projectName)}</h3><div class="mc401-row"><span>المشرف</span><b>${esc(r.supervisorName||'-')}</b></div><div class="mc401-row"><span>نوع المشروع</span><b>${esc(r.projectType)}</b></div><div class="mc401-row"><span>الوقت المستغرق</span><b>${esc(minsText(r.totalMinutes))}</b></div><div class="mc401-row"><span>الدقائق</span><b>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</b></div><div class="mc401-row"><span>الوقت المطلوب</span><b>${esc(minsText(r.requiredMinutes))}</b></div><div class="mc401-row"><span>النسبة</span><b>${pct(p)}</b></div><div class="mc401-bar"><i style="width:${Math.max(0,Math.min(100,p)).toFixed(0)}%"></i></div><div class="mc401-workers">${(r.workers||[]).map(w=>`<span class="mc401-pill">${esc(w)}</span>`).join('')||'<span class="mc401-pill">لا يوجد توزيع</span>'}</div></article>`;}
+  function dailyBox(sup,list){const total=list.reduce((a,r)=>a+N(r.totalMinutes),0); const workers=[...new Set(list.flatMap(r=>r.workers||[]))]; return `<article class="mc406-daily-card"><div class="mc406-daily-head"><h3>${esc(sup||'-')}</h3><div class="mc406-mini"><span>المشاريع: ${list.length}</span><span>إجمالي الوقت: ${esc(minsText(total))}</span><span>الدقائق: ${Math.round(total).toLocaleString('en-US')}</span></div></div><table class="mc406-table"><thead><tr><th>المشروع</th><th>الوقت</th><th>الدقائق</th><th>النسبة</th><th>المعادلة</th></tr></thead><tbody>${list.map(r=>`<tr><td><b>${esc(r.projectName)}</b></td><td>${esc(minsText(r.totalMinutes))}</td><td>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</td><td><b>${pct(r.percentage)}</b><div class="mc406-progress"><i style="width:${Math.max(0,Math.min(100,N(r.percentage))).toFixed(0)}%"></i></div></td><td>${esc(r.calcNote)}</td></tr>`).join('')}</tbody></table><div class="mc406-workers"><b>العمال:</b> ${workers.map(w=>`<span class="mc406-pill">${esc(w)}</span>`).join('')||'<span class="mc406-pill">لا يوجد توزيع</span>'}</div></article>`;}
+  async function fillFilters(rows){const sup=$('mc401Supervisor'), type=$('mc401Type'); if(sup){const cur=sup.value; const sups=[...new Set(rows.map(r=>r.supervisorName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')); sup.innerHTML='<option value="">كل المشرفين</option>'+sups.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''); if(sups.includes(cur)) sup.value=cur;} if(type && !type.value) type.value='';}
+  async function render(force){if(loading) return; loading=true; ensureCss(); try{const msg=$('mc401Message'); if(msg) msg.textContent='جاري قراءة البيانات من السيرفر...'; let rows=await buildRows(); await fillFilters(rows); const sup=$('mc401Supervisor')?.value||'', type=$('mc401Type')?.value||''; rows=rows.filter(r=>(!sup||r.supervisorName===sup)&&(!type||(type==='daily'&&!isFull(r))||(type==='full'&&isFull(r)))); const daily=rows.filter(r=>!isFull(r)), full=rows.filter(isFull), total=rows.reduce((a,r)=>a+N(r.totalMinutes),0); const summary=$('mc401Summary'); if(summary) summary.innerHTML=[['الشهر',month()],['إجمالي المشاريع',rows.length],['مشاريع الزيارة',daily.length],['مشاريع الدوام الكامل',full.length],['إجمالي الوقت',minsText(total)]].map(x=>`<div class="mc401-kpi"><small>${esc(x[0])}</small><b>${esc(x[1])}</b></div>`).join(''); if(msg) msg.textContent='تم بناء الأوقات من السيرفر: نوع المشروع من قسم المشاريع، والعمال/المشرف من التوزيع، والوقت من السجلات.'; const groups=new Map(); daily.forEach(r=>{const k=r.supervisorName||'-'; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r);}); const dbox=$('mc401Daily'); if(dbox) dbox.innerHTML=daily.length?[...groups.entries()].map(([s,list])=>dailyBox(s,list)).join(''):'<div class="mc401-empty">لا توجد مشاريع زيارة يومية لهذا الشهر.</div>'; const fbox=$('mc401Full'); if(fbox) fbox.innerHTML=full.length?full.map(fullCard).join(''):'<div class="mc401-empty">لا توجد مشاريع دوام كامل لهذا الشهر.</div>'; const body=$('mc401Body'); if(body) body.innerHTML=rows.map(r=>`<tr><td>${esc(month())}</td><td>${esc(r.supervisorName)}</td><td>${esc(r.projectName)}</td><td>${esc(r.projectType)}</td><td>${(r.workers||[]).map(esc).join('، ')||'-'}</td><td>${Math.round(N(r.totalMinutes)).toLocaleString('en-US')}</td><td>${esc(minsText(r.totalMinutes))}</td><td><b>${pct(r.percentage)}</b></td><td>${esc(r.calcNote)}</td></tr>`).join('')||'<tr><td colspan="9">لا توجد بيانات لهذا الشهر.</td></tr>'; window.tasneefMonthlyCleanV403Rows=rows; return rows;} finally{loading=false;}}
+  function printReport(){const rows=window.tasneefMonthlyCleanV403Rows||[]; const daily=rows.filter(r=>!isFull(r)), full=rows.filter(isFull), total=rows.reduce((a,r)=>a+N(r.totalMinutes),0); const groups=new Map(); daily.forEach(r=>{const k=r.supervisorName||'-'; if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(r);}); const logo=(document.querySelector('img[src*="tasneef_logo_print"]')?.src)||'tasneef_logo_print.png'; const style=document.getElementById('monthlyCleanV403Css')?.textContent||''; const extra=document.getElementById('mc406Css')?.textContent||''; const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية ${month()}</title><style>${style}\n${extra}\nbody{font-family:Tahoma,Arial,sans-serif;direction:rtl;margin:14px;color:#061f18}.print-head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0A4033;padding-bottom:10px;margin-bottom:10px}.print-head img{width:64px}.print-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0}.print-kpi{border:1px solid #cfe2dc;border-radius:12px;padding:8px;text-align:center}.section-title{background:#eef8f5;border-right:6px solid #0A4033;border-radius:10px;padding:9px;color:#0A4033}</style></head><body><div class="print-head"><div><img src="${logo}"></div><div><h1>تقرير الأوقات الشهرية</h1><b>شهر ${month()} - V406</b></div></div><div class="print-kpis"><div class="print-kpi">المشاريع<br><b>${rows.length}</b></div><div class="print-kpi">زيارة يومية<br><b>${daily.length}</b></div><div class="print-kpi">دوام كامل<br><b>${full.length}</b></div><div class="print-kpi">إجمالي الوقت<br><b>${minsText(total)}</b></div><div class="print-kpi">المصدر<br><b>السيرفر</b></div></div><h2 class="section-title">مشاريع الزيارة اليومية</h2>${[...groups.entries()].map(([s,list])=>dailyBox(s,list)).join('')||'<p>لا توجد.</p>'}<h2 class="section-title">مشاريع الدوام الكامل</h2><div class="mc401-grid">${full.map(fullCard).join('')||'<p>لا توجد.</p>'}</div><script>setTimeout(()=>print(),400)<\/script></body></html>`; const w=window.open('','_blank'); if(w){w.document.open(); w.document.write(html); w.document.close();}}
+  function csv(){const rows=window.tasneefMonthlyCleanV403Rows||[]; const lines=[['month','supervisor','project','type','workers','minutes','percentage'].join(',')].concat(rows.map(r=>[month(),r.supervisorName,r.projectName,r.projectType,(r.workers||[]).join(' | '),r.totalMinutes,pct(r.percentage)].map(v=>`"${S(v).replace(/"/g,'""')}"`).join(','))); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv;charset=utf-8'})); a.download='monthly_times_'+month()+'_v406.csv'; a.click();}
+  function bind(){document.querySelectorAll('.mc401-badge').forEach(x=>x.textContent='V406'); $('mc401Show')?.addEventListener('click',()=>render(true)); $('mc401Month')?.addEventListener('change',()=>render(true)); $('mc401Supervisor')?.addEventListener('change',()=>render(false)); $('mc401Type')?.addEventListener('change',()=>render(false)); $('mc401Print')?.addEventListener('click',printReport); $('mc401Export')?.addEventListener('click',csv);}
+  window.tasneefMonthlyCleanV403={render,print:printReport,buildRows};
+  document.addEventListener('DOMContentLoaded',()=>{bind(); setTimeout(()=>render(true),800);});
 })();
