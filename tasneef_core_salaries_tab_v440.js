@@ -1,7 +1,7 @@
 (function(){
   'use strict';
-  if(window.__tasneefCoreSalaryTabV450) return;
-  window.__tasneefCoreSalaryTabV450=true;
+  if(window.__tasneefCoreSalaryTabV451) return;
+  window.__tasneefCoreSalaryTabV451=true;
   const $=id=>document.getElementById(id);
   let mounted=false, loading=false;
   function msg(t,err){const el=$('cu413Msg'); if(el){el.textContent=t; el.className='cu413-msg '+(err?'err':''); el.style.display='block';}}
@@ -37,7 +37,8 @@
     const mount=$('cu413SalaryMount');
     if(!mount) return false;
     if(mounted && mount.querySelector('.salary-table')) return true;
-    if(!window.tasneefSalariesUnifiedV450){
+    const salaryApi=window.tasneefSalariesUnifiedV451||window.tasneefSalariesUnifiedV450||window.tasneefSalariesUnifiedV440;
+    if(!salaryApi){
       mount.innerHTML='<div class="cu413-msg err">ملف الرواتب لم يتم تحميله بعد. ارفع tasneef_salaries_unified_source_v440.js ثم حدّث الكاش.</div>';
       return false;
     }
@@ -45,7 +46,7 @@
     // لو يوجد قسم رواتب قديم فارغ من نسخة V436، احذفه حتى يستطيع inject بناءه من جديد.
     const existing=$('salaries');
     if(existing && !existing.children.length) existing.remove();
-    try{ window.tasneefSalariesUnifiedV450.inject(); }catch(e){ mount.innerHTML='<div class="cu413-msg err">تعذر إنشاء الرواتب: '+(e.message||e)+'</div>'; return false; }
+    try{ salaryApi.inject(); }catch(e){ mount.innerHTML='<div class="cu413-msg err">تعذر إنشاء الرواتب: '+(e.message||e)+'</div>'; return false; }
     const sal=$('salaries');
     if(!sal){ mount.innerHTML='<div class="cu413-msg err">لم يتم إنشاء قسم الرواتب. تحقق من ملف الرواتب.</div>'; return false; }
     // انقل القسم كاملًا داخل mount مرة واحدة، وليس المحتوى فقط، حتى لا يترك #salaries فارغًا ويتسبب في اختفاء متكرر.
@@ -63,7 +64,7 @@
     try{
       setOnlySalaryActive();
       if(mountSalarySection()){
-        setTimeout(()=>{ try{ window.tasneefSalariesUnifiedV450?.load?.(); }catch(e){ msg('تعذر تحديث الرواتب: '+(e.message||e),true); } },60);
+        setTimeout(()=>{ try{ (window.tasneefSalariesUnifiedV451||window.tasneefSalariesUnifiedV450||window.tasneefSalariesUnifiedV440)?.load?.(); }catch(e){ msg('تعذر تحديث الرواتب: '+(e.message||e),true); } },60);
         msg('تم فتح الرواتب من مصدر النظام الموحد بشكل ثابت.');
       }
     }catch(e){ msg('تعذر فتح الرواتب: '+(e.message||e),true); }
