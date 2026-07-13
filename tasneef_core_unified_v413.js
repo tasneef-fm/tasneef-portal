@@ -618,7 +618,7 @@
 /* ===================== V458 Smart stop + visible status + no duplicates ===================== */
 (function(){
   'use strict';
-  const VERSION='V460';
+  const VERSION='V461';
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
   const $=id=>document.getElementById(id);
@@ -693,7 +693,7 @@
     return ok?1:0;
   }
   async function transferSupervisor(oldCode,newCode){
-    const c=client(); if(!c||!oldCode||!newCode||oldCode===newCode) return {dist:0,projects:0,users:0};
+    const c=client(); if(!c||!oldCode||!newCode||oldCode===newCode) return {dist:0,projects:0,logs:0,attendance:0,users:0};
     const users=await loadAppUsersForTransfer();
     const oldSup=activeSupervisors().find(w=>code(w)===oldCode)||{};
     const sup=activeSupervisors().find(w=>code(w)===newCode)||{};
@@ -702,24 +702,57 @@
     const oldUser=findAppUser(users,oldCode,oldName);
     const newUser=findAppUser(users,newCode,supName);
     const month=currentMonth();
-    let dist=0, projects=0;
+    const fromDate=new Date().toISOString().slice(0,10);
+    let result={dist:0,projects:0,logs:0,attendance:0,users:newUser?1:0};
+
+    // V461 الحل الجذري: نقل واحد كامل من قاعدة البيانات نفسها.
+    // ينقل المشاريع وحساب المشرف والتوزيع الحالي/المستقبلي والسجلات اليومية الحالية/المستقبلية.
+    try{
+      const rpc=await c.rpc('tasneef_transfer_supervisor_complete_v461',{
+        p_old_code:S(oldCode),
+        p_new_code:S(newCode),
+        p_old_name:S(oldName),
+        p_new_name:S(supName),
+        p_old_user_id:oldUser&&oldUser.id!=null?Number(oldUser.id):null,
+        p_new_user_id:newUser&&newUser.id!=null?Number(newUser.id):null,
+        p_from_month:month,
+        p_from_date:fromDate
+      });
+      if(!rpc.error && rpc.data){
+        const d=Array.isArray(rpc.data)?rpc.data[0]:rpc.data;
+        result={
+          dist:N(d.distribution_rows),
+          projects:N(d.project_rows),
+          logs:N(d.time_log_rows),
+          attendance:N(d.attendance_rows),
+          users:newUser?1:0
+        };
+        return result;
+      }
+      if(rpc.error) console.warn('V461 transfer RPC fallback',rpc.error.message||rpc.error);
+    }catch(e){console.warn('V461 transfer RPC not available, fallback used',e.message||e);}
+
+    // fallback لو لم يتم تشغيل SQL: محاولة مباشرة بدون لمس السجلات القديمة.
+    let dist=0, projects=0, logs=0, attendance=0;
     const distPayload={supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()};
-    // ننقل التوزيع من الشهر الحالي وما بعده فقط، ولا نلمس السجلات اليومية أو الأوقات القديمة.
     try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_employee_code',oldCode).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old code skipped',e.message||e);}
+    try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_name',oldName).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old name skipped',e.message||e);}
     if(oldUser){try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_id',oldUser.id).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old user id skipped',e.message||e);}}
-    // نحدث مشرف المشروع نفسه حتى تظهر المشاريع في حساب المشرف البديل، مع عدم تعديل time_logs/attendance القديمة.
+
     const pr=await c.from('projects').select('*').limit(20000);
     const list=(pr.data||[]).filter(p=>projectSupMatch(p,oldCode,oldName,oldUser));
     for(const p of list){projects += await updateProjectSupervisorById(p.id,newCode,supName,newUser);}
-    // تحديث مباشر للأعمدة المشهورة: كود + رقم حساب المشرف.
     projects += await safeUpdate('projects',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
+    projects += await safeUpdate('projects',{supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_name',oldName);
     projects += await safeUpdate('projects',{current_supervisor_code:newCode,current_supervisor_name:supName,updated_at:new Date().toISOString()},'current_supervisor_code',oldCode);
     if(oldUser&&newUser){
       projects += await safeUpdate('projects',{supervisor_id:newUser.id,updated_at:new Date().toISOString()},'supervisor_id',oldUser.id);
       projects += await safeUpdate('projects',{current_supervisor_id:newUser.id,updated_at:new Date().toISOString()},'current_supervisor_id',oldUser.id);
       projects += await safeUpdate('projects',{app_supervisor_id:newUser.id,updated_at:new Date().toISOString()},'app_supervisor_id',oldUser.id);
+      try{const r=await c.from('time_logs').update({supervisor_id:newUser.id,updated_at:new Date().toISOString()}).eq('supervisor_id',oldUser.id).gte('log_date',fromDate).select(); if(!r.error) logs+=(r.data||[]).length;}catch(e){console.warn('time_logs transfer skipped',e.message||e);}
+      try{const r=await c.from('attendance').update({supervisor_id:newUser.id,supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('supervisor_id',oldUser.id).gte('attendance_date',fromDate).select(); if(!r.error) attendance+=(r.data||[]).length;}catch(e){console.warn('attendance transfer skipped',e.message||e);}
     }
-    return {dist, projects, users:newUser?1:0};
+    return {dist, projects, logs, attendance, users:newUser?1:0};
   }
   async function deactivateWorkerSmart(w){
     const c=client(); if(!c||!w)return false;
