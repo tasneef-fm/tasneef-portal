@@ -618,7 +618,7 @@
 /* ===================== V458 Smart stop + visible status + no duplicates ===================== */
 (function(){
   'use strict';
-  const VERSION='V459';
+  const VERSION='V460';
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
   const $=id=>document.getElementById(id);
@@ -650,45 +650,76 @@
   async function safeUpdate(table,payload,field,value){
     try{const r=await client().from(table).update(payload).eq(field,value).select(); if(r.error) throw r.error; return (r.data||[]).length;}catch(e){console.warn('safeUpdate skipped',table,field,e.message||e); return 0;}
   }
-  function projectSupMatch(p, oldCode, oldName){
-    const vals=[p.supervisor_employee_code,p.current_supervisor_code,p.supervisor_code,p.supervisor_id,p.current_supervisor_id,p.app_supervisor_id].map(S);
-    if(vals.includes(S(oldCode))) return true;
-    const names=[p.supervisor_name,p.current_supervisor_name,p.app_supervisor_name].map(norm);
-    return !!oldName && names.includes(norm(oldName));
+  async function loadAppUsersForTransfer(){
+    try{const r=await client().from('app_users').select('*').limit(10000); return r.data||[];}catch(e){console.warn('app_users load skipped',e.message||e); return [];}
   }
-  async function updateProjectSupervisorById(pid,newCode,supName){
+  function userMatchScore(u, codeValue, nameValue){
+    const c=S(codeValue), n=norm(nameValue);
+    const vals=[u?.id,u?.employee_code,u?.worker_code,u?.code,u?.username,u?.email,u?.full_name,u?.name].map(S);
+    if(c && vals.includes(c)) return 100;
+    const names=[u?.full_name,u?.name,u?.username,u?.email].map(norm).filter(Boolean);
+    if(n && names.includes(n)) return 90;
+    if(n && names.some(x=>x.includes(n)||n.includes(x))) return 60;
+    return 0;
+  }
+  function findAppUser(users, codeValue, nameValue){
+    let best=null, score=0;
+    (users||[]).forEach(u=>{const sc=userMatchScore(u,codeValue,nameValue); if(sc>score){score=sc; best=u;}});
+    return best;
+  }
+  function projectSupMatch(p, oldCode, oldName, oldUser){
+    const vals=[p.supervisor_employee_code,p.current_supervisor_code,p.supervisor_code,p.app_supervisor_code,p.supervisor_id,p.current_supervisor_id,p.app_supervisor_id].map(S);
+    if(vals.includes(S(oldCode))) return true;
+    if(oldUser && vals.includes(S(oldUser.id))) return true;
+    const names=[p.supervisor_name,p.current_supervisor_name,p.app_supervisor_name].map(norm).filter(Boolean);
+    const on=norm(oldName);
+    return !!on && names.some(x=>x===on||x.includes(on)||on.includes(x));
+  }
+  async function updateProjectSupervisorById(pid,newCode,supName,newUser){
     const c=client(); let ok=0;
+    const numericId=newUser && newUser.id!=null ? newUser.id : null;
     const payloads=[
       {supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},
       {current_supervisor_code:newCode,current_supervisor_name:supName,updated_at:new Date().toISOString()},
       {supervisor_code:newCode,updated_at:new Date().toISOString()},
       {app_supervisor_code:newCode,app_supervisor_name:supName,updated_at:new Date().toISOString()}
     ];
-    for(const pay of payloads){try{const r=await c.from('projects').update(pay).eq('id',pid).select(); if(!r.error) ok+=(r.data||[]).length;}catch(_){}}
+    if(numericId!==null){
+      payloads.push({supervisor_id:numericId,updated_at:new Date().toISOString()});
+      payloads.push({current_supervisor_id:numericId,updated_at:new Date().toISOString()});
+      payloads.push({app_supervisor_id:numericId,updated_at:new Date().toISOString()});
+    }
+    for(const pay of payloads){try{const r=await c.from('projects').update(pay).eq('id',pid).select(); if(!r.error) ok+=(r.data||[]).length;}catch(e){console.warn('project supervisor update skipped',pid,Object.keys(pay).join(','),e.message||e);} }
     return ok?1:0;
   }
   async function transferSupervisor(oldCode,newCode){
-    const c=client(); if(!c||!oldCode||!newCode||oldCode===newCode) return {dist:0,projects:0};
+    const c=client(); if(!c||!oldCode||!newCode||oldCode===newCode) return {dist:0,projects:0,users:0};
+    const users=await loadAppUsersForTransfer();
     const oldSup=activeSupervisors().find(w=>code(w)===oldCode)||{};
     const sup=activeSupervisors().find(w=>code(w)===newCode)||{};
     const oldName=name(oldSup)||S(oldCode);
     const supName=name(sup)||display(sup)||newCode;
+    const oldUser=findAppUser(users,oldCode,oldName);
+    const newUser=findAppUser(users,newCode,supName);
     const month=currentMonth();
     let dist=0, projects=0;
+    const distPayload={supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()};
     // ننقل التوزيع من الشهر الحالي وما بعده فقط، ولا نلمس السجلات اليومية أو الأوقات القديمة.
-    dist += await safeUpdate('monthly_distribution',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
-    try{
-      const r=await c.from('monthly_distribution').update({supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('supervisor_employee_code',oldCode).gte('month_key',month).select();
-      if(!r.error) dist=(r.data||[]).length;
-    }catch(_){ }
-    // نحدث مشرف المشروع نفسه حتى يظهر المشروع في قائمة المشرف البديل، مع عدم تعديل time_logs/attendance القديمة.
+    try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_employee_code',oldCode).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old code skipped',e.message||e);}
+    if(oldUser){try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_id',oldUser.id).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old user id skipped',e.message||e);}}
+    // نحدث مشرف المشروع نفسه حتى تظهر المشاريع في حساب المشرف البديل، مع عدم تعديل time_logs/attendance القديمة.
     const pr=await c.from('projects').select('*').limit(20000);
-    const list=(pr.data||[]).filter(p=>projectSupMatch(p,oldCode,oldName));
-    for(const p of list){projects += await updateProjectSupervisorById(p.id,newCode,supName);}
-    // محاولة إضافية مباشرة للأعمدة المعروفة لمن عنده بيانات قديمة.
+    const list=(pr.data||[]).filter(p=>projectSupMatch(p,oldCode,oldName,oldUser));
+    for(const p of list){projects += await updateProjectSupervisorById(p.id,newCode,supName,newUser);}
+    // تحديث مباشر للأعمدة المشهورة: كود + رقم حساب المشرف.
     projects += await safeUpdate('projects',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
     projects += await safeUpdate('projects',{current_supervisor_code:newCode,current_supervisor_name:supName,updated_at:new Date().toISOString()},'current_supervisor_code',oldCode);
-    return {dist, projects};
+    if(oldUser&&newUser){
+      projects += await safeUpdate('projects',{supervisor_id:newUser.id,updated_at:new Date().toISOString()},'supervisor_id',oldUser.id);
+      projects += await safeUpdate('projects',{current_supervisor_id:newUser.id,updated_at:new Date().toISOString()},'current_supervisor_id',oldUser.id);
+      projects += await safeUpdate('projects',{app_supervisor_id:newUser.id,updated_at:new Date().toISOString()},'app_supervisor_id',oldUser.id);
+    }
+    return {dist, projects, users:newUser?1:0};
   }
   async function deactivateWorkerSmart(w){
     const c=client(); if(!c||!w)return false;
@@ -703,7 +734,7 @@
         if(idx<0||idx>=sups.length){show('تم إلغاء الإيقاف لأنك لم تختار مشرف بديل.',true);return true;}
         const target=sups[idx];
         const res=await transferSupervisor(wcode,code(target));
-        show('تم نقل مشاريع وموظفي المشرف إلى '+display(target)+' ثم إيقاف المشرف. التوزيع: '+res.dist+'، المشاريع: '+res.projects);
+        show('تم نقل مشاريع وموظفي المشرف إلى '+display(target)+' ثم إيقاف المشرف. التوزيع: '+res.dist+'، المشاريع: '+res.projects+'، حساب المشرف: '+(res.users?'تم':'لم يطابق'));
       }else if(!confirm('لا يوجد مشرف بديل نشط. هل تريد إيقاف المشرف بدون نقل؟')) return true;
     }
     const endDate=S($('cu413WEndDate')?.value||'')||new Date().toISOString().slice(0,10);
