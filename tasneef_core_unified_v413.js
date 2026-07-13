@@ -6,7 +6,7 @@
   if(window.__tasneefCoreUnifiedV413) return;
   window.__tasneefCoreUnifiedV413 = true;
 
-  const VERSION='454';
+  const VERSION='455';
   const S=v=>String(v??'').trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0};
   const $=id=>document.getElementById(id);
@@ -44,7 +44,7 @@
   function projectEndDate(p){return S(p.project_end_date||p.contract_end_date||p.contract_end||p.end_date||p.service_end_date||'');}
   function projectSupervisorCode(p){return S(p.supervisor_employee_code||p.current_supervisor_code||p.supervisor_code||p.supervisor_id||p.current_supervisor_id||'');}
   function projectSupervisorName(p){const code=projectSupervisorCode(p); const w=state.workers.find(x=>workerCode(x)===code||S(x.id)===code); return w?workerDisplay(w):S(p.supervisor_name||p.current_supervisor_name||code||'-');}
-  function statusActive(x){const st=norm(x?.status||x?.state||x?.active_status||'active'); return !(x?.deleted_at||x?.is_deleted===true||x?.active===false||x?.is_active===false||['deleted','archived','inactive','stopped','ended','disabled','محذوف','موقوف','متوقف','منتهي','غير نشط','غيرنشط'].includes(st));}
+  function statusActive(x){const st=norm(x?.status||x?.state||x?.active_status||'active'); return !(x?.deleted_at||x?.is_deleted===true||x?.active===false||x?.is_active===false||['deleted','archived','inactive','stopped','disabled','محذوف','موقوف','متوقف','غير نشط','غيرنشط'].includes(st));}
   function byWorkerCode(code){const c=S(code); return (state.workers||[]).find(w=>workerCode(w)===c)||null;}
   function projectIsActiveId(pid){const p=(state.projects||[]).find(x=>projectId(x)===S(pid)); return !!p && statusActive(p);}
   function workerIsActiveCode(code){const w=byWorkerCode(code); return !!w && statusActive(w);}
