@@ -24086,3 +24086,67 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   const oldShow=window.showContractsSubTab; if(typeof oldShow==='function') window.showContractsSubTab=function(){const r=oldShow.apply(this,arguments); setTimeout(refresh,80); return r;};
   console.log('Contracts stronger status '+VERSION+' loaded');
 })();
+
+/* ===== V10367: FIXED FULL-WIDTH SLA STRIP ON EVERY TICKET =====
+   الشريط ثابت وكامل أعلى بطاقة التكت، ويتغير لونه فقط حسب المدة:
+   أخضر = قياسي، أصفر = قارب، أحمر = متأخر.
+================================================================ */
+(function(){
+  'use strict';
+  if(window.__tasneefFixedTicketSlaStripV10367) return;
+  window.__tasneefFixedTicketSlaStripV10367 = true;
+  window.TASNEEF_BUILD = 'V10367_FIXED_FULL_TICKET_SLA_STRIP_2026_07_13';
+
+  function install(){
+    if(document.getElementById('ticketFixedSlaStripV10367')) return;
+    const style=document.createElement('style');
+    style.id='ticketFixedSlaStripV10367';
+    style.textContent=`
+      .smart-ticket-card.ticket-sla-card{
+        padding-top:0!important;
+        overflow:hidden!important;
+      }
+      .smart-ticket-card.ticket-sla-card .ticket-sla-strip{
+        position:relative!important;
+        top:auto!important;
+        inset-inline:0!important;
+        width:calc(100% + 32px)!important;
+        height:11px!important;
+        min-height:11px!important;
+        margin:0 -16px 12px!important;
+        border-radius:20px 20px 0 0!important;
+        background:#e8efec!important;
+        overflow:hidden!important;
+        display:block!important;
+        visibility:visible!important;
+        opacity:1!important;
+        z-index:5!important;
+        flex:none!important;
+      }
+      .smart-ticket-card.ticket-sla-card .ticket-sla-fill{
+        display:block!important;
+        width:100%!important;
+        max-width:none!important;
+        min-width:100%!important;
+        height:100%!important;
+        border-radius:0!important;
+        opacity:1!important;
+        transform:none!important;
+        transition:background-color .2s ease!important;
+      }
+      .smart-ticket-card.ticket-sla-card .ticket-sla-fill.sla-green{background:#168a43!important}
+      .smart-ticket-card.ticket-sla-card .ticket-sla-fill.sla-yellow{background:#f0b429!important}
+      .smart-ticket-card.ticket-sla-card .ticket-sla-fill.sla-red{background:#d92d20!important}
+      .smart-ticket-card.ticket-sla-card.sla-green{border-top-color:#168a43!important}
+      .smart-ticket-card.ticket-sla-card.sla-yellow{border-top-color:#f0b429!important}
+      .smart-ticket-card.ticket-sla-card.sla-red{border-top-color:#d92d20!important}
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.addEventListener('DOMContentLoaded',install);
+  window.addEventListener('load',install);
+  setTimeout(install,300);
+  setTimeout(install,1200);
+  console.log('Tasneef V10367 fixed full ticket SLA strip loaded');
+})();
