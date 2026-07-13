@@ -416,3 +416,31 @@ ${finalUrl}
   document.addEventListener('change', e=>{ if(e.target && e.target.id==='cpProjectV373') setTimeout(ensureAndRender, 80); });
   setTimeout(ensureAndRender, 900);
 })();
+
+/* V466 - تحسين تقرير العميل في الإدارة: حالة الوقت + خروج تقديري */
+(function(){
+  'use strict';
+  if(window.__tasneefAdminClientPortalV466) return;
+  window.__tasneefAdminClientPortalV466 = true;
+  const $=id=>document.getElementById(id);
+  const esc=v=>String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const num=v=>Number(String(v??'').replace(/,/g,''))||0;
+  const minTxt=m=>{m=Math.max(0,Math.round(num(m)));const h=Math.floor(m/60),r=m%60;return h?`${h} س ${r} د`:`${r} د`;};
+  const fmt=v=>{try{return v?new Date(v).toLocaleString('ar-SA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'numeric',minute:'2-digit'}):'-';}catch(_){return v||'-';}};
+  const dOnly=v=>String(v||'').slice(0,10);
+  function diff(a,b){const x=new Date(a),y=new Date(b);const m=Math.round((y-x)/60000);return isFinite(m)&&m>0?m:0;}
+  function add(v,m){const d=new Date(v);if(isNaN(d.getTime())||!m)return '';d.setMinutes(d.getMinutes()+num(m));return d.toISOString();}
+  function req(){const p=(window.data?.projects||[]).find(x=>String(x.id)===String((window.__cpV466ProjectId)||($('cpProjectV373')?.value||'')))||{};for(const k of ['required_daily_minutes','required_minutes','required_time_minutes','visit_minutes','daily_minutes','expected_minutes','duration_minutes']){const v=num(p[k]);if(v>0)return v;}return 0;}
+  function meta(l){const r=req();const actual=num(l.duration_minutes)||diff(l.check_in,l.check_out);const has=!!l.check_out;const exp=r&&l.check_in?add(l.check_in,r):'';if(!has)return {req:r,dur:r,status:'لم يسجل خروج',cls:'amber',out:exp?`تقديري: ${fmt(exp)}`:'-',note:exp?'خروج تقديري حسب الوقت المطلوب':'لم يسجل خروج'};if(r&&actual>r+5)return{req:r,dur:actual,status:'زيادة عن الوقت',cls:'blue',out:fmt(l.check_out),note:`زيادة ${minTxt(actual-r)}`};return{req:r,dur:actual,status:'ضمن الوقت',cls:'green',out:fmt(l.check_out),note:r?`المطلوب ${minTxt(r)}`:'ضمن الوقت'};}
+  function renderLogsBox(){const box=$('cpLogsBoxV373');if(!box||!window.__cpV466StateLogs)return;const rows=(window.__cpV466StateLogs||[]).slice(0,80).map(l=>{const m=meta(l);return `<tr><td>${esc(dOnly(l.log_date||l.check_in))}</td><td>${esc(window.supervisorName?window.supervisorName(l.supervisor_id):'')}</td><td>${esc(fmt(l.check_in))}</td><td>${esc(m.out)}</td><td>${esc(minTxt(m.req))}</td><td>${esc(minTxt(m.dur))}</td><td><span class="cp-v373-badge ${m.cls}">${esc(m.status)}</span><br><small>${esc(m.note)}</small></td></tr>`}).join('');box.innerHTML=rows?`<div class="table-wrap"><table class="cp-v373-table"><thead><tr><th>التاريخ</th><th>المشرف</th><th>الدخول</th><th>الخروج / المتوقع</th><th>الوقت المطلوب</th><th>المدة</th><th>حالة الوقت</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="cp-v373-empty">لا توجد تسجيلات ضمن الفترة.</div>';}
+  const oldLoad=window.loadClientPortalV373;
+  if(typeof oldLoad==='function' && !oldLoad.__v466){
+    window.loadClientPortalV373=async function(btn){const res=await oldLoad.apply(this,arguments);try{window.__cpV466ProjectId=$('cpProjectV373')?.value||'';window.__cpV466StateLogs=(window.state&&window.state.logs)||[];renderLogsBox();}catch(_){}return res;};
+    window.loadClientPortalV373.__v466=true;
+  }
+  const oldRender=window.renderClientPortalV373;
+  if(typeof oldRender==='function' && !oldRender.__v466){
+    window.renderClientPortalV373=function(){const res=oldRender.apply(this,arguments);setTimeout(()=>{try{window.__cpV466ProjectId=$('cpProjectV373')?.value||'';window.__cpV466StateLogs=(window.state&&window.state.logs)||[];renderLogsBox();}catch(_){}},250);return res;};
+    window.renderClientPortalV373.__v466=true;
+  }
+})();

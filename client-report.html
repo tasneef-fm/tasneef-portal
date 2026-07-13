@@ -81,5 +81,98 @@ function openReportDetails(id){const r=portal.reports.find(x=>String(x.id)===Str
 function openServiceDetails(id){const s=portal.services.find(x=>String(x.id)===String(id));if(!s)return;const stage=(title,imgs)=>imgs.length?`<h3 style="color:var(--brand)">${title}</h3><div class="images">${imgs.map((im,i)=>{const src=getSrc(im);return `<div class="img-card" onclick="openImage('${encodeURIComponent(src)}','${E(title)}')"><img src="${E(src)}"><div class="img-cap">${E(title)} - ${i+1}</div></div>`}).join('')}</div>`:'';openModal(serviceName(s),s.service_type||'خدمة',`<div class="scope">${s.service_description?E(s.service_description).replace(/\n/g,'<br>'):'تفاصيل الخدمة الموثقة من المشرف.'}</div>${s.scope_work?`<div class="scope"><b>نطاق العمل:</b><br>${E(s.scope_work).replace(/\n/g,'<br>')}</div>`:''}${stage('قبل التنفيذ',before(s))}${stage('أثناء التنفيذ',during(s))}${stage('بعد التنفيذ',after(s))}${s.notes?`<div class="scope"><b>ملاحظات:</b><br>${E(s.notes).replace(/\n/g,'<br>')}</div>`:''}`)}
 function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=title;$('modalSub').textContent=sub||'';$('modalBody').innerHTML=body;document.querySelector('#mainModal .modal-card').className='modal-card'+(detailMode?' report-detail-card':'');$('mainModal').classList.add('open');document.body.style.overflow='hidden'}function closeModal(){$('mainModal').classList.remove('open');document.body.style.overflow='';document.querySelector('#mainModal .modal-card').className='modal-card'}function backdropClose(e){if(e.target.id==='mainModal')closeModal()}function openImage(src,title){$('imagePreview').src=decodeURIComponent(src);$('imageTitle').textContent=title||'صورة';$('imageModal').classList.add('open')}function closeImage(){$('imageModal').classList.remove('open')}function printCurrentReport(){window.print()}function acknowledgeReport(){toast('تم تسجيل اطلاعكم على التقرير')}
 </script>
+
+<script>
+/* V466 - بوابة العميل: حالة الوقت + خروج تقديري + رفع تذكرة */
+(function(){
+  'use strict';
+  if(window.__tasneefClientPortalV466) return;
+  window.__tasneefClientPortalV466 = true;
+  const G = window;
+  const $ = (id)=>document.getElementById(id);
+  const E2 = (v)=>String(v ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const N = (v)=>Number(String(v ?? '').replace(/,/g,''))||0;
+  const dateOnly2 = (v)=>String(v||'').slice(0,10);
+  const fmtSafe = (v)=>{ try{return v?new Date(v).toLocaleString('ar-SA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'numeric',minute:'2-digit'}):'-';}catch(_){return v||'-';} };
+  const minText = (m)=>{m=Math.max(0,Math.round(N(m))); const h=Math.floor(m/60), r=m%60; return h?`${h} س ${r} د`:`${r} د`;};
+  function parseDate(v){ const d=new Date(v); return isNaN(d.getTime())?null:d; }
+  function addMinutesTo(v,m){ const d=parseDate(v); if(!d || !m) return ''; d.setMinutes(d.getMinutes()+N(m)); return d.toISOString(); }
+  function diffMinutes(a,b){ const x=parseDate(a), y=parseDate(b); if(!x||!y) return 0; const m=Math.round((y-x)/60000); return isFinite(m)&&m>0?m:0; }
+  function requiredMinutes(){
+    const p=G.portal?.project||{};
+    const keys=['required_daily_minutes','required_minutes','required_time_minutes','visit_minutes','daily_minutes','expected_minutes','required_duration_minutes','duration_minutes','service_minutes'];
+    for(const k of keys){ const v=N(p[k]); if(v>0) return v; }
+    const txt=String(p.required_time||p.required_duration||p.visit_duration||'').trim();
+    const hm=txt.match(/(\d{1,2})\s*[:٫.]\s*(\d{1,2})/); if(hm) return N(hm[1])*60+N(hm[2]);
+    const nm=txt.match(/\d+/); if(nm) return N(nm[0]);
+    return 0;
+  }
+  function logMeta(l){
+    const req=requiredMinutes();
+    const actual=N(l.duration_minutes)||diffMinutes(l.check_in,l.check_out)||diffMinutes(l.entry_time,l.exit_time)||diffMinutes(l.start_time,l.end_time);
+    const hasOut=!!(l.check_out||l.exit_time||l.end_time||l.out_time);
+    const checkIn=l.check_in||l.entry_time||l.start_time||l.in_time||l.created_at;
+    const rawOut=l.check_out||l.exit_time||l.end_time||l.out_time||'';
+    const expected=req&&checkIn?addMinutesTo(checkIn,req):'';
+    const effective=hasOut?actual:req;
+    let cls='green', label='ضمن الوقت', details='';
+    if(!hasOut){ cls='amber'; label='لم يسجل خروج'; details=expected?`الخروج المتوقع حسب الوقت المطلوب: ${fmtSafe(expected)}`:'لم يتم تسجيل خروج فعلي'; }
+    else if(req && actual>req+5){ cls='blue'; label='زيادة عن الوقت'; details=`زيادة ${minText(actual-req)} عن المطلوب`; }
+    else { cls='green'; label='ضمن الوقت'; details=req?`المطلوب ${minText(req)}`:'ضمن الوقت'; }
+    return {required:req, actual:effective||actual, hasOut, checkIn, out:rawOut, expected, cls, label, details};
+  }
+  function logsHtmlV466(){
+    const rows=(G.portal?.timeLogs||[]).map(l=>{ const m=logMeta(l); const outText=m.hasOut?fmtSafe(m.out):(m.expected?`تقديري: ${fmtSafe(m.expected)}`:'-'); return `<tr><td>${E2(dateOnly2(l.log_date||m.checkIn))}</td><td>${E2(fmtSafe(m.checkIn))}</td><td>${E2(outText)}</td><td>${E2(minText(m.required))}</td><td>${E2(minText(m.actual))}</td><td><span class="badge ${m.cls}">${E2(m.label)}</span><br><small>${E2(m.details)}</small></td><td>${E2(l.notes||'-')}</td></tr>`; }).join('');
+    return `<section class="card"><h2>التسجيلات اليومية</h2><p style="color:#60706a;line-height:1.8">يتم حساب حالة الوقت من الوقت المطلوب للمشروع. إذا لم يوجد تسجيل خروج يظهر خروج تقديري حسب وقت المشروع ولا يعتبر خروجًا فعليًا.</p>${rows?`<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>الدخول</th><th>الخروج / المتوقع</th><th>الوقت المطلوب</th><th>المدة</th><th>حالة الوقت</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty">لا توجد تسجيلات يومية ضمن الفترة المحددة.</div>'}</section>`;
+  }
+  function ticketsHtmlV466(){
+    const rows=(G.portal?.tickets||[]).map(x=>`<tr><td><b>${E2((x.ticket_number||x.ticket_no||(x.id?('T-'+String(x.id).padStart(4,'0')):'-')))}</b></td><td><b>${E2(x.title||x.ticket_title||x.type||'تذكرة مشروع')}</b><br><small>${E2(x.description||'')}</small></td><td><span class="badge ${String(x.status||'open')==='closed'?'green':(String(x.status||'')==='processing'||String(x.status||'')==='in_progress'?'amber':'red')}">${E2(({open:'مفتوحة',processing:'قيد التنفيذ',in_progress:'قيد التنفيذ',closed:'مغلقة',pending:'معلقة',reopened:'معاد فتحها'}[String(x.status||'open')]||x.status||'مفتوحة'))}</span></td><td>${E2(fmtSafe(x.created_at))}</td><td>${E2(x.closed_at?fmtSafe(x.closed_at):'-')}</td></tr>`).join('');
+    return `<section class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">التذاكر الخاصة بالمشروع</h2><button onclick="openClientTicketFormV466()">رفع تذكرة</button></div><p style="color:#60706a;line-height:1.8">يمكنكم رفع تذكرة مرتبطة تلقائيًا بهذا المشروع، وستظهر مباشرة لدى الإدارة.</p>${rows?`<div class="table-wrap"><table style="min-width:760px"><thead><tr><th>رقم التذكرة</th><th>عنوان التذكرة</th><th>الحالة</th><th>تاريخ الفتح</th><th>تاريخ الإغلاق</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty">لا توجد تذاكر ضمن الفترة المحددة.</div>'}</section>`;
+  }
+  function ticketFormHtml(){return `<div class="form-grid"><div><label>نوع المشكلة</label><select id="clientTicketTypeV466"><option>صيانة</option><option>نظافة</option><option>مياه</option><option>كهرباء</option><option>مصاعد</option><option>أخرى</option></select></div><div><label>رقم الوحدة / الموقع</label><input id="clientTicketLocationV466" placeholder="مثال: شقة 12 / البيسمنت / المدخل"></div></div><label>عنوان التذكرة</label><input id="clientTicketTitleV466" placeholder="اكتب عنوان مختصر للتذكرة"><label>وصف المشكلة</label><textarea id="clientTicketDescV466" rows="5" placeholder="اكتب تفاصيل المشكلة"></textarea><button onclick="submitClientTicketV466(this)">إرسال التذكرة</button>`;}
+  G.openClientTicketFormV466=function(){ if(typeof G.openModal==='function') G.openModal('رفع تذكرة',G.portal?.projectName||'المشروع',ticketFormHtml()); };
+  G.submitClientTicketV466=async function(btn){
+    try{
+      const title=String($('clientTicketTitleV466')?.value||'').trim();
+      const desc=String($('clientTicketDescV466')?.value||'').trim();
+      const type=String($('clientTicketTypeV466')?.value||'أخرى').trim();
+      const loc=String($('clientTicketLocationV466')?.value||'').trim();
+      if(!title) throw new Error('اكتب عنوان التذكرة');
+      if(btn){btn.disabled=true;btn.textContent='جاري الإرسال...';}
+      let inserted=null, err=null;
+      if(G.sb){
+        try{
+          const r=await G.sb.rpc('tasneef_client_create_ticket_v466',{p_project_id:String(G.portal.projectId),p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''});
+          if(r.error) throw r.error;
+          inserted=Array.isArray(r.data)?r.data[0]:r.data;
+        }catch(e){ err=e; try{ const d=await G.sb.from('tickets').insert({project_id:Number(G.portal.projectId)||G.portal.projectId,title,description:[desc,loc?('الموقع: '+loc):'',type?('النوع: '+type):''].filter(Boolean).join('\n'),status:'open',created_at:new Date().toISOString()}).select('*').single(); if(d.error) throw d.error; inserted=d.data; err=null; }catch(e2){ err=e2; } }
+      }
+      if(err) throw err;
+      if(inserted) G.portal.tickets=[inserted,...(G.portal.tickets||[])];
+      if(typeof G.toast==='function') G.toast('تم رفع التذكرة بنجاح');
+      if(typeof G.closeModal==='function') G.closeModal();
+      if(typeof G.showMain==='function') G.showMain('tickets');
+    }catch(e){ if(typeof G.toast==='function') G.toast(e.message||String(e),true); else alert(e.message||String(e)); }
+    finally{ if(btn){btn.disabled=false;btn.textContent='إرسال التذكرة';} }
+  };
+  const oldStats=G.stats;
+  G.stats=function(){ const s=oldStats?oldStats():{}; const mins=(G.portal?.timeLogs||[]).reduce((a,l)=>a+(logMeta(l).actual||0),0); if(mins>=0) s.minutes=mins; return s; };
+  G.logsHtml=logsHtmlV466;
+  G.ticketsHtml=ticketsHtmlV466;
+  const oldShow=G.showMain;
+  G.showMain=function(tab){
+    const box=$('mainContent'); if(!box || !oldShow) return oldShow&&oldShow(tab);
+    if(tab==='logs' || tab==='tickets'){
+      const tabs=`<div class="tabs"><button class="tab ${tab==='summary'?'active':''}" onclick="showMain('summary')">الملخص</button><button class="tab ${tab==='logs'?'active':''}" onclick="showMain('logs')">التسجيلات اليومية</button><button class="tab ${tab==='works'?'active':''}" onclick="showMain('works')">الأعمال المنفذة</button><button class="tab ${tab==='tickets'?'active':''}" onclick="showMain('tickets')">التذاكر</button><button class="tab ${tab==='rating'?'active':''}" onclick="showMain('rating')">التقييم</button></div>`;
+      box.innerHTML=tabs+(tab==='logs'?logsHtmlV466():ticketsHtmlV466());
+      return;
+    }
+    return oldShow(tab);
+  };
+  const oldRender=G.renderHome;
+  if(oldRender){ G.renderHome=function(){ oldRender(); setTimeout(()=>{ try{ const hero=document.querySelector('.hero-actions'); if(hero && !document.getElementById('clientTicketHeroV466')){ const d=document.createElement('div'); d.id='clientTicketHeroV466'; d.className='hero-action'; d.onclick=()=>G.openClientTicketFormV466(); d.innerHTML='<div class="ico">📝</div><h3>رفع تذكرة</h3><p>إرسال بلاغ أو ملاحظة للإدارة مرتبطة بهذا المشروع.</p>'; hero.appendChild(d); } }catch(_){} },50); }; }
+})();
+</script>
+
 </body>
 </html>
