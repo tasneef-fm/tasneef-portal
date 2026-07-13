@@ -23890,3 +23890,120 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     };
   }
 })();
+
+/* ===================== V457 Contracts stopped projects counted fix ===================== */
+(function(){
+  'use strict';
+  const VERSION='V457';
+  const $v=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  const E=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function dateOnly(v){ return S(v).slice(0,10); }
+  function parseDate(s){ if(!s) return null; const p=dateOnly(s).split('-').map(Number); if(p.length!==3||!p[0]) return null; return new Date(p[0],p[1]-1,p[2]); }
+  function daysLeft(end){ const e=parseDate(end); if(!e) return null; const n=new Date(); const t=new Date(n.getFullYear(),n.getMonth(),n.getDate()); return Math.ceil((e-t)/86400000); }
+  function cStart(p){ return dateOnly(p?.project_start_date || p?.contract_start_date || p?.contract_start || p?.start_date || p?.service_start_date || ''); }
+  function cEnd(p){ return dateOnly(p?.project_end_date || p?.contract_end_date || p?.contract_end || p?.end_date || p?.service_end_date || ''); }
+  function statusText(p){ return S(p?.status_ar || p?.status_text || p?.status || p?.state).toLowerCase(); }
+  function isDeletedProject(p){ const st=statusText(p); return !!(p?.deleted_at || p?.is_deleted===true || ['deleted','archived','محذوف','محذوفة'].includes(st)); }
+  function isStoppedProject(p){
+    const st=statusText(p).replace(/\s+/g,'');
+    return !!(p?.is_stopped===true || p?.stopped===true || p?.disabled===true || ['inactive','stopped','paused','stop','off','موقوف','متوقف','غيرنشط','غيرفعال'].includes(st));
+  }
+  function cInfo(p){
+    if(isStoppedProject(p)) return {key:'stopped', text:'موقوف', cls:'neutral', days:'-'};
+    const d=daysLeft(cEnd(p));
+    if(d===null) return {key:'missing', text:'بيانات ناقصة', cls:'amber', days:'-'};
+    if(d<0) return {key:'expired', text:'منتهي', cls:'red', days:'منتهي'};
+    if(d<=30) return {key:'soon', text:'قريب الانتهاء', cls:'amber', days:d+' يوم'};
+    return {key:'active', text:'نشط', cls:'green', days:d+' يوم'};
+  }
+  function activeForCounts(p){ return !isDeletedProject(p) && !isStoppedProject(p); }
+  function pName(id){ const p=(data.projects||[]).find(x=>String(x.id)===String(id)); return p?.name||''; }
+  function pByService(s){ return (data.projects||[]).find(p=>String(p.id)===String(s?.project_id||s?.projectId||'')); }
+  function projectNameService(s){ try{ return typeof csProjectName==='function' ? csProjectName(s) : (pName(s.project_id)||s.project_name||''); }catch(_){return pName(s.project_id)||s.project_name||'';} }
+  function supervisorNameService(s){ try{ return typeof csSupervisorName==='function' ? csSupervisorName(s) : (s.supervisor_name||''); }catch(_){return s.supervisor_name||'';} }
+  function serviceName(s){ try{ return typeof csServiceName==='function'?csServiceName(s):(s.service_name||s.name||''); }catch(_){return s.service_name||s.name||'';} }
+  function serviceType(s){ try{ return typeof csServiceType==='function'?csServiceType(s):(s.service_type||s.type||''); }catch(_){return s.service_type||s.type||'';} }
+  function serviceFreq(s){ try{ return typeof csFrequency==='function'?csFrequency(s):(s.frequency||''); }catch(_){return s.frequency||'';} }
+  function serviceVisits(s){ try{ return typeof csVisits==='function'?csVisits(s):(Number(s.visit_count||s.visits)||0); }catch(_){return Number(s.visit_count||s.visits)||0;} }
+  function serviceDone(s){ try{ return typeof csDone==='function'?csDone(s):(Number(s.executed_count||s.done_count)||0); }catch(_){return Number(s.executed_count||s.done_count)||0;} }
+  function serviceRemain(s){ try{ return typeof csRemaining==='function'?csRemaining(s):(Number(s.remaining_count||s.remaining)||0); }catch(_){return Number(s.remaining_count||s.remaining)||0;} }
+  function serviceLast(s){ try{ return typeof csLastDate==='function'?csLastDate(s):(s.last_execution_date||''); }catch(_){return s.last_execution_date||'';} }
+  function serviceDue(s){ try{ return typeof csDueDate==='function'?csDueDate(s):(s.next_due_date||''); }catch(_){return s.next_due_date||'';} }
+  function serviceNotes(s){ try{ return typeof csNotes==='function'?csNotes(s):(s.notes||''); }catch(_){return s.notes||'';} }
+  function serviceExecutor(s){ try{ return typeof csExecutor==='function'?csExecutor(s):(s.executor_name||''); }catch(_){return s.executor_name||'';} }
+  function serviceStatusKey(s){ if(isStoppedProject(pByService(s))) return 'stopped'; try{ return typeof csStatusKey==='function'?csStatusKey(s):(s.status||'due'); }catch(_){return s.status||'due';} }
+  function serviceStatusText(k){ return {done:'منجزة',due:'مستحقة',soon:'قريبة',late:'متأخرة',review:'مراجعة / غير منفذة',out:'خارج العقد',stopped:'موقوف'}[k]||'مستحقة'; }
+  function serviceBadge(k){ return k==='done'?'green':k==='late'?'red':k==='soon'?'amber':k==='out'?'neutral':k==='stopped'?'neutral':'amber'; }
+  function norm(v){ try{return typeof normalizeArV89==='function'?normalizeArV89(v):S(v).toLowerCase();}catch(_){return S(v).toLowerCase();} }
+  function filteredServicesV457(){
+    let rows=[...(data.contractServices||[])];
+    const q=norm($v('serviceSearch')?.value||'');
+    const pid=$v('serviceFilterProject')?.value||'';
+    const sid=$v('serviceFilterSupervisor')?.value||'';
+    const st=$v('serviceFilterStatus')?.value||'';
+    const typ=$v('serviceFilterType')?.value||'';
+    const d=$v('serviceFilterDate')?.value||'';
+    if(q) rows=rows.filter(s=>norm([projectNameService(s),supervisorNameService(s),serviceName(s),serviceType(s),serviceNotes(s)].join(' ')).includes(q));
+    if(pid) rows=rows.filter(s=>String(pByService(s)?.id||s.project_id||'')===String(pid));
+    if(sid) rows=rows.filter(s=>String((typeof csSupervisorId==='function'?csSupervisorId(s):s.supervisor_id)||'')===String(sid));
+    if(st) rows=rows.filter(s=>serviceStatusKey(s)===st);
+    if(typ) rows=rows.filter(s=>serviceType(s)===typ);
+    if(d) rows=rows.filter(s=>serviceDue(s)===d || serviceLast(s)===d);
+    return rows.sort((a,b)=>String(serviceDue(a)||'9999').localeCompare(String(serviceDue(b)||'9999')) || String(projectNameService(a)).localeCompare(String(projectNameService(b)),'ar'));
+  }
+
+  window.renderContractAlerts = function(){
+    const rows=(data.projects||[]).filter(activeForCounts).map(p=>({p,c:cInfo(p)})).filter(x=>['soon','expired','missing'].includes(x.c.key));
+    const html=rows.sort((a,b)=>(daysLeft(cEnd(a.p))??99999)-(daysLeft(cEnd(b.p))??99999)).map(x=>`<div class="alert-item ${x.c.key==='expired'?'danger':'warn'}"><b>${E(x.p.name)}</b><br>نهاية العقد: ${E(cEnd(x.p)||'-')}<br>المتبقي: ${x.c.days} - ${x.c.text}</div>`).join('') || '<div class="alert-item">لا توجد عقود قريبة الانتهاء خلال 30 يوم</div>';
+    if($v('contractDashboardAlerts')) $v('contractDashboardAlerts').innerHTML=html;
+    if($v('contractsAlertsList')) $v('contractsAlertsList').innerHTML=html;
+  };
+
+  window.renderContracts = function(){
+    const body=$v('contractsBody'); if(!body) return;
+    const q=($v('contractSearch')?.value||'').trim();
+    const st=$v('contractFilterStatus')?.value||'';
+    let rows=[...(data.projects||[])].filter(p=>!isDeletedProject(p));
+    if(q) rows=rows.filter(p=>S(p.name).includes(q));
+    if(st) rows=rows.filter(p=>cInfo(p).key===st);
+    rows.sort((a,b)=>{ const ai=cInfo(a), bi=cInfo(b); if(ai.key==='stopped' && bi.key!=='stopped') return 1; if(ai.key!=='stopped' && bi.key==='stopped') return -1; return (daysLeft(cEnd(a))??999999)-(daysLeft(cEnd(b))??999999); });
+    body.innerHTML=rows.map(p=>{ const c=cInfo(p); return `<tr class="${c.key==='stopped'?'is-stopped-project':''}"><td><b>${E(p.name)}</b>${c.key==='stopped'?' <span class="badge neutral">موقوف</span>':''}</td><td>${Number(p.buildings_count||0)}</td><td>${Number(p.units_count||0)}</td><td>${E(cStart(p)||'-')}</td><td>${E(cEnd(p)||'-')}</td><td>${c.days}</td><td><span class="badge ${c.cls}">${c.text}</span></td><td><button onclick="showPage('projects', document.querySelector(\`.nav[onclick*=projects]\`)); setTimeout(()=>editProject(${p.id}),50)">تعديل</button></td></tr>`; }).join('') || '<tr><td colspan="8">لا توجد بيانات</td></tr>';
+    const activeRows=(data.projects||[]).filter(activeForCounts);
+    if($v('contractsActiveCount')) $v('contractsActiveCount').textContent=activeRows.filter(p=>cInfo(p).key==='active').length;
+    if($v('contractsSoonCount')) $v('contractsSoonCount').textContent=activeRows.filter(p=>cInfo(p).key==='soon').length;
+    if($v('contractsExpiredCount')) $v('contractsExpiredCount').textContent=activeRows.filter(p=>cInfo(p).key==='expired').length;
+    if($v('contractsMissingCount')) $v('contractsMissingCount').textContent=activeRows.filter(p=>cInfo(p).key==='missing').length;
+  };
+
+  window.renderContractServices = function(){
+    const body=$v('contractServicesBody'); if(!body) return;
+    try{ if(typeof hydrateServiceTypes==='function') hydrateServiceTypes(); }catch(_){}
+    try{ if(typeof financeHydrateForms==='function') financeHydrateForms(); }catch(_){}
+    const rows=filteredServicesV457();
+    const counted=(data.contractServices||[]).filter(s=>!isStoppedProject(pByService(s)));
+    const counts={total:counted.length,due:0,soon:0,done:0,late:0,review:0};
+    counted.forEach(s=>{const k=serviceStatusKey(s); if(k==='done')counts.done++; else if(k==='late')counts.late++; else if(k==='soon')counts.soon++; else if(k==='review')counts.review++; else if(k==='due')counts.due++;});
+    if($v('servicesTotalCount')) $v('servicesTotalCount').textContent=counts.total;
+    if($v('servicesDueCount')) $v('servicesDueCount').textContent=counts.due;
+    if($v('servicesDoneCount')) $v('servicesDoneCount').textContent=counts.done;
+    if($v('servicesSoonCount')) $v('servicesSoonCount').textContent=counts.soon;
+    if($v('servicesLateCount')) $v('servicesLateCount').textContent=counts.late;
+    if($v('servicesReviewCount')) $v('servicesReviewCount').textContent=counts.review;
+    const emptyMsg=data.contractServicesError?('تعذر تحميل الخدمات: '+E(data.contractServicesError)):'لا توجد خدمات بعد. اضغط إضافة خدمة وأدخلها يدويًا.';
+    body.innerHTML=rows.slice(0,500).map(s=>{
+      const k=serviceStatusKey(s), stopped=k==='stopped';
+      return `<tr class="${stopped?'is-stopped-project':''}"><td><b>${E(projectNameService(s))}</b>${stopped?' <span class="badge neutral">موقوف</span>':''}</td><td>${E(supervisorNameService(s))}</td><td><b>${E(serviceName(s))}</b></td><td>${E(serviceType(s))}</td><td>${E(serviceFreq(s))}</td><td>${serviceVisits(s)}</td><td>${E(serviceExecutor(s))}</td><td>${serviceDone(s)}</td><td>${serviceRemain(s)}</td><td>${E(serviceLast(s)||'-')}</td><td>${E(serviceDue(s)||'-')}</td><td><span class="badge ${serviceBadge(k)}">${serviceStatusText(k)}</span></td><td>${E(serviceNotes(s)||'-')}</td><td class="row-actions"><button ${stopped?'disabled title="المشروع موقوف"':''} onclick="executeContractService(${Number(s.id)||0})">تسجيل تنفيذ</button><button class="light" onclick="editContractService(${Number(s.id)||0})">تعديل</button><button class="light" onclick="whatsappContractService(${Number(s.id)||0})">واتساب</button></td></tr>`;
+    }).join('') || `<tr><td colspan="14">${emptyMsg}</td></tr>`;
+    try{ if(typeof renderSmartServicesList==='function') renderSmartServicesList(); }catch(_){}
+    try{ if(typeof showSupervisorServicesPreview==='function') showSupervisorServicesPreview(false); }catch(_){}
+  };
+
+  function css(){ if($v('v457ContractsCss')) return; const st=document.createElement('style'); st.id='v457ContractsCss'; st.textContent='.is-stopped-project{opacity:.78}.is-stopped-project td{background:#f6f6f6!important}.badge.neutral{background:#eee;color:#555;border:1px solid #ddd}'; document.head.appendChild(st); }
+  function refresh(){ css(); if(!$v('contracts')?.classList.contains('hidden')){ window.renderContracts(); window.renderContractServices(); window.renderContractAlerts(); } }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(refresh,800));
+  window.addEventListener('load',()=>setTimeout(refresh,1200));
+  const oldShow=window.showContractsSubTab;
+  if(typeof oldShow==='function') window.showContractsSubTab=function(tab){ const r=oldShow.apply(this,arguments); setTimeout(refresh,50); return r; };
+  console.log('Tasneef contracts stopped count fix '+VERSION+' loaded');
+})();
