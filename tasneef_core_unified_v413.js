@@ -618,7 +618,7 @@
 /* ===================== V458 Smart stop + visible status + no duplicates ===================== */
 (function(){
   'use strict';
-  const VERSION='V458';
+  const VERSION='V459';
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
   const $=id=>document.getElementById(id);
@@ -647,15 +647,48 @@
     const list=(st.allWorkers?.length?st.allWorkers:st.workers||[]).filter(w=>!deleted(w)&&!stopped(w)&&isSup(w));
     const m=new Map(); list.forEach(w=>{const c=code(w); if(c&&!m.has(c))m.set(c,w);}); return [...m.values()];
   }
+  async function safeUpdate(table,payload,field,value){
+    try{const r=await client().from(table).update(payload).eq(field,value).select(); if(r.error) throw r.error; return (r.data||[]).length;}catch(e){console.warn('safeUpdate skipped',table,field,e.message||e); return 0;}
+  }
+  function projectSupMatch(p, oldCode, oldName){
+    const vals=[p.supervisor_employee_code,p.current_supervisor_code,p.supervisor_code,p.supervisor_id,p.current_supervisor_id,p.app_supervisor_id].map(S);
+    if(vals.includes(S(oldCode))) return true;
+    const names=[p.supervisor_name,p.current_supervisor_name,p.app_supervisor_name].map(norm);
+    return !!oldName && names.includes(norm(oldName));
+  }
+  async function updateProjectSupervisorById(pid,newCode,supName){
+    const c=client(); let ok=0;
+    const payloads=[
+      {supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},
+      {current_supervisor_code:newCode,current_supervisor_name:supName,updated_at:new Date().toISOString()},
+      {supervisor_code:newCode,updated_at:new Date().toISOString()},
+      {app_supervisor_code:newCode,app_supervisor_name:supName,updated_at:new Date().toISOString()}
+    ];
+    for(const pay of payloads){try{const r=await c.from('projects').update(pay).eq('id',pid).select(); if(!r.error) ok+=(r.data||[]).length;}catch(_){}}
+    return ok?1:0;
+  }
   async function transferSupervisor(oldCode,newCode){
     const c=client(); if(!c||!oldCode||!newCode||oldCode===newCode) return {dist:0,projects:0};
+    const oldSup=activeSupervisors().find(w=>code(w)===oldCode)||{};
     const sup=activeSupervisors().find(w=>code(w)===newCode)||{};
+    const oldName=name(oldSup)||S(oldCode);
     const supName=name(sup)||display(sup)||newCode;
     const month=currentMonth();
-    const dist=await c.from('monthly_distribution').update({supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('supervisor_employee_code',oldCode).gte('month_key',month).select();
-    const pr1=await c.from('projects').update({supervisor_employee_code:newCode,current_supervisor_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('supervisor_employee_code',oldCode).select();
-    const pr2=await c.from('projects').update({supervisor_employee_code:newCode,current_supervisor_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('current_supervisor_code',oldCode).select();
-    return {dist:(dist.data||[]).length, projects:(pr1.data||[]).length+(pr2.data||[]).length};
+    let dist=0, projects=0;
+    // ننقل التوزيع من الشهر الحالي وما بعده فقط، ولا نلمس السجلات اليومية أو الأوقات القديمة.
+    dist += await safeUpdate('monthly_distribution',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
+    try{
+      const r=await c.from('monthly_distribution').update({supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()}).eq('supervisor_employee_code',oldCode).gte('month_key',month).select();
+      if(!r.error) dist=(r.data||[]).length;
+    }catch(_){ }
+    // نحدث مشرف المشروع نفسه حتى يظهر المشروع في قائمة المشرف البديل، مع عدم تعديل time_logs/attendance القديمة.
+    const pr=await c.from('projects').select('*').limit(20000);
+    const list=(pr.data||[]).filter(p=>projectSupMatch(p,oldCode,oldName));
+    for(const p of list){projects += await updateProjectSupervisorById(p.id,newCode,supName);}
+    // محاولة إضافية مباشرة للأعمدة المعروفة لمن عنده بيانات قديمة.
+    projects += await safeUpdate('projects',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
+    projects += await safeUpdate('projects',{current_supervisor_code:newCode,current_supervisor_name:supName,updated_at:new Date().toISOString()},'current_supervisor_code',oldCode);
+    return {dist, projects};
   }
   async function deactivateWorkerSmart(w){
     const c=client(); if(!c||!w)return false;
@@ -673,10 +706,14 @@
         show('تم نقل مشاريع وموظفي المشرف إلى '+display(target)+' ثم إيقاف المشرف. التوزيع: '+res.dist+'، المشاريع: '+res.projects);
       }else if(!confirm('لا يوجد مشرف بديل نشط. هل تريد إيقاف المشرف بدون نقل؟')) return true;
     }
-    await c.from('employees_master_v386').update({status:'inactive',state:'inactive',is_active:false,active:false,updated_at:new Date().toISOString()}).eq('employee_code',wcode);
-    await c.from('workers').update({status:'inactive',state:'inactive',is_active:false,active:false,updated_at:new Date().toISOString()}).or('employee_code.eq.'+wcode+',name.eq.'+wname);
+    const endDate=S($('cu413WEndDate')?.value||'')||new Date().toISOString().slice(0,10);
+    if($('cu413WEndDate') && !$('cu413WEndDate').value) $('cu413WEndDate').value=endDate;
+    const stopPayload={status:'inactive',state:'inactive',is_active:false,active:false,work_end_date:endDate,service_end_date:endDate,termination_date:endDate,end_date:endDate,updated_at:new Date().toISOString()};
+    try{await c.from('employees_master_v386').update(stopPayload).eq('employee_code',wcode);}catch(e){console.warn('stop employees failed',e.message||e);}
+    try{await c.from('workers').update(stopPayload).eq('employee_code',wcode);}catch(e){console.warn('stop workers by code failed',e.message||e);}
+    try{await c.from('workers').update(stopPayload).eq('name',wname);}catch(e){console.warn('stop workers by name failed',e.message||e);}
     if(!isSup(w)){
-      await c.from('monthly_distribution').update({status:'ended',end_date:new Date().toISOString().slice(0,10),updated_at:new Date().toISOString()}).eq('worker_employee_code',wcode).gte('month_key',currentMonth());
+      await c.from('monthly_distribution').update({status:'ended',end_date:endDate,updated_at:new Date().toISOString()}).eq('worker_employee_code',wcode).gte('month_key',currentMonth());
     }
     try{await getCoreApi().reload(true);}catch(_){}
     return true;
@@ -695,6 +732,14 @@
       const span=document.createElement('span'); span.className='cu458-status '+(off?'cu458-off':'cu458-on'); span.textContent=off?'موقوف':'نشط'; b.after(span); card.dataset.v458Status='1'; if(off)card.classList.add('cu458-stopped-row');
     });
   }
+
+  function installEndDateAutoFill(){
+    const st=$('cu413WStatus'), end=$('cu413WEndDate');
+    if(!st||!end||st.dataset.v459EndHook)return;
+    st.dataset.v459EndHook='1';
+    st.addEventListener('change',()=>{const v=norm(st.value); if(['inactive','stopped','موقوف','متوقف'].some(x=>v.includes(norm(x))) && !end.value) end.value=new Date().toISOString().slice(0,10);});
+  }
+
   function hookSaveWorker(){
     const api=getCoreApi(); if(!api||api.__v458SmartStop)return;
     const oldSave=api.saveWorker;
@@ -708,7 +753,7 @@
         if(handled) return;
       }
       const r=await oldSave.apply(this,arguments);
-      setTimeout(enhanceWorkerCards,300);
+      setTimeout(()=>{enhanceWorkerCards(); installEndDateAutoFill();},300);
       return r;
     };
     api.__v458SmartStop=true;
@@ -729,9 +774,9 @@
       window.__tasneefCoreUnifiedStateV458={allWorkers:all,workers:all.filter(x=>!stopped(x)),projects:(p.data||[]).filter(x=>!deleted(x))};
     }catch(err){console.warn('v458 state sync failed',err);}
   }
-  function install(){syncPublicState().then(()=>{hookSaveWorker(); setTimeout(enhanceWorkerCards,300);});}
+  function install(){syncPublicState().then(()=>{hookSaveWorker(); setTimeout(()=>{enhanceWorkerCards(); installEndDateAutoFill();},300);});}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(install,1500));
   window.addEventListener('load',()=>setTimeout(install,1800));
-  setInterval(()=>{hookSaveWorker(); enhanceWorkerCards();},2000);
+  setInterval(()=>{hookSaveWorker(); enhanceWorkerCards(); installEndDateAutoFill();},2000);
   console.log('Tasneef core smart stop '+VERSION+' loaded');
 })();
