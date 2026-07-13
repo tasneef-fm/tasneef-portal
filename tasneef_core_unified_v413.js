@@ -618,7 +618,7 @@
 /* ===================== V458 Smart stop + visible status + no duplicates ===================== */
 (function(){
   'use strict';
-  const VERSION='V461';
+  const VERSION='V462';
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
   const $=id=>document.getElementById(id);
@@ -705,10 +705,10 @@
     const fromDate=new Date().toISOString().slice(0,10);
     let result={dist:0,projects:0,logs:0,attendance:0,users:newUser?1:0};
 
-    // V461 الحل الجذري: نقل واحد كامل من قاعدة البيانات نفسها.
+    // V462 الحل الجذري الفعلي: نقل واحد كامل من قاعدة البيانات نفسها.
     // ينقل المشاريع وحساب المشرف والتوزيع الحالي/المستقبلي والسجلات اليومية الحالية/المستقبلية.
     try{
-      const rpc=await c.rpc('tasneef_transfer_supervisor_complete_v461',{
+      const rpc=await c.rpc('tasneef_transfer_supervisor_root_v462',{
         p_old_code:S(oldCode),
         p_new_code:S(newCode),
         p_old_name:S(oldName),
@@ -729,8 +729,8 @@
         };
         return result;
       }
-      if(rpc.error) console.warn('V461 transfer RPC fallback',rpc.error.message||rpc.error);
-    }catch(e){console.warn('V461 transfer RPC not available, fallback used',e.message||e);}
+      if(rpc.error) console.warn('V462 transfer RPC fallback',rpc.error.message||rpc.error);
+    }catch(e){console.warn('V462 transfer RPC not available, fallback used',e.message||e);}
 
     // fallback لو لم يتم تشغيل SQL: محاولة مباشرة بدون لمس السجلات القديمة.
     let dist=0, projects=0, logs=0, attendance=0;
