@@ -33,6 +33,27 @@
 .orders-card-receipt-main-v10144{display:block;width:100%;margin-top:10px;background:#0A4B3C;color:#fff;border:0;border-radius:10px;padding:10px 12px;font-weight:900;cursor:pointer}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style id="ticket-sla-permanent-root-fix-v10373">
+/* V10373: شريط SLA ثابت من جذر بطاقة التكت ولا يتأثر بإعادة الرسم */
+.smart-ticket-card.ticket-sla-card{
+  position:relative!important;
+  overflow:hidden!important;
+  border-top-width:10px!important;
+  border-top-style:solid!important;
+}
+.smart-ticket-card.ticket-sla-card.sla-green{border-top-color:#168a43!important}
+.smart-ticket-card.ticket-sla-card.sla-yellow{border-top-color:#f0b429!important}
+.smart-ticket-card.ticket-sla-card.sla-red{border-top-color:#d92d20!important}
+.smart-ticket-card.ticket-sla-card .ticket-sla-strip{
+  display:none!important;
+}
+/* دعم أي نسخة قديمة تستخدم أسماء الحالة المباشرة */
+.smart-ticket-card.ticket-sla-card.standard{border-top-color:#168a43!important}
+.smart-ticket-card.ticket-sla-card.near{border-top-color:#f0b429!important}
+.smart-ticket-card.ticket-sla-card.late{border-top-color:#d92d20!important}
+</style>
+
 </head>
 <body onload="initTechnician()">
 <div class="tech-shell">
@@ -128,7 +149,7 @@
   </section>
 </div>
 <script src="orders_seed.js?v=337"></script>
-<script src="app.js?v=10371"></script>
+<script src="app.js?v=10373"></script>
 <script src="tasneef_orders_workflow_v8.js?v=8"></script>
 <script src="tasneef_orders_shared_sync_v64.js?v=64"></script>
 <script>
