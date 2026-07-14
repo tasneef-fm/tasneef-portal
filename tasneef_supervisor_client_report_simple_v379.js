@@ -61,7 +61,7 @@
     card.dataset.simpleV379='1';
     card.innerHTML=`
       <h2>تقرير العميل اليومي</h2>
-      <div class="sup-help">نموذج مبسط للمشرف: اختر المشروع، اكتب العمل المنفذ، أرفق الصور، ثم احفظ. يظهر التقرير مباشرة في بوابة العميل الخاصة بالمشروع.</div>
+      <div class="sup-help">نموذج مبسط للمشرف: اختر المشروع، اكتب العمل المنفذ، أرفق الصور، ثم احفظ. يصل التقرير إلى الإدارة للمراجعة والاعتماد قبل ظهوره للعميل.</div>
       <div class="simple-report-v379">
         <div class="hint"><b>طريقة الاستخدام:</b> اكتب تقريرًا مختصرًا وواضحًا للعميل. لا تكتب ملاحظات داخلية أو تكاليف أو أسماء غير ضرورية.</div>
         <div class="split">
@@ -79,7 +79,7 @@
           <label>+ إرفاق صور<input type="file" accept="image/*" multiple onchange="supSimpleReportHandleImagesV379(this)"></label>
         </div>
         <div id="supSimpleImagesPreviewV379" class="simple-imgs-v379"></div>
-        <div class="actions" style="margin-top:14px"><button onclick="supSimpleSaveClientReportV379(this)">حفظ ونشر في بوابة العميل</button><button class="light" onclick="supSimpleReportResetV379()">تفريغ</button></div>
+        <div class="actions" style="margin-top:14px"><button onclick="supSimpleSaveClientReportV379(this)">إرسال للاعتماد</button><button class="light" onclick="supSimpleReportResetV379()">تفريغ</button></div>
       </div>
     `;
     fillProjects();
@@ -135,8 +135,8 @@
       const reportRow={
         report_no:reportNo(), project_id:Number(pid), project_name:p, chairman_name:'', chairman_phone:'',
         title:title, report_type:'تقرير يومي من المشرف', report_date:date,
-        executive_summary:details, status:'published', public_token:publicToken,
-        published_at:new Date().toISOString(), updated_at:new Date().toISOString()
+        executive_summary:details, status:'draft', public_token:publicToken,
+        published_at:null, updated_at:new Date().toISOString()
       };
       const r=await sb.from('client_reports').insert(reportRow).select('id,public_token').single();
       if(r.error) throw r.error;
@@ -148,12 +148,12 @@
       };
       const se=await sb.from('client_report_services').insert(serviceRow);
       if(se.error) throw se.error;
-      say('تم حفظ التقرير وظهر مباشرة في بوابة العميل');
+      say('تم إرسال التقرير للإدارة وهو الآن بانتظار الاعتماد');
       window.supSimpleReportResetV379();
       try{ if(typeof loadPremiumReportsOnly==='function') await loadPremiumReportsOnly(false); }catch(_){ }
       try{ await renderMyReports(); }catch(_){ }
     }catch(e){ console.error('V379 save failed',e); say(e.message||String(e),'err'); }
-    finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.oldText||'حفظ ونشر في بوابة العميل'; } }
+    finally{ if(btn){ btn.disabled=false; btn.innerHTML=btn.dataset.oldText||'إرسال للاعتماد'; } }
   };
 
   async function renderMyReports(){
@@ -167,7 +167,7 @@
       if(projectIds.length) q=q.in('project_id', projectIds.map(Number).filter(Boolean));
       const res=await q; if(!res.error) rows=res.data||[];
     }catch(e){ rows=(window.data?.clientReports||[]).filter(r=>S(r.report_type)==='تقرير يومي من المشرف').slice(0,30); }
-    box.innerHTML = rows.map(r=>`<div class="quick-item"><div><b>${E(r.title||'تقرير يومي')}</b><br><small>${E(r.project_name||pName(r.project_id)||'-')} - ${E(S(r.report_date).slice(0,10))} - منشور للعميل</small><div style="color:#60706a;margin-top:5px">${E(S(r.executive_summary).slice(0,120))}${S(r.executive_summary).length>120?'...':''}</div></div><span class="badge published">منشور</span></div>`).join('') || '<div class="quick-item">لا توجد تقارير يومية بعد</div>';
+    box.innerHTML = rows.map(r=>{const published=S(r.status)==='published'; const label=published?'منشور للعميل':'بانتظار اعتماد الإدارة'; const cls=published?'published':'pending'; return `<div class="quick-item"><div><b>${E(r.title||'تقرير يومي')}</b><br><small>${E(r.project_name||pName(r.project_id)||'-')} - ${E(S(r.report_date).slice(0,10))} - ${label}</small><div style="color:#60706a;margin-top:5px">${E(S(r.executive_summary).slice(0,120))}${S(r.executive_summary).length>120?'...':''}</div></div><span class="badge ${cls}">${published?'منشور':'قيد الاعتماد'}</span></div>`;}).join('') || '<div class="quick-item">لا توجد تقارير يومية بعد</div>';
   }
   window.supClientRenderMyReports = renderMyReports;
 
