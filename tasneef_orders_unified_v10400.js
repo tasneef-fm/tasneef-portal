@@ -400,10 +400,75 @@
       return visibleToSupervisor(r)&&(!q||text.includes(q))&&(!pf||proj===pf)&&(!sf||status===sf)&&(!tf||rawType===tf)&&(!ef||exec===ef)&&(!payf||payment===payf)&&(!billf||billing===billf)&&(!senderf||sender===senderf)&&(!from||dt>=from)&&(!to||dt<=to);
     });
   }
-  function sendWhatsApp(idx){
-    const r=rows[idx];if(!r)return;const phone=normalizePhone(field(r,'رقم العميل','customer_phone'));if(!phone){notify('لا يوجد رقم عميل صالح','err');return;}
-    const msg=[`أوردر ${orderNo(r)}`,`المشروع: ${projectName(r)||'-'}`,`العميل: ${field(r,'اسم العميل','customer_name')||'-'}`,`الوحدة: ${field(r,'رقم الشقة','unit_number')||'-'}`,`الحالة: ${field(r,'حالة التنفيذ','status')||'-'}`,`الإجمالي: ${money(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'))}`].join('\n');
-    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg),'_blank');
+  function receiptFileFromDataUrl(rec, no){
+    try{
+      const url=S(rec?.url); if(!url.startsWith('data:')) return null;
+      const m=url.match(/^data:([^;,]+)?(;base64)?,(.*)$/); if(!m) return null;
+      const mime=m[1]||rec?.type||'application/octet-stream';
+      const raw=m[2]?atob(m[3]):decodeURIComponent(m[3]);
+      const bytes=new Uint8Array(raw.length); for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+      const ext=/pdf/i.test(mime)?'.pdf':/png/i.test(mime)?'.png':/webp/i.test(mime)?'.webp':'.jpg';
+      const name=S(rec?.name||('receipt-'+no+ext)).replace(/[\/:*?"<>|]+/g,'-');
+      return new File([bytes],name,{type:mime});
+    }catch(e){console.warn('receiptFileFromDataUrl failed',e);return null;}
+  }
+  function fullOrderWhatsappText(r, receipt){
+    const d=dataOf(r),inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat')),
+      bef=num(field(r,'السعر قبل الضريبة','before_vat'))||(inc/1.15),
+      vat=num(field(r,'الضريبة 15%','vat_amount'))||(inc-bef),cost=num(field(r,'التكلفة','cost')),
+      profit=num(field(r,'الربح','net_profit'))||(bef-cost);
+    const lines=[
+      `*تفاصيل الأوردر ${orderNo(r)}*`,
+      `تاريخ الطلب: ${field(r,'تاريخ الطلب','order_date','created_at')||'-'}`,
+      `نوع الطلب: ${d['نوع الطلب']||d.order_type||'-'}`,
+      `المشروع / الموقع: ${projectName(r)||'-'}`,
+      `اسم العميل: ${field(r,'اسم العميل','customer_name')||'-'}`,
+      `رقم العميل: ${field(r,'رقم العميل','customer_phone')||'-'}`,
+      `الشقة / الوحدة / الموقع: ${field(r,'رقم الشقة','unit_number')||'-'}`,
+      `المنفذ: ${field(r,'المنفذ','executor_name')||'-'}`,
+      `حالة التنفيذ: ${field(r,'حالة التنفيذ','status')||'-'}`,
+      `حالة السداد: ${field(r,'حالة السداد','payment_status')||'-'}`,
+      `حالة الفوترة: ${effectiveBilling(r)||'-'}`,
+      `رقم الفاتورة: ${field(r,'رقم الفاتورة','invoice_number')||'-'}`,
+      `تاريخ الفوترة: ${field(r,'تاريخ الفوترة','invoice_date')||'-'}`,
+      '',
+      '*القيم المالية*',
+      `قبل الضريبة: ${money(bef)}`,
+      `الضريبة 15%: ${money(vat)}`,
+      `شامل الضريبة: ${money(inc)}`,
+      `التكلفة: ${money(cost)}`,
+      `صافي الربح: ${money(profit)}`,
+      '',
+      `تفاصيل الطلب: ${field(r,'التفاصيل','description')||'-'}`,
+      `ملاحظات: ${field(r,'ملاحظات','notes')||'-'}`,
+      `منشئ الطلب: ${d.created_by_name||d['منشئ الطلب']||d['مرسل الطلب']||'-'}`,
+      `آخر تعديل بواسطة: ${d.updated_by_name||'-'}`
+    ];
+    const publicUrl=S(receipt?.url);
+    if(publicUrl&&/^https?:\/\//i.test(publicUrl)&&!/github\.io\/.*404/i.test(publicUrl)) lines.push('',`رابط الإيصال: ${publicUrl}`);
+    else if(receipt) lines.push('','يوجد إيصال مرفق مع الأوردر.');
+    return lines.join('\n');
+  }
+  async function sendWhatsApp(idx){
+    const r=rows[idx];if(!r)return;
+    const phone=normalizePhone(field(r,'رقم العميل','customer_phone'));if(!phone){notify('لا يوجد رقم عميل صالح','err');return;}
+    const receipt=receiptFromRow(r), text=fullOrderWhatsappText(r,receipt), file=receiptFileFromDataUrl(receipt,orderNo(r));
+    try{
+      if(file&&navigator.share&&navigator.canShare?.({files:[file]})){
+        await navigator.share({title:'أوردر '+orderNo(r),text,files:[file]});
+        notify('تم تجهيز تفاصيل الأوردر والإيصال للمشاركة عبر واتساب','ok');
+        return;
+      }
+    }catch(e){ if(e?.name==='AbortError')return; console.warn('Native share failed',e); }
+    if(receipt?.url&&receipt.url.startsWith('data:')){
+      try{
+        const a=document.createElement('a');a.href=receipt.url;a.download=receipt.name||('إيصال '+orderNo(r));document.body.appendChild(a);a.click();a.remove();
+        notify('تم تنزيل الإيصال. سيتم فتح واتساب؛ أرفق الملف المحمّل مع الرسالة.','ok');
+      }catch(e){}
+    }else if(receipt?.url&&/^https?:\/\//i.test(receipt.url)){
+      // الرابط العام مدرج داخل الرسالة، لذلك لا نحتاج تنزيله.
+    }
+    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(text),'_blank');
   }
   function viewOrder(idx){
     const r=rows[idx]; if(!r)return;
