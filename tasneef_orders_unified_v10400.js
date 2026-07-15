@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10404
+/* Tasneef Orders Unified v10405
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,8 +9,8 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10404) return;
-  window.__tasneefOrdersUnifiedV10404=true;
+  if(window.__tasneefOrdersUnifiedV10405) return;
+  window.__tasneefOrdersUnifiedV10405=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
@@ -54,12 +54,17 @@
     return '';
   }
   function receiptFromRow(r){
-    const d=dataOf(r), candidates=[d['بيانات الإيصال'],d.receipt_meta,d.receipt_data,d['الإيصال'],d.receipt,d.receipt_url,d.receiptUrl,d.attachment,d.attachment_url,d.file_url,d.url];
-    for(const x of candidates){
+    const d=dataOf(r), candidates=[d['بيانات الإيصال'],d.receipt_meta,d.receipt_data,d['الإيصال'],d.receipt,d.order_receipt,d['ملف الإيصال'],d['مرفق الإيصال'],d.receipt_url,d.receiptUrl,d.attachment,d.attachment_url,d.file_url,d.url];
+    for(let x of candidates){
       if(!x) continue;
-      if(typeof x==='string'&&S(x)) return {url:S(x),name:'إيصال '+orderNo(r),type:/\.pdf(?:$|\?)/i.test(x)?'application/pdf':''};
+      if(typeof x==='string'){
+        const raw=S(x); if(!raw) continue;
+        if((raw.startsWith('{')||raw.startsWith('['))){try{x=JSON.parse(raw);}catch(_){}}
+        if(typeof x==='string') return {url:raw,name:'إيصال '+orderNo(r),type:/^data:application\/pdf|\.pdf(?:$|\?)/i.test(raw)?'application/pdf':''};
+      }
       if(typeof x==='object'){
-        const url=S(x.url||x.data_url||x.dataUrl||x.public_url||x.publicUrl||x.path||x.src||x.file);
+        // الإيصالات القديمة كانت تحفظ الملف داخل data، لذلك له الأولوية على أي رابط قديم.
+        const url=S(x.data||x.data_url||x.dataUrl||x.base64||x.content||x.public_url||x.publicUrl||x.url||x.href||x.src||x.path||x.file);
         if(url) return {url,name:S(x.name||x.file_name||x.filename||'إيصال '+orderNo(r)),type:S(x.type||x.mime_type||x.mime)};
       }
     }
@@ -71,6 +76,23 @@
     const w=window.open('','_blank'); if(!w){notify('اسمح بالنوافذ المنبثقة لعرض الإيصال','err');return;}
     const body=isPdf?`<iframe src="${E(url)}" style="width:100%;height:calc(100vh - 54px);border:0"></iframe>`:`<img src="${E(url)}" alt="الإيصال" style="max-width:100%;height:auto;display:block;margin:auto">`;
     w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(rec.name)}</title><style>body{margin:0;background:#f2f5f4;font-family:Tahoma,Arial}.bar{background:#064b3b;color:#fff;padding:14px 18px;font-weight:800}.content{padding:14px;text-align:center}</style></head><body><div class="bar">${E(rec.name)}</div><div class="content">${body}</div></body></html>`);w.document.close();
+  }
+  function sendWhatsapp(idx){
+    const r=rows[idx]; if(!r)return;
+    let phone=S(field(r,'رقم العميل','customer_phone','الجوال','phone')).replace(/[^0-9]/g,'');
+    if(phone.startsWith('0')) phone='966'+phone.slice(1); else if(phone.length===9) phone='966'+phone;
+    if(!phone){notify('لا يوجد رقم جوال للعميل','err');return;}
+    const inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'));
+    const msg=[
+      'شركة تصنيف لإدارة المرافق',
+      'رقم الأوردر: '+orderNo(r),
+      'المشروع: '+(projectName(r)||'-'),
+      'العميل: '+(field(r,'اسم العميل','customer_name')||'-'),
+      'الوحدة: '+(field(r,'رقم الشقة','unit_number')||'-'),
+      'حالة التنفيذ: '+(field(r,'حالة التنفيذ','status')||'-'),
+      'الإجمالي شامل الضريبة: '+money(inc)
+    ].join('\n');
+    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg),'_blank','noopener');
   }
   function cardState(r){
     const status=S(field(r,'حالة التنفيذ','status')),payment=S(field(r,'حالة السداد','payment_status')),billing=S(field(r,'حالة الفوترة','billing_status')||'لم تتم'),invoiceNo=S(field(r,'رقم الفاتورة','invoice_number')),invoiceDate=S(field(r,'تاريخ الفوترة','invoice_date'));
@@ -293,7 +315,7 @@
     const d=dataOf(r),type=S(d['نوع الطلب']||d.order_type||'-'),creator=S(d.created_by_name||d['منشئ الطلب']||d['مرسل الطلب']||'-');
     const inclusive=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat')),before=num(field(r,'السعر قبل الضريبة','before_vat'))||(inclusive/1.15),vat=num(field(r,'الضريبة 15%','vat_amount'))||(inclusive-before),cost=num(field(r,'التكلفة','cost')),profit=num(field(r,'الربح','net_profit'))||(before-cost);
     const receipt=receiptFromRow(r),state=cardState(r);
-    return `<article class="ou-card ${state}"><div class="ou-head"><div><h3>${E(orderNo(r))}</h3><small>${E(field(r,'تاريخ الطلب','created_at')||'-')}</small></div><span class="ou-chip">${E(type)}</span></div><div class="ou-chips"><span class="ou-chip">${E(field(r,'حالة التنفيذ','status')||'-')}</span><span class="ou-chip">${E(field(r,'حالة السداد','payment_status')||'غير محدد')}</span><span class="ou-chip">المنفذ: ${E(field(r,'المنفذ','executor_name')||'غير محدد')}</span><span class="ou-chip">الفوترة: ${E(field(r,'حالة الفوترة','billing_status')||'لم تتم')}</span></div><div class="ou-meta"><div><small>المشروع</small><b>${E(projectName(r)||'-')}</b></div><div><small>العميل</small><b>${E(field(r,'اسم العميل','customer_name')||'-')}</b></div><div><small>الجوال</small><b>${E(field(r,'رقم العميل','customer_phone')||'-')}</b></div><div><small>الوحدة</small><b>${E(field(r,'رقم الشقة','unit_number')||'-')}</b></div><div><small>المنشئ</small><b>${E(creator)}</b></div><div><small>آخر تعديل</small><b>${E(d.updated_by_name||'-')}</b></div><div><small>رقم الفاتورة</small><b>${E(field(r,'رقم الفاتورة','invoice_number')||'-')}</b></div><div><small>تاريخ الفوترة</small><b>${E(field(r,'تاريخ الفوترة','invoice_date')||'-')}</b></div></div><div class="ou-money-grid"><div class="ou-money"><small>قبل الضريبة</small><b>${E(money(before))}</b></div><div class="ou-money"><small>الضريبة 15%</small><b>${E(money(vat))}</b></div><div class="ou-money"><small>شامل الضريبة</small><b>${E(money(inclusive))}</b></div><div class="ou-money"><small>التكلفة</small><b>${E(money(cost))}</b></div><div class="ou-money"><small>صافي الربح</small><b>${E(money(profit))}</b></div></div><p>${E(field(r,'التفاصيل','description')||'')}</p><div class="ou-actions"><button onclick="tasneefOrders10400.edit(${idx})">تعديل</button><button class="light ${receipt?'':'ou-receipt-disabled'}" ${receipt?'':'disabled'} onclick="tasneefOrders10400.openReceipt(${idx})">عرض الإيصال</button><button class="light" onclick="tasneefOrders10400.history('${E(orderNo(r))}')">سجل التعديلات</button><button class="danger" onclick="tasneefOrders10400.del(${idx})">حذف</button></div></article>`;
+    return `<article class="ou-card ${state}"><div class="ou-head"><div><h3>${E(orderNo(r))}</h3><small>${E(field(r,'تاريخ الطلب','created_at')||'-')}</small></div><span class="ou-chip">${E(type)}</span></div><div class="ou-chips"><span class="ou-chip">${E(field(r,'حالة التنفيذ','status')||'-')}</span><span class="ou-chip">${E(field(r,'حالة السداد','payment_status')||'غير محدد')}</span><span class="ou-chip">المنفذ: ${E(field(r,'المنفذ','executor_name')||'غير محدد')}</span><span class="ou-chip">الفوترة: ${E(field(r,'حالة الفوترة','billing_status')||'لم تتم')}</span></div><div class="ou-meta"><div><small>المشروع</small><b>${E(projectName(r)||'-')}</b></div><div><small>العميل</small><b>${E(field(r,'اسم العميل','customer_name')||'-')}</b></div><div><small>الجوال</small><b>${E(field(r,'رقم العميل','customer_phone')||'-')}</b></div><div><small>الوحدة</small><b>${E(field(r,'رقم الشقة','unit_number')||'-')}</b></div><div><small>المنشئ</small><b>${E(creator)}</b></div><div><small>آخر تعديل</small><b>${E(d.updated_by_name||'-')}</b></div><div><small>رقم الفاتورة</small><b>${E(field(r,'رقم الفاتورة','invoice_number')||'-')}</b></div><div><small>تاريخ الفوترة</small><b>${E(field(r,'تاريخ الفوترة','invoice_date')||'-')}</b></div></div><div class="ou-money-grid"><div class="ou-money"><small>قبل الضريبة</small><b>${E(money(before))}</b></div><div class="ou-money"><small>الضريبة 15%</small><b>${E(money(vat))}</b></div><div class="ou-money"><small>شامل الضريبة</small><b>${E(money(inclusive))}</b></div><div class="ou-money"><small>التكلفة</small><b>${E(money(cost))}</b></div><div class="ou-money"><small>صافي الربح</small><b>${E(money(profit))}</b></div></div><p>${E(field(r,'التفاصيل','description')||'')}</p><div class="ou-actions"><button onclick="tasneefOrders10400.edit(${idx})">تعديل</button><button class="light ${receipt?'':'ou-receipt-disabled'}" ${receipt?'':'disabled'} onclick="tasneefOrders10400.openReceipt(${idx})">عرض الإيصال</button><button class="light" onclick="tasneefOrders10400.sendWhatsapp(${idx})">واتساب</button><button class="light" onclick="tasneefOrders10400.history('${E(orderNo(r))}')">سجل التعديلات</button><button class="danger" onclick="tasneefOrders10400.del(${idx})">حذف</button></div></article>`;
   }
   function render(){
     const list=filterRows(),pages=Math.max(1,Math.ceil(list.length/PAGE_SIZE));page=Math.min(page,pages);const slice=list.slice((page-1)*PAGE_SIZE,page*PAGE_SIZE);
@@ -307,7 +329,7 @@
     const fill=(id,vals,first)=>{const el=$(id);if(!el)return;const cur=el.value;el.innerHTML=`<option value="">${first}</option>`+[...new Set(vals.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(x=>`<option value="${E(x)}">${E(x)}</option>`).join('');if([...el.options].some(o=>o.value===cur))el.value=cur;};
     const projs=rows.map(projectName),stats=rows.map(r=>S(field(r,'حالة التنفيذ','status'))),execs=rows.map(r=>S(field(r,'المنفذ','executor_name'))),pays=rows.map(r=>S(field(r,'حالة السداد','payment_status'))),bills=rows.map(r=>S(field(r,'حالة الفوترة','billing_status')||'لم تتم')),senders=rows.map(r=>S(dataOf(r).created_by_name||dataOf(r)['منشئ الطلب']||dataOf(r)['مرسل الطلب']));
     fill('orderProjectFilterV233',projs,'كل المشاريع');fill('orderStatusFilterV233',stats,'كل الحالات');fill('supOrderFilterProjectV10061',projs,'كل المشاريع');fill('supOrderFilterStatusV10061',stats,'كل الحالات');
-    fill('orderExecutorFilterV233',execs,'كل المنفذين');fill('ouSupExecutorFilter',execs,'كل المنفذين');fill('orderPaymentFilterV233',pays,'كل حالات السداد');fill('ouSupPaymentFilter',pays,'كل حالات السداد');fill('orderBillingFilterV233',bills,'كل حالات الفوترة');fill('ouSupBillingFilter',bills,'كل حالات الفوترة');fill('orderSenderFilterV233',senders,'كل مرسلي الطلب');
+    fill('orderExecutorFilterV233',execs,'كل المنفذين');fill('ouSupExecutorFilter',execs,'كل المنفذين');fill('orderPaymentFilterV233',pays,'كل حالات السداد');fill('ouSupPaymentFilter',pays,'كل حالات السداد');fill('orderBillingFilterV233',[...bills,'تمت','لم تتم'],'كل حالات الفوترة');fill('ouSupBillingFilter',[...bills,'تمت','لم تتم'],'كل حالات الفوترة');fill('orderSenderFilterV233',senders,'كل مرسلي الطلب');
   }
   async function history(no){try{const h=await api('/rest/v1/'+AUDIT+'?order_no=eq.'+encodeURIComponent(no)+'&select=*&order=changed_at.desc');document.body.insertAdjacentHTML('beforeend',`<div class="ou-modal" onclick="if(event.target===this)this.remove()"><div><div class="ou-head"><h2>سجل تعديلات ${E(no)}</h2><button class="light" onclick="this.closest('.ou-modal').remove()">إغلاق</button></div><div class="ou-history">${(h||[]).map(x=>`<article><b>${E(x.changed_by_name||'-')}</b> — ${E(x.field_label||x.action_type||'-')}<br><small>${E(new Date(x.changed_at).toLocaleString('ar-SA',{hour12:true}))}</small><div>${E(x.old_value||'-')} ⟵ ${E(x.new_value||'-')}</div></article>`).join('')||'<div class="ou-note">لا توجد تعديلات مسجلة</div>'}</div></div></div>`);}catch(e){notify('شغّل ملف SQL الخاص بسجل التعديلات أولاً','err');}}
   function bind(){
@@ -315,7 +337,7 @@
   }
   window.resetOrdersFiltersV233=function(){['orderSearchV233','orderProjectFilterV233','orderExecutorFilterV233','orderSenderFilterV233','orderStatusFilterV233','orderPaymentFilterV233','orderBillingFilterV233','orderFromDateV233','orderToDateV233','ouAdminTypeFilter'].forEach(id=>{if($(id))$(id).value='';});page=1;render();};
   function boot(){stopLegacy();injectStyle();const ok=rebuildAdmin()||rebuildSupervisor();if(!ok){setTimeout(boot,300);return;}ensureExtraFilters();setupSmartInputs();['ouInclusive','ouCost'].forEach(id=>{const el=$(id);if(el&&!el.dataset.ouCalc){el.dataset.ouCalc='1';el.addEventListener('input',recalcFinance);}});bind();const bill=$('ouBilling');if(bill&&!bill.dataset.ouBilling){bill.dataset.ouBilling='1';const sync=()=>{const done=bill.value==='تمت';if($('ouInvoiceNo'))$('ouInvoiceNo').disabled=!done;if($('ouInvoiceDate'))$('ouInvoiceDate').disabled=!done;if(!done){if($('ouInvoiceNo'))$('ouInvoiceNo').value='';if($('ouInvoiceDate'))$('ouInvoiceDate').value='';}};bill.addEventListener('change',sync);sync();}clear();load();setInterval(stopLegacy,2000);}
-  window.tasneefOrders10400={load,save,edit,del,history,openReceipt,page:d=>{page=Math.max(1,page+Number(d||0));render()},clear,render};
+  window.tasneefOrders10400={load,save,edit,del,history,openReceipt,sendWhatsapp,page:d=>{page=Math.max(1,page+Number(d||0));render()},clear,render};
   window.saveOrderV233=save;window.clearOrderFormV233=clear;window.deleteCurrentOrderV233=deleteCurrent;window.editOrderV233=edit;window.deleteOrderV233=del;window.renderOrdersV233=render;
   window.supOrdersSaveV10061=save;window.supOrdersClearV10061=clear;window.supOrdersRenderV10061=render;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
