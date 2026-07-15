@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10413
+/* Tasneef Orders Unified v10414
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,8 +9,8 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10413) return;
-  window.__tasneefOrdersUnifiedV10413=true;
+  if(window.__tasneefOrdersUnifiedV10414) return;
+  window.__tasneefOrdersUnifiedV10414=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
@@ -33,6 +33,45 @@
   const field=(r,...keys)=>{const d=dataOf(r); for(const k of keys){ if(d[k]!==undefined&&d[k]!==null&&S(d[k])!=='') return d[k]; } return '';};
   const num=v=>{const n=Number(S(v).replace(/,/g,'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?n:0;};
   const money=v=>num(v).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})+' ر.س';
+  const isSupervisorPage=()=>!!document.getElementById('supOrdersBodyV10061')&&!document.getElementById('ordersCardsV360');
+  const norm=v=>S(v).toLowerCase().replace(/[\s_\-]+/g,'').replace(/[^\p{L}\p{N}@.]/gu,'');
+  function userKeys(){
+    const u=user();
+    return new Set([u.id,u.user_id,u.uuid,u.email,u.username,u.name,u.full_name,u.display_name].map(norm).filter(Boolean));
+  }
+  function recordMatchesCurrentUser(x){
+    if(!x||typeof x!=='object')return false;
+    const keys=userKeys();
+    const vals=[x.supervisor_id,x.supervisorId,x.assigned_supervisor_id,x.manager_id,x.user_id,x.employee_id,x.id,
+      x.supervisor_name,x.supervisorName,x.assigned_supervisor,x.manager_name,x.user_name,x.username,x.name,x.full_name,x.email];
+    return vals.map(norm).some(v=>v&&keys.has(v));
+  }
+  function allProjects(){
+    const list=(window.data&&Array.isArray(window.data.projects)?window.data.projects:[]);
+    return list.map(p=>({id:S(p.id||p.project_id),name:S(p.name||p.project_name||p.official_name||p.client_name),raw:p})).filter(x=>x.name);
+  }
+  function supervisorProjectNames(){
+    if(!isSupervisorPage())return new Set(allProjects().map(x=>x.name));
+    const out=new Set();
+    const addProjectRef=v=>{
+      const raw=S(v);if(!raw)return;
+      const hit=allProjects().find(p=>S(p.id)===raw||norm(p.name)===norm(raw));
+      if(hit)out.add(hit.name);
+    };
+    allProjects().forEach(p=>{
+      const x=p.raw||{};
+      const candidates=[x.supervisor_id,x.supervisorId,x.assigned_supervisor_id,x.manager_id,x.supervisor_name,x.supervisorName,x.assigned_supervisor,x.manager_name];
+      if(candidates.some(v=>userKeys().has(norm(v))))out.add(p.name);
+      if(Array.isArray(x.supervisors)&&x.supervisors.some(recordMatchesCurrentUser))out.add(p.name);
+    });
+    if(window.data&&typeof window.data==='object'){
+      ['distributions','assignments','project_assignments','worker_projects','supervisor_projects','allocations'].forEach(k=>{
+        const list=Array.isArray(window.data[k])?window.data[k]:[];
+        list.forEach(x=>{if(recordMatchesCurrentUser(x))addProjectRef(x.project_id||x.projectId||x.project_name||x.project||x.site_id||x.site_name);});
+      });
+    }
+    return out;
+  }
   const systemProjectNames=()=>projects().map(x=>x.name);
   const normalizePhone=v=>{let x=S(v).replace(/\D/g,'');if(x.startsWith('00'))x=x.slice(2);if(x.startsWith('0'))x='966'+x.slice(1);if(!x.startsWith('966')&&x.length===9)x='966'+x;return x;};
   const fileToDataURL=file=>new Promise((resolve,reject)=>{if(!file)return resolve(null);if(file.size>5*1024*1024)return reject(new Error('حجم الإيصال أكبر من 5 ميجابايت'));const r=new FileReader();r.onload=()=>resolve({url:String(r.result||''),data_url:String(r.result||''),name:file.name,type:file.type,size:file.size,saved_at:now()});r.onerror=()=>reject(new Error('تعذر قراءة ملف الإيصال'));r.readAsDataURL(file);});
@@ -43,8 +82,10 @@
     const text=await res.text(); return text?JSON.parse(text):null;
   }
   function projects(){
-    const list=(window.data&&Array.isArray(window.data.projects)?window.data.projects:[]);
-    return list.map(p=>({id:S(p.id||p.project_id),name:S(p.name||p.project_name||p.official_name||p.client_name)})).filter(x=>x.name);
+    const list=allProjects();
+    if(!isSupervisorPage())return list;
+    const allowed=supervisorProjectNames();
+    return list.filter(p=>allowed.has(p.name));
   }
   function projectName(r){
     const d=dataOf(r), direct=field(r,'project_name','المشروع','اسم المشروع','project','projectName','الموقع','site_name','site');
@@ -53,7 +94,7 @@
     const flowName=S(flow.project_name||flow['المشروع']||flow.project||flow.site_name);
     if(flowName) return flowName;
     const pid=S(d.project_id||d['معرف المشروع']||d.projectId||flow.project_id||flow.projectId||r?.project_id);
-    if(pid){ const hit=projects().find(p=>S(p.id)===pid); if(hit) return hit.name; }
+    if(pid){ const hit=allProjects().find(p=>S(p.id)===pid); if(hit) return hit.name; }
     return '';
   }
   function receiptFromRow(r){
@@ -331,6 +372,16 @@
   function edit(idx){const r=rows[idx];if(!r)return;const d=dataOf(r);editNo=orderNo(r);const set=(id,v)=>{if($(id))$(id).value=S(v)};set('ouType',d.order_type||(/جمعية/.test(S(d['نوع الطلب']||d['تخص']))?'association':/خارجي/.test(S(d['نوع الطلب']))?'external':'internal'));set('ouProject',projectName(r));set('ouCustomer',field(r,'customer_name','اسم العميل'));set('ouPhone',field(r,'customer_phone','رقم العميل'));set('ouUnit',field(r,'unit_number','رقم الشقة'));set('ouExecutor',field(r,'executor_name','المنفذ'));set('ouStatus',field(r,'status','حالة التنفيذ'));set('ouPayment',field(r,'payment_status','حالة السداد'));set('ouBilling',field(r,'billing_status','حالة الفوترة')||'لم تتم');set('ouInvoiceNo',field(r,'invoice_number','رقم الفاتورة'));set('ouInvoiceDate',field(r,'invoice_date','تاريخ الفوترة'));$('ouBilling')?.dispatchEvent(new Event('change',{bubbles:true}));set('ouInvoiceNo',field(r,'invoice_number','رقم الفاتورة'));set('ouInvoiceDate',field(r,'invoice_date','تاريخ الفوترة'));set('ouInclusive',field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'));set('ouBefore',field(r,'السعر قبل الضريبة','before_vat'));set('ouVat',field(r,'الضريبة 15%','vat_amount'));set('ouCost',field(r,'التكلفة','cost'));set('ouProfit',field(r,'الربح','net_profit'));recalcFinance();set('ouDetails',field(r,'description','التفاصيل'));set('ouNotes',field(r,'ملاحظات'));const rec=receiptFromRow(r);if($('ouReceiptCurrent'))$('ouReceiptCurrent').textContent=rec?('الإيصال الحالي: '+rec.name):'لا يوجد إيصال محفوظ';if($('orderNoV233'))$('orderNoV233').value=editNo;if($('orderFormTitleV233'))$('orderFormTitleV233').textContent='تعديل أوردر '+editNo;if($('supOrderFormTitleV10061'))$('supOrderFormTitleV10061').textContent='تعديل أوردر '+editNo;window.scrollTo({top:0,behavior:'smooth'});}
   async function del(idx){const r=rows[idx];if(!r||!confirm('حذف الأوردر '+orderNo(r)+'؟'))return;try{await api('/rest/v1/'+TABLE+'?order_no=eq.'+encodeURIComponent(orderNo(r)),{method:'DELETE'});await audit(orderNo(r),'delete');notify('تم حذف الأوردر','ok');clear();await load();}catch(e){notify('تعذر الحذف: '+e.message,'err');}}
   function deleteCurrent(){const idx=rows.findIndex(r=>orderNo(r)===editNo);if(idx>=0)del(idx);else notify('اختر أوردر للتعديل أولاً','err');}
+  function createdByCurrentUser(r){
+    const d=dataOf(r), keys=userKeys();
+    const vals=[d.created_by_id,d['معرف منشئ الطلب'],d.created_by_name,d['منشئ الطلب'],d['مرسل الطلب'],d.creator_id,d.creator_name];
+    return vals.map(norm).some(v=>v&&keys.has(v));
+  }
+  function visibleToSupervisor(r){
+    if(!isSupervisorPage())return true;
+    const mine=supervisorProjectNames();
+    return mine.has(projectName(r))||createdByCurrentUser(r);
+  }
   function filterRows(){
     const isSup=!!$('supOrderSearchV10061')&&!$('orderSearchV233');
     const q=S($(isSup?'supOrderSearchV10061':'orderSearchV233')?.value).toLowerCase();
@@ -346,7 +397,7 @@
       const d=dataOf(r),proj=projectName(r),status=S(field(r,'حالة التنفيذ','status')),exec=S(field(r,'المنفذ','executor_name')),payment=S(field(r,'حالة السداد','payment_status')),billing=S(field(r,'حالة الفوترة','billing_status')||'لم تتم'),sender=S(d.created_by_name||d['منشئ الطلب']||d['مرسل الطلب']),dt=orderDate(r);
       const text=[orderNo(r),proj,...Object.values(d)].join(' ').toLowerCase();
       const rawType=S(d.order_type||(/جمعية/.test(S(d['نوع الطلب']))?'association':/خارجي/.test(S(d['نوع الطلب']))?'external':'internal'));
-      return (!q||text.includes(q))&&(!pf||proj===pf)&&(!sf||status===sf)&&(!tf||rawType===tf)&&(!ef||exec===ef)&&(!payf||payment===payf)&&(!billf||billing===billf)&&(!senderf||sender===senderf)&&(!from||dt>=from)&&(!to||dt<=to);
+      return visibleToSupervisor(r)&&(!q||text.includes(q))&&(!pf||proj===pf)&&(!sf||status===sf)&&(!tf||rawType===tf)&&(!ef||exec===ef)&&(!payf||payment===payf)&&(!billf||billing===billf)&&(!senderf||sender===senderf)&&(!from||dt>=from)&&(!to||dt<=to);
     });
   }
   function sendWhatsApp(idx){
@@ -375,7 +426,8 @@
   }
   function hydrateFilters(){
     const fill=(id,vals,first)=>{const el=$(id);if(!el)return;const cur=el.value;el.innerHTML=`<option value="">${first}</option>`+[...new Set(vals.filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(x=>`<option value="${E(x)}">${E(x)}</option>`).join('');if([...el.options].some(o=>o.value===cur))el.value=cur;};
-    const projs=systemProjectNames(),stats=rows.map(r=>S(field(r,'حالة التنفيذ','status'))),execs=rows.map(r=>S(field(r,'المنفذ','executor_name'))),pays=rows.map(r=>S(field(r,'حالة السداد','payment_status'))),bills=rows.map(r=>S(field(r,'حالة الفوترة','billing_status')||'لم تتم')),senders=rows.map(r=>S(dataOf(r).created_by_name||dataOf(r)['منشئ الطلب']||dataOf(r)['مرسل الطلب']));
+    const scoped=isSupervisorPage()?rows.filter(visibleToSupervisor):rows;
+    const projs=isSupervisorPage()?[...new Set(scoped.map(projectName).filter(Boolean))]:systemProjectNames(),stats=scoped.map(r=>S(field(r,'حالة التنفيذ','status'))),execs=scoped.map(r=>S(field(r,'المنفذ','executor_name'))),pays=scoped.map(r=>S(field(r,'حالة السداد','payment_status'))),bills=scoped.map(r=>S(field(r,'حالة الفوترة','billing_status')||'لم تتم')),senders=scoped.map(r=>S(dataOf(r).created_by_name||dataOf(r)['منشئ الطلب']||dataOf(r)['مرسل الطلب']));
     fill('orderProjectFilterV233',projs,'كل المشاريع');fill('orderStatusFilterV233',stats,'كل الحالات');fill('supOrderFilterProjectV10061',projs,'كل المشاريع');fill('supOrderFilterStatusV10061',stats,'كل الحالات');
     fill('orderExecutorFilterV233',execs,'كل المنفذين');fill('ouSupExecutorFilter',execs,'كل المنفذين');fill('orderPaymentFilterV233',pays,'كل حالات السداد');fill('ouSupPaymentFilter',pays,'كل حالات السداد');fill('orderBillingFilterV233',bills,'كل حالات الفوترة');fill('ouSupBillingFilter',bills,'كل حالات الفوترة');fill('orderSenderFilterV233',senders,'كل مرسلي الطلب');
   }
