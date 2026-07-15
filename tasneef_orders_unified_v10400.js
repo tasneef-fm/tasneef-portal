@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10412
+/* Tasneef Orders Unified v10413
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,8 +9,8 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10412) return;
-  window.__tasneefOrdersUnifiedV10412=true;
+  if(window.__tasneefOrdersUnifiedV10413) return;
+  window.__tasneefOrdersUnifiedV10413=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
@@ -253,7 +253,7 @@
     return true;
   }
   function toData(v,old={}){
-    const u=user(), created=old.created_at||old['تاريخ الإنشاء']||now(), creator=old.created_by_name||old['منشئ الطلب']||userName(u);
+    const u=user(), created=old.created_at||old['تاريخ الإنشاء']||old['تاريخ الطلب']||now(), creator=old.created_by_name||old['منشئ الطلب']||old['مرسل الطلب']||userName(u);
     const before=v.price/1.15, vat=v.price-before, profit=before-v.cost;
     return {...old,
       order_type:v.type, 'نوع الطلب':v.type==='internal'?'عميل داخلي':v.type==='association'?'جمعية':'أوردر خارجي',
@@ -261,7 +261,7 @@
       unit_number:v.unit,'رقم الشقة':v.unit,executor_name:v.executor,'المنفذ':v.executor,description:v.details,'التفاصيل':v.details,'ملاحظات':v.notes,
       status:v.status,'حالة التنفيذ':v.status,payment_status:v.payment,'حالة السداد':v.payment,billing_status:v.billing,'حالة الفوترة':v.billing,invoice_number:v.billing==='تمت'?v.invoiceNo:'','رقم الفاتورة':v.billing==='تمت'?v.invoiceNo:'',invoice_date:v.billing==='تمت'?v.invoiceDate:'','تاريخ الفوترة':v.billing==='تمت'?v.invoiceDate:'',
       'السعر (شامل الضريبة)':v.price,inclusive_total:v.price,total_with_vat:v.price,'الضريبة 15%':vat,vat_amount:vat,'السعر قبل الضريبة':before,before_vat:before,'التكلفة':v.cost,cost:v.cost,'الربح':profit,net_profit:profit,
-      created_by_id:S(old.created_by_id||u.id||u.user_id||u.email),created_by_name:creator,created_by_role:S(old.created_by_role||userRole(u)),created_at:created,'منشئ الطلب':creator,
+      created_by_id:S(old.created_by_id||old['معرف منشئ الطلب']||u.id||u.user_id||u.email),created_by_name:creator,created_by_role:S(old.created_by_role||old['صفة منشئ الطلب']||userRole(u)),created_at:created,'منشئ الطلب':creator,'مرسل الطلب':creator,
       updated_by_id:S(u.id||u.user_id||u.email),updated_by_name:userName(u),updated_by_role:userRole(u),updated_at:now(),'آخر تعديل بواسطة':userName(u)
     };
   }
@@ -274,26 +274,55 @@
     const payload=items.map(c=>({order_no:no,action_type:action,...c,changed_by_id:S(u.id||u.user_id||u.email),changed_by_name:userName(u),changed_by_role:userRole(u),changed_at:now()}));
     try{await api('/rest/v1/'+AUDIT,{method:'POST',body:JSON.stringify(payload)});}catch(e){console.warn('تعذر حفظ سجل التدقيق',e);}
   }
-  async function load(){
+  function setOrdersLoadingState(text='جارٍ تحميل الأوردرات...'){
+    const ids=['ordersTotalKpiV233','ordersDoneKpiV233','ordersDueKpiV233','ordersProfitKpiV233'];
+    ids.forEach(id=>{const el=$(id);if(el)el.textContent='…';});
+    const admin=$('ordersCardsV360');if(admin)admin.innerHTML=`<div class="ou-note">${E(text)}</div>`;
+    const sup=$('supOrdersBodyV10061');if(sup)sup.innerHTML=`<div class="ou-note">${E(text)}</div>`;
+  }
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  async function fetchOrdersPage(offset=0,limit=1000){
+    const queries=[
+      `/rest/v1/${TABLE}?select=*&order=updated_at.desc&offset=${offset}&limit=${limit}`,
+      `/rest/v1/${TABLE}?select=order_no,data,flow,updated_at&order=updated_at.desc&offset=${offset}&limit=${limit}`,
+      `/rest/v1/${TABLE}?select=*&offset=${offset}&limit=${limit}`
+    ];
+    let last;
+    for(const q of queries){try{const out=await api(q);if(Array.isArray(out))return out;}catch(e){last=e;}}
+    throw last||new Error('تعذر قراءة جدول الأوردرات');
+  }
+  async function load(attempt=0){
+    const token=(window.__tasneefOrdersLoadToken=(window.__tasneefOrdersLoadToken||0)+1);
+    if(!rows.length)setOrdersLoadingState(attempt?'إعادة محاولة تحميل الأوردرات...':'جارٍ تحميل الأوردرات...');
     try{
-      const first=await api('/rest/v1/'+TABLE+'?select=order_no,data,flow,updated_at&order=updated_at.desc&limit=250')||[];
-      rows=first; render(); hydrateFilters(); optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
-      // تحميل بقية السجلات في الخلفية حتى تظهر الأوردرات سريعاً للمستخدم.
-      if(first.length===250){
-        api('/rest/v1/'+TABLE+'?select=order_no,data,flow,updated_at&order=updated_at.desc&offset=250&limit=4750').then(rest=>{
-          const seen=new Set(first.map(orderNo));
-          rows=first.concat((rest||[]).filter(r=>!seen.has(orderNo(r))));
-          render(); hydrateFilters(); optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
-        }).catch(e=>console.warn('تعذر تحميل بقية الأوردرات',e));
+      const first=await fetchOrdersPage(0,1000);
+      if(token!==window.__tasneefOrdersLoadToken)return;
+      rows=first||[];render();hydrateFilters();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
+      // تحميل باقي البيانات على دفعات، مع تحديث العدادات والنتائج بعد كل دفعة.
+      let offset=rows.length;
+      while(first.length===1000 || offset>=1000){
+        const batch=await fetchOrdersPage(offset,1000);
+        if(token!==window.__tasneefOrdersLoadToken)return;
+        if(!batch.length)break;
+        const byNo=new Map(rows.map(r=>[orderNo(r),r]));
+        batch.forEach(r=>byNo.set(orderNo(r),r));rows=[...byNo.values()];
+        render();hydrateFilters();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
+        offset+=batch.length;if(batch.length<1000)break;
       }
-    }catch(e){notify('تعذر تحميل الأوردرات: '+e.message,'err');}
+      if(!rows.length && attempt<3){await wait(900*(attempt+1));return load(attempt+1);}
+    }catch(e){
+      console.error('Orders load failed',e);
+      if(attempt<3){await wait(900*(attempt+1));return load(attempt+1);}
+      notify('تعذر تحميل الأوردرات: '+e.message,'err');
+      const admin=$('ordersCardsV360');if(admin)admin.innerHTML='<div class="ou-note">تعذر تحميل الأوردرات. اضغط تحديث للمحاولة مرة أخرى.</div>';
+    }
   }
   async function save(ev){
     ev?.preventDefault?.(); if(saving)return; const v=values(); if(!validate(v))return; saving=true;
     try{
       const current=editNo?rows.find(r=>orderNo(r)===editNo):null; const no=editNo||makeNo(); const oldD=current?dataOf(current):{}; const d=toData(v,oldD);
       const picked=$('ouReceiptFile')?.files?.[0]; if(picked){const rec=await fileToDataURL(picked);d.__tasneef_order_receipt_v10140=rec;d['بيانات الإيصال']=rec;d['الإيصال']=rec;}
-      d['رقم الطلب']=no; d.order_no=no; if(!oldD['تاريخ الطلب'])d['تاريخ الطلب']=today(); if(!oldD['وقت الطلب'])d['وقت الطلب']=timeNow(); d['مرسل الطلب']=d.created_by_name;
+      d['رقم الطلب']=no; d.order_no=no; if(!oldD['تاريخ الطلب'])d['تاريخ الطلب']=today(); if(!oldD['وقت الطلب'])d['وقت الطلب']=timeNow(); d['مرسل الطلب']=d['منشئ الطلب']||d.created_by_name;
       await api('/rest/v1/'+TABLE+'?on_conflict=order_no',{method:'POST',body:JSON.stringify([{order_no:no,data:d,flow:current?.flow||{},updated_at:now()}])});
       await audit(no,current?'update':'create',current?diff(oldD,d):[]); notify(current?'تم تعديل الأوردر وتسجيل التغييرات':'تم إنشاء الأوردر وتسجيل المنشئ تلقائياً','ok'); clear(); await load();
     }catch(e){notify('فشل حفظ الأوردر: '+e.message,'err');}finally{saving=false;}
