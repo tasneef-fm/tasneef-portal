@@ -168,15 +168,17 @@
     <section class="card"><h2>الملخص اليومي</h2><div class="date-filter-row"><div><label>فلتر الأيام</label><select id="summaryRange" onchange="renderSupervisorDailySummary()"><option value="today">اليوم</option><option value="yesterday">أمس</option><option value="week">هذا الأسبوع</option><option value="custom">تاريخ محدد</option></select></div><div><label>تاريخ محدد</label><input type="date" id="summaryDate" onchange="renderSupervisorDailySummary()"></div></div><div id="supervisorSummaryCards" class="summary-card-grid" style="margin-top:12px"></div><div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>البند</th><th>العدد / الوقت</th></tr></thead><tbody id="supervisorSummaryBody"></tbody></table></div></section>
   </section>
 </div>
-<script src="orders_seed.js?v=337" defer></script>
+<script>
+// تعطيل كامل لكل سكربتات الأوردرات القديمة قبل تحميل app.js، بدون لمس البيانات.
+window.__tasneefOrdersV233=true;
+window.__tasneefOrdersSharedSyncDisabled=true;
+window.__tasneefOrdersRootCleanV10189=true;
+window.__tasneefSupervisorOrdersV10061=true;
+</script>
 <script src="app.js?v=477-root-fast" defer></script>
-<script src="tasneef_orders_workflow_v8.js?v=8" defer></script>
-<script src="tasneef_orders_shared_sync_v64.js?v=64" defer></script>
+<script src="tasneef_orders_unified_v10400.js?v=10400" defer></script>
 <script src="tasneef_supervisor_fast_fix_v9.js?v=9" defer></script>
 <script src="tasneef_worker_distribution_unified_v51.js?v=51" defer></script>
-<script src="tasneef_supervisor_orders_v10061.js?v=10061" defer></script>
-<script src="tasneef_orders_system_projects_only_v10063.js?v=10063" defer></script>
-<script src="tasneef_orders_system_projects_only_v10132.js?v=10132" defer></script>
 <script src="tasneef_field_admin_tasks_v10130.js?v=10130" defer></script>
 <script src="tasneef_language_switcher_safe_v10134.js?v=10134" defer></script>
 <script src="tasneef_daily_logs_no_duplicate_v10151.js?v=10151" defer></script>
