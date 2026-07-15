@@ -553,9 +553,11 @@ body .tasneef-version-badge, body .version-badge, body .build-badge, body #versi
           <h2>قسم الأوردرات</h2>
           <p>إدارة أوردرات الصيانة الخارجية بنفس آلية ملف الإكسل، مع رقم نظام تلقائي ورقم مستقل للأوردر في القروب.</p>
         </div>
-        <div class="actions">
-          <button onclick="clearOrderFormV233()">+ أوردر جديد</button>
-          <button class="light" onclick="exportOrdersCSVV233()">تصدير CSV</button>
+        <div class="actions ou-orders-toolbar" id="ouOrdersToolbar">
+          <button type="button" id="ouNewOrderBtn">+ أوردر جديد</button>
+          <button type="button" class="light" id="ouExportOrdersBtn">تصدير CSV</button>
+          <button type="button" class="light" id="ouQuotesBtn">عروض الأسعار</button>
+          <button type="button" class="light" id="ouPrintFilteredBtn">طباعة حسب الفلتر</button>
         </div>
       </div>
 
