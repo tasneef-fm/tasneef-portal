@@ -126,7 +126,7 @@
   .ou-receipt-disabled{opacity:.5;cursor:not-allowed!important}.ou-actions button{min-width:92px}
   @media(max-width:900px){#ordersSummaryV233.ou-summary-fixed{grid-template-columns:repeat(2,minmax(0,1fr))!important}}@media(max-width:520px){#ordersSummaryV233.ou-summary-fixed{grid-template-columns:1fr!important}}
   
-  .ou-quote-pick{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.ou-quote-orders{max-height:330px;overflow:auto;border:1px solid #dce7e2;border-radius:14px;padding:8px;background:#fbfdfc}.ou-quote-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px;border-bottom:1px solid #edf1ef}.ou-quote-row:last-child{border-bottom:0}.ou-quote-row input{width:auto}.ou-quote-tools{display:flex;gap:8px;flex-wrap:wrap}.orders-section-actions-v10408{display:flex!important;gap:8px!important;flex-wrap:wrap!important;align-items:center!important;margin:0!important}.orders-section-actions-v10408 button{white-space:nowrap}
+  .ou-quote-pick{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}.ou-quote-orders{max-height:330px;overflow:auto;border:1px solid #dce7e2;border-radius:14px;padding:8px;background:#fbfdfc}.ou-quote-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px;border-bottom:1px solid #edf1ef}.ou-quote-row:last-child{border-bottom:0}.ou-quote-row input{width:auto}.ou-quote-tools{display:flex;gap:8px;flex-wrap:wrap}.orders-section-actions-v10410{display:flex!important;gap:8px!important;flex-wrap:wrap!important;align-items:center!important;margin:0!important}.orders-section-actions-v10410 button{white-space:nowrap}
 `;document.head.appendChild(st);}
 
   function optionList(id,values){let d=$(id);if(!d){d=document.createElement('datalist');d.id=id;document.body.appendChild(d);}d.innerHTML=[...new Set(values.filter(Boolean))].map(v=>`<option value="${E(v)}"></option>`).join('');}
@@ -319,8 +319,12 @@
   function boot(){stopLegacy();injectStyle();fixOrdersHeader();const ok=rebuildAdmin()||rebuildSupervisor();if(!ok){setTimeout(boot,300);return;}ensureExtraFilters();setupSmartInputs();['ouInclusive','ouCost'].forEach(id=>{const el=$(id);if(el&&!el.dataset.ouCalc){el.dataset.ouCalc='1';el.addEventListener('input',recalcFinance);}});bind();const bill=$('ouBilling');if(bill&&!bill.dataset.ouBilling){bill.dataset.ouBilling='1';const sync=()=>{const done=bill.value==='تمت';if($('ouInvoiceNo'))$('ouInvoiceNo').disabled=!done;if($('ouInvoiceDate'))$('ouInvoiceDate').disabled=!done;if(!done){if($('ouInvoiceNo'))$('ouInvoiceNo').value='';if($('ouInvoiceDate'))$('ouInvoiceDate').value='';}};bill.addEventListener('change',sync);sync();}clear();load();setInterval(stopLegacy,2000);}
 
   function currentFilteredOrders(){ return filterRows(); }
+  function isDeferredOrder(r){
+    const payment=S(field(r,'حالة السداد','payment_status')).replace(/\s+/g,' ').trim();
+    return /^(آجل|اجل)$/i.test(payment);
+  }
   function quoteProjectOptions(){
-    return [...new Set(rows.map(projectName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
+    return [...new Set(rows.filter(isDeferredOrder).map(projectName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar'));
   }
   function ensureXlsx(){
     if(window.XLSX) return Promise.resolve(window.XLSX);
@@ -355,15 +359,44 @@
     const projectsList=quoteProjectOptions();
     const html=`<div class="ou-modal ou-quote-modal" onclick="if(event.target===this)this.remove()"><div style="width:min(1050px,96vw)"><div class="ou-head"><h2>إنشاء عرض سعر</h2><button class="light" onclick="this.closest('.ou-modal').remove()">إغلاق</button></div>
       <div class="ou-grid"><div><label>المشروع</label><select id="ouQuoteProject"><option value="">اختر المشروع</option>${projectsList.map(x=>`<option value="${E(x)}">${E(x)}</option>`).join('')}</select></div><div><label>رقم عرض السعر</label><input id="ouQuoteNo" value="QUO-${String(Date.now()).slice(-6)}"></div><div><label>التاريخ</label><input id="ouQuoteDate" type="date" value="${today()}"></div><div><label>المرجع</label><input id="ouQuoteRef" value="مجموعة أوردرات"></div><div><label>العميل</label><input id="ouQuoteCustomer"></div><div><label>الهاتف</label><input id="ouQuotePhone"></div><div class="ou-wide"><label>العنوان</label><input id="ouQuoteAddress" placeholder="المدينة، الحي، المملكة العربية السعودية"></div><div class="ou-wide"><label>ملاحظات</label><input id="ouQuoteNotes" value="الرجاء إرسال الإيصال بعد التحويل"></div></div>
-      <div class="ou-quote-tools"><button class="light" id="ouQuoteSelectAll">تحديد الكل</button><button class="light" id="ouQuoteClearAll">إلغاء التحديد</button><b id="ouQuoteCount">0 أوردر محدد</b></div><div id="ouQuoteOrders" class="ou-quote-orders"><div class="ou-note">اختر المشروع لعرض الأوردرات</div></div><div class="actions"><button id="ouQuotePrint">إنشاء وطباعة عرض السعر</button></div></div></div>`;
+      <div class="ou-quote-tools"><button class="light" id="ouQuoteSelectAll">تحديد الكل</button><button class="light" id="ouQuoteClearAll">إلغاء التحديد</button><b id="ouQuoteCount">0 أوردر محدد</b></div><div id="ouQuoteOrders" class="ou-quote-orders"><div class="ou-note">اختر المشروع لعرض الأوردرات</div></div><div class="actions"><button id="ouQuotePrint">إنشاء وطباعة عرض السعر</button><button class="light" id="ouQuoteWhatsApp">إرسال واتساب</button></div></div></div>`;
     document.body.insertAdjacentHTML('beforeend',html);
     const modal=document.querySelector('.ou-quote-modal'), sel=modal.querySelector('#ouQuoteProject'), host=modal.querySelector('#ouQuoteOrders'), count=modal.querySelector('#ouQuoteCount');
     const updateCount=()=>{count.textContent=host.querySelectorAll('input[type=checkbox]:checked').length+' أوردر محدد';};
-    const draw=()=>{const p=sel.value,list=rows.filter(r=>projectName(r)===p);host.innerHTML=list.length?list.map((r,i)=>{const inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'));return `<label class="ou-quote-row"><input type="checkbox" data-order="${E(orderNo(r))}"><span><b>${E(orderNo(r))}</b><br><small>${E(field(r,'التفاصيل','description')||'-')}</small></span><b>${E(money(inc))}</b></label>`;}).join(''):'<div class="ou-note">لا توجد أوردرات لهذا المشروع</div>';host.querySelectorAll('input').forEach(x=>x.addEventListener('change',updateCount));updateCount();const first=list[0];if(first){modal.querySelector('#ouQuoteCustomer').value=S(field(first,'اسم العميل','customer_name'));modal.querySelector('#ouQuotePhone').value=S(field(first,'رقم العميل','customer_phone'));}};
-    sel.addEventListener('change',draw);modal.querySelector('#ouQuoteSelectAll').onclick=()=>{host.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=true);updateCount();};modal.querySelector('#ouQuoteClearAll').onclick=()=>{host.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false);updateCount();};modal.querySelector('#ouQuotePrint').onclick=()=>printSelectedQuote(modal);sel.focus();
+    const draw=()=>{const p=sel.value,list=rows.map((r,idx)=>({r,idx})).filter(x=>projectName(x.r)===p&&isDeferredOrder(x.r));host.innerHTML=list.length?list.map(({r,idx})=>{const inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'));return `<label class="ou-quote-row"><input type="checkbox" data-row-index="${idx}"><span><b>${E(orderNo(r))}</b><br><small>${E(field(r,'التفاصيل','description')||'-')}</small></span><b>${E(money(inc))}</b></label>`;}).join(''):'<div class="ou-note">لا توجد أوردرات آجلة لهذا المشروع</div>';host.querySelectorAll('input[type=checkbox]').forEach(x=>x.addEventListener('change',updateCount));updateCount();const first=list[0]?.r;if(first){modal.querySelector('#ouQuoteCustomer').value=S(field(first,'اسم العميل','customer_name'));modal.querySelector('#ouQuotePhone').value=S(field(first,'رقم العميل','customer_phone'));}};
+    sel.addEventListener('change',draw);modal.querySelector('#ouQuoteSelectAll').onclick=()=>{host.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=true);updateCount();};modal.querySelector('#ouQuoteClearAll').onclick=()=>{host.querySelectorAll('input[type=checkbox]').forEach(x=>x.checked=false);updateCount();};modal.querySelector('#ouQuotePrint').onclick=()=>printSelectedQuote(modal);modal.querySelector('#ouQuoteWhatsApp').onclick=()=>sendSelectedQuoteWhatsApp(modal);sel.focus();
   }
+
+  function selectedQuoteData(modal){
+    const p=S(modal.querySelector('#ouQuoteProject').value);
+    const selectedIndexes=[...modal.querySelectorAll('#ouQuoteOrders input[type=checkbox]:checked')].map(x=>Number(x.dataset.rowIndex)).filter(Number.isInteger);
+    const list=selectedIndexes.map(i=>rows[i]).filter(r=>r&&projectName(r)===p&&isDeferredOrder(r));
+    return {p,list};
+  }
+  function sendSelectedQuoteWhatsApp(modal){
+    const {p,list}=selectedQuoteData(modal);
+    if(!p){notify('اختر المشروع أولاً','err');return;}
+    if(!list.length){notify('حدد أوردرًا آجلاً واحدًا على الأقل','err');return;}
+    const phoneRaw=S(modal.querySelector('#ouQuotePhone').value).replace(/\D/g,'');
+    let phone=phoneRaw;
+    if(phone.startsWith('0')) phone='966'+phone.slice(1);
+    else if(phone.length===9&&phone.startsWith('5')) phone='966'+phone;
+    if(!phone){notify('أدخل رقم جوال العميل لإرسال عرض السعر','err');return;}
+    const qno=S(modal.querySelector('#ouQuoteNo').value),customer=S(modal.querySelector('#ouQuoteCustomer').value)||p;
+    let subtotal=0,vatTotal=0,total=0;
+    const lines=list.map((r,i)=>{
+      const inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat'));
+      const before=num(field(r,'السعر قبل الضريبة','before_vat'))||(inc/1.15);
+      const vat=num(field(r,'الضريبة 15%','vat_amount'))||(inc-before);
+      subtotal+=before;vatTotal+=vat;total+=inc;
+      return `${i+1}- ${orderNo(r)} | ${S(field(r,'التفاصيل','description')||'-')} | ${money(inc)}`;
+    }).join('\n');
+    const text=`عرض سعر ${qno}\nالعميل: ${customer}\nالمشروع: ${p}\n\n${lines}\n\nقبل الضريبة: ${money(subtotal)}\nالضريبة: ${money(vatTotal)}\nالإجمالي شامل الضريبة: ${money(total)}`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`,'_blank','noopener');
+  }
+
   function printSelectedQuote(modal){
-    const p=S(modal.querySelector('#ouQuoteProject').value), selected=[...modal.querySelectorAll('#ouQuoteOrders input:checked')].map(x=>x.dataset.order),list=rows.filter(r=>selected.includes(orderNo(r)));
+    const {p,list}=selectedQuoteData(modal);
     if(!p){notify('اختر المشروع أولاً','err');return;} if(!list.length){notify('حدد أوردرًا واحدًا على الأقل','err');return;}
     const customer=S(modal.querySelector('#ouQuoteCustomer').value),phone=S(modal.querySelector('#ouQuotePhone').value),address=S(modal.querySelector('#ouQuoteAddress').value),qno=S(modal.querySelector('#ouQuoteNo').value),qdate=S(modal.querySelector('#ouQuoteDate').value),ref=S(modal.querySelector('#ouQuoteRef').value),notes=S(modal.querySelector('#ouQuoteNotes').value);
     let subtotal=0,vatTotal=0,total=0;const lines=list.map((r,i)=>{const inc=num(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat')),before=num(field(r,'السعر قبل الضريبة','before_vat'))||(inc/1.15),vat=num(field(r,'الضريبة 15%','vat_amount'))||(inc-before);subtotal+=before;vatTotal+=vat;total+=inc;return `<tr><td>${i+1}</td><td class="desc">${E(field(r,'التفاصيل','description')||'-')}<br><b>${E(orderNo(r))}</b></td><td>1</td><td>${before.toFixed(2)}</td><td>${before.toFixed(2)}</td><td>${vat.toFixed(2)}<br><small>15%</small></td><td>${inc.toFixed(2)}</td></tr>`;}).join('');
@@ -375,7 +408,7 @@
     const w=window.open('','_blank');if(!w)return;w.document.write(`<html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>الأوردرات</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Tahoma,Arial}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #bbb;padding:6px;text-align:right}th{background:#eef6f3}</style></head><body><h2>سجل الأوردرات حسب الفلتر</h2><table><thead><tr><th>الرقم</th><th>المشروع</th><th>العميل</th><th>المنفذ</th><th>التنفيذ</th><th>السداد</th><th>الفوترة</th><th>شامل الضريبة</th></tr></thead><tbody>${list.map(r=>`<tr><td>${E(orderNo(r))}</td><td>${E(projectName(r))}</td><td>${E(field(r,'اسم العميل','customer_name'))}</td><td>${E(field(r,'المنفذ','executor_name'))}</td><td>${E(field(r,'حالة التنفيذ','status'))}</td><td>${E(field(r,'حالة السداد','payment_status'))}</td><td>${E(effectiveBilling(r))}</td><td>${E(money(field(r,'السعر (شامل الضريبة)','inclusive_total','total_with_vat')))}</td></tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
   }
   function fixOrdersHeader(){
-    const section=$('orders');if(!section)return;const head=section.querySelector('.section-head');if(!head)return;let actions=head.querySelector('.actions');if(!actions){actions=document.createElement('div');actions.className='actions';head.appendChild(actions);}actions.className='actions orders-section-actions-v10408';actions.innerHTML='<button onclick="clearOrderFormV233()">+ أوردر جديد</button><button class="light" onclick="tasneefOrders10400.exportExcel()">تصدير Excel</button><button class="light" onclick="tasneefOrders10400.openQuoteBuilder()">عروض الأسعار</button><button class="light" onclick="tasneefOrders10400.printFiltered()">طباعة حسب الفلتر</button>';
+    const section=$('orders');if(!section)return;const head=section.querySelector('.section-head');if(!head)return;let actions=head.querySelector('.actions');if(!actions){actions=document.createElement('div');actions.className='actions';head.appendChild(actions);}actions.className='actions orders-section-actions-v10410';actions.innerHTML='<button onclick="clearOrderFormV233()">+ أوردر جديد</button><button class="light" onclick="tasneefOrders10400.exportExcel()">تصدير Excel</button><button class="light" onclick="tasneefOrders10400.openQuoteBuilder()">عروض الأسعار</button><button class="light" onclick="tasneefOrders10400.printFiltered()">طباعة حسب الفلتر</button>';
   }
 
     window.tasneefOrders10400={load,save,edit,del,history,openReceipt,page:d=>{page=Math.max(1,page+Number(d||0));render()},clear,render,exportExcel:exportOrdersExcel,openQuoteBuilder,printFiltered:printFilteredOrders};
