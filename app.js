@@ -24131,7 +24131,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 })();
 
 
-/* Tasneef V476 - Supervisor client report approval workflow (root) */
+/* Tasneef V483 - fast supervisor report approval workflow (single-query) */
 (function(){
   if(window.__tasneefReportApprovalV476) return;
   window.__tasneefReportApprovalV476=true;
@@ -24166,35 +24166,72 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
       const m=document.createElement('div'); m.id='reportReviewBackdropV475'; m.className='report-review-backdrop-v475 hidden'; m.innerHTML=`<div class="report-review-modal-v475"><div class="report-review-head-v475"><div><h2>تقارير بانتظار الاعتماد</h2><small id="reportReviewSubV475">تقارير أرسلها المشرفون ولم تظهر للعملاء بعد</small></div><button class="light" onclick="tasneefCloseReportReviewV475()">إغلاق</button></div><div id="reportReviewBodyV475" class="report-review-body-v475"></div></div>`; document.body.appendChild(m);
     }
   }
+  let servicesByReport=new Map();
+  let pendingLoadPromise=null;
   async function loadPending(silent=true){
     if(!isAdminPage()||!window.sb) return [];
     ensureUI();
-    try{
-      const r=await sb.from('client_reports').select('*').eq('status','draft').ilike('report_type','%المشرف%').order('created_at',{ascending:false}).limit(100);
-      if(r.error) throw r.error;
-      pending=r.data||[];
-      const c=$('reportBellCountV475'); if(c){c.textContent=pending.length>99?'99+':String(pending.length); c.classList.toggle('zero',!pending.length);}
-      if(!$('reportReviewBackdropV475')?.classList.contains('hidden')) await renderList();
-      return pending;
-    }catch(e){ if(!silent&&window.msg) msg(e.message||String(e),'err'); return []; }
+    if(pendingLoadPromise) return pendingLoadPromise;
+    pendingLoadPromise=(async()=>{
+      try{
+        const r=await sb.from('client_reports')
+          .select('id,title,project_name,report_date,report_type,executive_summary,created_at,status')
+          .eq('status','draft')
+          .ilike('report_type','%المشرف%')
+          .order('created_at',{ascending:false})
+          .limit(60);
+        if(r.error) throw r.error;
+        pending=r.data||[];
+        const c=$('reportBellCountV475');
+        if(c){c.textContent=pending.length>99?'99+':String(pending.length); c.classList.toggle('zero',!pending.length);}
+        servicesByReport=new Map();
+        const ids=pending.map(x=>x.id).filter(Boolean);
+        if(ids.length){
+          const sr=await sb.from('client_report_services')
+            .select('id,report_id,title,service_type,service_description,scope_work,before_images,during_images,after_images,sort_order')
+            .in('report_id',ids)
+            .order('sort_order',{ascending:true});
+          if(!sr.error){
+            (sr.data||[]).forEach(x=>{
+              const k=String(x.report_id);
+              if(!servicesByReport.has(k)) servicesByReport.set(k,[]);
+              servicesByReport.get(k).push(x);
+            });
+          }
+        }
+        return pending;
+      }catch(e){
+        if(!silent&&window.msg) msg(e.message||String(e),'err');
+        return [];
+      }finally{
+        pendingLoadPromise=null;
+      }
+    })();
+    return pendingLoadPromise;
   }
-  async function services(reportId){
-    try{const r=await sb.from('client_report_services').select('*').eq('report_id',reportId).order('sort_order',{ascending:true}); return r.data||[];}catch(_){return [];}
-  }
+  function services(reportId){ return servicesByReport.get(String(reportId))||[]; }
   function imgs(s){return [...(s.before_images||[]),...(s.during_images||[]),...(s.after_images||[])].map(x=>typeof x==='string'?x:(x?.data||x?.url||'')).filter(Boolean);}
-  async function renderList(){
+  function renderList(){
     const box=$('reportReviewBodyV475'); if(!box) return;
     if(!pending.length){box.innerHTML='<div class="report-empty-v475">لا توجد تقارير تنتظر الاعتماد حاليًا.</div>';return;}
-    box.innerHTML='<div class="report-empty-v475">جاري تحميل تفاصيل التقارير...</div>';
-    const cards=[];
-    for(const r of pending){
-      const ss=await services(r.id);
-      const svc=ss.map(s=>{const pictures=imgs(s).slice(0,6);return `<div class="report-service-v475"><b>${E(s.title||s.service_type||'خدمة')}</b><p>${E(s.service_description||s.scope_work||'')}</p><div>${pictures.map(x=>`<img src="${E(x)}" loading="lazy">`).join('')}</div></div>`}).join('');
-      cards.push(`<article class="report-pending-card-v475"><div class="report-pending-top-v475"><div><h3>${E(r.title||'تقرير المشرف')}</h3><div>${E(r.project_name||'')}</div></div><span class="report-pill-v475 wait">بانتظار الاعتماد</span></div><div class="report-pending-meta-v475"><span class="report-pill-v475">${E(String(r.report_date||'').slice(0,10))}</span><span class="report-pill-v475">${E(r.report_type||'تقرير من المشرف')}</span><span class="report-pill-v475">${ss.length} خدمة</span></div><p>${E(r.executive_summary||'')}</p>${svc?`<div class="report-preview-services-v475">${svc}</div>`:''}<div class="report-actions-v475"><button onclick="tasneefApproveSupervisorReportV475('${E(r.id)}',this)">اعتماد ونشر</button><button class="light" onclick="tasneefEditSupervisorReportV475('${E(r.id)}')">تعديل ثم نشر</button></div></article>`);
-    }
+    const cards=pending.map(r=>{
+      const ss=services(r.id);
+      const svc=ss.map(s=>{
+        const pictures=imgs(s).slice(0,4);
+        return `<div class="report-service-v475"><b>${E(s.title||s.service_type||'خدمة')}</b><p>${E(s.service_description||s.scope_work||'')}</p><div>${pictures.map(x=>`<img src="${E(x)}" loading="lazy" decoding="async">`).join('')}</div></div>`;
+      }).join('');
+      return `<article class="report-pending-card-v475"><div class="report-pending-top-v475"><div><h3>${E(r.title||'تقرير المشرف')}</h3><div>${E(r.project_name||'')}</div></div><span class="report-pill-v475 wait">بانتظار الاعتماد</span></div><div class="report-pending-meta-v475"><span class="report-pill-v475">${E(String(r.report_date||'').slice(0,10))}</span><span class="report-pill-v475">${E(r.report_type||'تقرير من المشرف')}</span><span class="report-pill-v475">${ss.length} خدمة</span></div><p>${E(r.executive_summary||'')}</p>${svc?`<details><summary style="cursor:pointer;font-weight:800;color:#0A4033;margin-top:10px">عرض تفاصيل الخدمات</summary><div class="report-preview-services-v475">${svc}</div></details>`:''}<div class="report-actions-v475"><button onclick="tasneefApproveSupervisorReportV475('${E(r.id)}',this)">اعتماد ونشر</button><button class="light" onclick="tasneefEditSupervisorReportV475('${E(r.id)}')">تعديل ثم نشر</button></div></article>`;
+    });
     box.innerHTML=cards.join('');
   }
-  async function openList(){ensureUI(); $('reportReviewBackdropV475')?.classList.remove('hidden'); await loadPending(false); await renderList();}
+  async function openList(){
+    ensureUI();
+    $('reportReviewBackdropV475')?.classList.remove('hidden');
+    const box=$('reportReviewBodyV475');
+    if(box) box.innerHTML='<div class="report-empty-v475">جاري تحميل التقارير...</div>';
+    await loadPending(false);
+    renderList();
+  }
   window.tasneefCloseReportReviewV475=()=>$('reportReviewBackdropV475')?.classList.add('hidden');
   window.tasneefApproveSupervisorReportV475=async function(id,btn){
     try{
