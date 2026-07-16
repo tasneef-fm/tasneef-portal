@@ -24175,7 +24175,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     pendingLoadPromise=(async()=>{
       try{
         const r=await sb.from('client_reports')
-          .select('id,title,project_name,report_date,report_type,executive_summary,created_at,status')
+          .select('id,project_id,title,project_name,report_date,report_type,executive_summary,created_at,status,public_token')
           .eq('status','draft')
           .ilike('report_type','%المشرف%')
           .order('created_at',{ascending:false})
@@ -24275,6 +24275,8 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
       if(!verify.count){await sb.from('client_reports').update({status:'draft',public_token:null,published_at:null}).eq('id',id);throw new Error('تم إيقاف النشر لأن الخدمات لم ترتبط بالتقرير. لم يتم نشر تقرير فارغ.');}
       if(window.msg) msg('تم اعتماد التقرير ونشره مع '+verify.count+' خدمة');
       await loadPending(true);
+      const publishedCheck=await sb.from('client_reports').select('id,project_id,public_token,status').eq('id',id).eq('status','published').eq('public_token',token).maybeSingle();
+      if(publishedCheck.error||!publishedCheck.data?.project_id) throw new Error('تم حفظ التقرير، لكن تعذر إنشاء رابط العميل لعدم وجود مشروع مرتبط بالتقرير.');
       const url=reportUrl(token);
       if(confirm('تم النشر بنجاح مع الخدمات. هل تريد فتح تقرير العميل الآن؟')) window.open(url,'_blank');
     }catch(e){if(window.msg)msg(e.message||String(e),'err');else alert(e.message||String(e));}
