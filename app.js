@@ -24783,14 +24783,31 @@ ${finalUrl}
   const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);return !uk.length||rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b)))};
   const dedupeWorkers=rows=>{
     const map=new Map();
+    const master=window.data?.workers||[];
+    const findMaster=r=>{
+      const code=workerCode(r),name=workerName(r);
+      return master.find(w=>{
+        const wc=workerCode(w),wn=workerName(w);
+        return (code&&wc&&norm(code)===norm(wc)) || (name&&wn&&norm(name)===norm(wn));
+      })||null;
+    };
     (rows||[]).filter(activeWorker).filter(matchSupervisor).forEach(r=>{
-      const id=workerNumericId(r), code=workerCode(r), name=workerName(r);
+      const mw=findMaster(r);
+      const id=mw?workerNumericId(mw):workerNumericId(r);
+      const code=mw?workerCode(mw):workerCode(r);
+      const name=mw?workerName(mw):workerName(r);
       if(!id&&!code&&!name)return;
-      const key=id?'id:'+id:(code?'code:'+norm(code):'name:'+norm(name));
+      // المفتاح الموحّد يبدأ بكود الموظف، ثم رقم العامل في النظام الموحّد، ثم الاسم.
+      // هذا يمنع احتساب نفس العامل عدة مرات عند وجود سجلات توزيع قديمة بأرقام مختلفة.
+      const key=code?'code:'+norm(code):(id?'id:'+id:'name:'+norm(name));
       let w=map.get(key);
       if(!w){w={id:id||0,worker_id:id||0,name,worker_name:name,employee_code:code,worker_employee_code:code,projects:[],raw:[]};map.set(key,w)}
-      w.raw.push(r); if(!w.id&&id){w.id=id;w.worker_id=id} if(!w.name&&name){w.name=name;w.worker_name=name} if(!w.employee_code&&code){w.employee_code=code;w.worker_employee_code=code}
-      const pid=N(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key); const pn=S(r.project_name||r.project||r.project_title||projectNameLocal(pid));
+      w.raw.push(r);
+      if(!w.id&&id){w.id=id;w.worker_id=id}
+      if(!w.name&&name){w.name=name;w.worker_name=name}
+      if(!w.employee_code&&code){w.employee_code=code;w.worker_employee_code=code}
+      const pid=N(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key);
+      const pn=S(r.project_name||r.project||r.project_title||projectNameLocal(pid));
       if((pid||pn)&&!w.projects.some(p=>S(p.id)===S(pid)&&norm(p.name)===norm(pn)))w.projects.push({id:pid,name:pn||projectNameLocal(pid)});
     });
     return [...map.values()].filter(w=>w.id).sort((a,b)=>workerName(a).localeCompare(workerName(b),'ar'));
@@ -24813,10 +24830,10 @@ ${finalUrl}
       // إثراء سجلات التوزيع بهوية العامل الرقمية من جدول العمال الموحد حتى يبقى الحفظ مرتبطًا بالعامل الصحيح.
       const baseWorkers=window.data?.workers||[];
       rows=rows.map(row=>{
-        if(workerNumericId(row))return row;
         const code=workerCode(row),name=workerName(row);
-        const match=baseWorkers.find(w=>(code&&workerCode(w)&&norm(workerCode(w))===norm(code))||(!code&&name&&norm(workerName(w))===norm(name)));
-        return match?{...row,worker_id:workerNumericId(match),app_worker_id:workerNumericId(match)}:row;
+        const match=baseWorkers.find(w=>(code&&workerCode(w)&&norm(workerCode(w))===norm(code))||(name&&workerName(w)&&norm(workerName(w))===norm(name)));
+        // نستخدم رقم العامل من النظام الموحّد دائمًا حتى لو كان سجل التوزيع القديم يحمل رقمًا مختلفًا.
+        return match?{...row,worker_id:workerNumericId(match),app_worker_id:workerNumericId(match),worker_employee_code:workerCode(match)||code,worker_name:workerName(match)||name}:row;
       });
     }catch(e){console.warn('monthly_distribution workers:',e.message);rows=[]}
     if(!rows.length){
