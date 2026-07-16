@@ -24528,9 +24528,38 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function renderReports(){
     const annual=annualRows();
     const annualHtml=annual.length?`<div class="table-wrap"><table class="cp-v373-table"><thead><tr><th>الخدمة السنوية</th><th>عدد الزيارات</th><th>المنفذ</th><th>المتبقي</th><th>الحالة</th><th>ملاحظات</th></tr></thead><tbody>${annual.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${r.visits}</td><td><span class="cp-v373-badge green">${r.done}</span></td><td><span class="cp-v373-badge amber">${r.remain}</span></td><td>${esc(r.status)}</td><td>${esc(r.notes||'-')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="cp-v373-empty">لا توجد أعمال سنوية مسجلة لهذا المشروع في بيانات العقد.</div>';
-    const photos=state.reports.map(r=>{ const ss=state.services.filter(s=>String(s.report_id)===String(r.id)); return `<div class="cp-v373-card"><h3>${esc(reportTitle(r))}</h3><p><span class="cp-v373-badge blue">${esc(dateOnly(r.report_date||r.created_at))}</span> <span class="cp-v373-badge green">${ss.length} أعمال مصورة</span></p><p style="color:#60706a;line-height:1.7">${esc(r.executive_summary||'تقرير أعمال مصورة للمشروع.')}</p></div>`; }).join('');
+    const photos=state.reports.map(r=>{
+      const ss=state.services.filter(s=>String(s.report_id)===String(r.id));
+      const viewBtn=r.public_token?`<button type="button" onclick="openClientReport('${esc(r.public_token)}')">عرض</button>`:`<button type="button" onclick="viewClientPortalReportAdminV511('${esc(r.id)}')">عرض</button>`;
+      return `<div class="cp-v373-card"><h3>${esc(reportTitle(r))}</h3><p><span class="cp-v373-badge blue">${esc(dateOnly(r.report_date||r.created_at))}</span> <span class="cp-v373-badge green">${ss.length} أعمال مصورة</span></p><p style="color:#60706a;line-height:1.7">${esc(r.executive_summary||'تقرير أعمال مصورة للمشروع.')}</p><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${viewBtn}<button type="button" class="light" onclick="editPremiumReport('${esc(r.id)}')">تعديل</button><button type="button" class="danger" onclick="deleteClientPortalReportV511('${esc(r.id)}')">حذف</button></div></div>`;
+    }).join('');
     $('cpReportsBoxV373').innerHTML=`<h3 style="color:var(--brand);margin:0 0 10px">الأعمال السنوية من العقد</h3>${annualHtml}<h3 style="color:var(--brand);margin:18px 0 10px">التقارير المصورة</h3>${photos?`<div class="cp-v373-grid">${photos}</div>`:'<div class="cp-v373-empty">لا توجد تقارير مصورة ضمن الفترة.</div>'}`;
   }
+
+  window.viewClientPortalReportAdminV511=function(id){
+    const r=state.reports.find(x=>String(x.id)===String(id));
+    if(!r) return window.msg&&window.msg('التقرير غير موجود','err');
+    if(r.public_token && typeof openClientReport==='function') return openClientReport(r.public_token);
+    if(typeof editPremiumReport==='function') return editPremiumReport(id);
+  };
+
+  window.deleteClientPortalReportV511=async function(id){
+    if(!confirm('سيتم حذف التقرير من الإدارة ومن صفحة العميل مع جميع الخدمات والصور. هل تريد المتابعة؟')) return;
+    try{
+      if(!window.sb) throw new Error('قاعدة البيانات غير متصلة');
+      const s1=await window.sb.from('client_report_services').delete().eq('report_id',id);
+      if(s1.error) throw s1.error;
+      try{ await window.sb.from('client_service_ratings').delete().eq('report_id',id); }catch(_){ }
+      const s2=await window.sb.from('client_reports').delete().eq('id',id).select('id');
+      if(s2.error) throw s2.error;
+      state.services=state.services.filter(x=>String(x.report_id)!==String(id));
+      state.reports=state.reports.filter(x=>String(x.id)!==String(id));
+      renderReports();
+      if(window.msg) window.msg('تم حذف التقرير من الإدارة وصفحة العميل');
+    }catch(e){
+      if(window.msg) window.msg(e.message||String(e),'err'); else alert(e.message||String(e));
+    }
+  };
   function renderRatings(){ const rows=state.ratings.slice(0,50).map(r=>`<tr><td>${esc(fmt(r.created_at))}</td><td><span class="cp-v373-stars">${'★'.repeat(Math.max(1,Math.min(5,Number(r.rating_value||r.score||({'ممتاز':5,'جيد جدًا':4,'جيد':3,'يحتاج تحسين':2}[r.rating]||0))||0)))}</span><br><small>${esc(r.rating||'')}</small></td><td>${esc(r.comment||'-')}</td><td>${r.followup_requested?'نعم':'لا'}</td></tr>`).join(''); $('cpRatingsBoxV373').innerHTML=rows?`<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>التقييم</th><th>الملاحظة</th><th>متابعة</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="cp-v373-empty">لم يتم تسجيل تقييمات ضمن الفترة.</div>'; }
   function renderPreview(){ const s=stats(); const pn=projectName(state.projectId); $('cpPreviewV373').innerHTML=`<div class="cp-v373-preview-head"><h3>بوابة مشروع ${esc(pn)}</h3><small>من ${esc(state.from)} إلى ${esc(state.to)}</small></div><div class="cp-v373-preview-body"><div class="cp-v373-kpis"><div class="cp-v373-kpi"><small>ساعات العمل</small><b>${minTxt(s.minutes)}</b></div><div class="cp-v373-kpi"><small>الأعمال السنوية المنفذة</small><b>${s.annualDone}</b></div><div class="cp-v373-kpi"><small>المتبقي على العقد</small><b>${esc(s.contractLeft)}</b></div><div class="cp-v373-kpi"><small>التذاكر</small><b>${state.tickets.length}</b></div></div><p style="line-height:1.8;color:#60706a">هذه هي الصورة التي ستظهر للعميل في الرابط: تقرير منظم وسهل القراءة، مع فلاتر الفترة المحددة.</p></div>`; }
 
