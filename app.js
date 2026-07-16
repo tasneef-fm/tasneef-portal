@@ -24866,12 +24866,101 @@ ${finalUrl}
     const inn=$id('supInsideWorkers');if(inn)inn.innerHTML=inside.map(v=>{const w=workers.find(x=>S(x.id)===S(v.worker_id));return`<label class="sup-worker-row"><input type="checkbox" class="sup-exit-worker" value="${N(v.worker_id)}"><span><b>${esc2(workerName(w||{id:v.worker_id}))}</b><br><small>دخول ${esc2(new Date(v.check_in).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit'}))}</small></span></label>`}).join('')||'<div class="sup-worker-empty">لا يوجد عمال داخل المشروع الآن</div>';
     const av=$id('supAvailableWorkers');if(av)av.innerHTML=available.map(w=>`<label class="sup-worker-row"><input type="checkbox" class="sup-enter-worker" value="${N(w.id)}"><span><b>${esc2(workerName(w))}</b><br><small>${isForCurrentProject(w,pid)?'مخصص لهذا المشروع':'متاح للنقل — '+esc2(workerProjectLabel(w))}</small></span></label>`).join('')||'<div class="sup-worker-empty">لا يوجد عمال متاحون</div>';
   }
-  function waMessage(title,pid,workers){const unique=[...new Map(workers.map(w=>[S(w.id||workerCode(w)||norm(workerName(w))),w])).values()];const lines=[title,'المشروع: '+projectNameLocal(pid),'المشرف: '+S(currentUser().full_name||currentUser().name||''),'الوقت: '+new Date().toLocaleString('ar-SA'),'','العمال:'];unique.forEach((w,i)=>lines.push((i+1)+'- '+workerName(w)));lines.push('','الإجمالي: '+unique.length);return lines.join('\n')}
+  function uniqueWorkers(workers){return [...new Map((workers||[]).map(w=>[S(w.id||workerNumericId(w)||workerCode(w)||norm(workerName(w))),w])).values()].filter(Boolean)}
+  function workersFromVisits(rows){
+    return uniqueWorkers((rows||[]).map(v=>{
+      const direct=assignedWorkers().find(w=>S(w.id)===S(v.worker_id));
+      if(direct)return direct;
+      const base=(window.data?.workers||[]).find(w=>S(workerNumericId(w))===S(v.worker_id) || (workerCode(w)&&workerCode(v)&&norm(workerCode(w))===norm(workerCode(v))));
+      return base || {id:N(v.worker_id),worker_id:N(v.worker_id),name:S(v.worker_name||v.name||('عامل '+v.worker_id)),worker_name:S(v.worker_name||v.name||('عامل '+v.worker_id)),employee_code:S(v.worker_employee_code||v.employee_code||'')};
+    }));
+  }
+  function waMessage(title,pid,workers){
+    const unique=uniqueWorkers(workers);
+    const supName=S(currentUser().full_name||currentUser().name||'');
+    const lines=[title,'المشروع: '+projectNameLocal(pid),'المشرف: '+supName,'الوقت: '+new Date().toLocaleString('ar-SA'),'','العمال المختارون:'];
+    if(unique.length) unique.forEach((w,i)=>lines.push((i+1)+'- '+workerName(w))); else lines.push('لا يوجد عمال محددون');
+    lines.push('','الإجمالي: '+unique.length);
+    return lines.join('\n');
+  }
   function openWhatsapp(text){window.open('https://wa.me/?text='+encodeURIComponent(text),'_blank','noopener')}
+  async function captureImageFromCamera(){
+    return new Promise(resolve=>{
+      const input=document.createElement('input');
+      input.type='file';
+      input.accept='image/*';
+      input.capture='environment';
+      input.style.position='fixed';
+      input.style.left='-9999px';
+      input.style.top='-9999px';
+      document.body.appendChild(input);
+      const done=file=>{setTimeout(()=>input.remove(),300);resolve(file||null)};
+      input.addEventListener('change',()=>done(input.files&&input.files[0]?input.files[0]:null),{once:true});
+      input.click();
+    });
+  }
+  function wrapCanvasText(ctx,text,maxWidth){
+    const lines=[];
+    String(text||'').split('\n').forEach(par=>{
+      const words=String(par).split(/\s+/).filter(Boolean);
+      if(!words.length){lines.push('');return}
+      let line='';
+      words.forEach(word=>{
+        const test=line?line+' '+word:word;
+        if(ctx.measureText(test).width>maxWidth && line){lines.push(line);line=word}else line=test;
+      });
+      lines.push(line);
+    });
+    return lines;
+  }
+  async function renderPhotoWithText(file,text){
+    const url=URL.createObjectURL(file);
+    try{
+      const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=url;});
+      const maxW=1080,scale=Math.min(1,maxW/img.width||1),w=Math.max(320,Math.round(img.width*scale)),h=Math.max(320,Math.round(img.height*scale));
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,w,h);
+      const pad=Math.max(18,Math.round(w*0.03));
+      ctx.font=`${Math.max(20,Math.round(w*0.028))}px Arial`;
+      const lines=wrapCanvasText(ctx,text,w-pad*2);
+      const lh=Math.max(28,Math.round(w*0.04));
+      const boxH=Math.min(h*0.55,pad*2+lines.length*lh);
+      ctx.fillStyle='rgba(0,60,45,0.78)';
+      ctx.fillRect(0,h-boxH,w,boxH);
+      ctx.fillStyle='#fff';
+      ctx.textBaseline='top';
+      let y=h-boxH+pad;
+      lines.forEach(line=>{ctx.fillText(line,pad,y);y+=lh;});
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.92));
+      return new File([blob],'attendance-whatsapp.jpg',{type:'image/jpeg'});
+    } finally { URL.revokeObjectURL(url); }
+  }
+  async function shareWhatsappWithImage(text,file){
+    if(file && navigator.share && navigator.canShare){
+      try{ if(navigator.canShare({files:[file]})){ await navigator.share({files:[file],text,title:'واتساب'}); return true; } }catch(e){ console.warn('share with file failed',e); }
+    }
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText) await navigator.clipboard.writeText(text); }catch(_){ }
+    openWhatsapp(text);
+    if(file){
+      const url=URL.createObjectURL(file); window.open(url,'_blank','noopener'); setTimeout(()=>URL.revokeObjectURL(url),60000);
+      notify('تم فتح واتساب بالنص وفتح الصورة بشكل منفصل لأن جهازك لا يدعم الإرسال المباشر للملفات من المتصفح','warn');
+    }
+    return false;
+  }
+  async function captureAndShareCheckout(title,pid,workers){
+    const text=waMessage(title,pid,workers);
+    try{
+      const raw=await captureImageFromCamera();
+      if(!raw){ openWhatsapp(text); return; }
+      const composed=await renderPhotoWithText(raw,text);
+      await shareWhatsappWithImage(text,composed);
+    }catch(e){ console.warn('capture/share checkout failed',e); openWhatsapp(text); }
+  }
   async function ensureSupervisorCheckIn(pid){const u=currentUser();const open=(window.data?.logs||[]).find(l=>S(l.supervisor_id)===S(u.id)&&S(l.project_id)===S(pid)&&!l.check_out);if(open)return open;const row={user_id:u.id,supervisor_id:N(u.id),project_id:N(pid),check_in:nowIso(),check_out:null,log_date:(typeof today==='function'?today():new Date().toISOString().slice(0,10)),duration_minutes:0,travel_minutes:N($id('logTravel')?.value),visit_type:$id('logVisitType')?.value||'surface',required_minutes:0,time_difference_minutes:0,time_status:'open',notes:$id('logNotes')?.value||''};const r=await sb.from('time_logs').insert(row).select('*').single();if(r.error)throw r.error;(window.data.logs||[]).push(r.data);return r.data}
   window.supervisorCheckIn=async function(btn){const pid=currentPid();if(!pid)return notify('اختر المشروع','err');const ids=selectedIds('.sup-enter-worker');if(!ids.length)return notify('حدد عاملًا واحدًا على الأقل للدخول','err');if(state.action)return;setBusy(btn,true,'جارٍ تسجيل الدخول...');const tok=opToken('worker_checkin',pid);try{await fetchVisits();const workers=assignedWorkers().filter(w=>ids.includes(N(w.id))&&!openVisitForWorker(w.id));if(!workers.length){notify('تم تسجيل هؤلاء العمال مسبقًا أو أصبحوا داخل مشروع آخر','warn');return}await ensureSupervisorCheckIn(pid);const t=nowIso();const rows=workers.map(w=>({operation_token:tok.token+'-'+w.id,worker_id:N(w.id),supervisor_id:N(supervisorId()),project_id:N(pid),check_in:t,check_out:null,created_by:N(supervisorId()),notes:$id('logNotes')?.value||''}));const r=await sb.from(TABLE).upsert(rows,{onConflict:'operation_token'}).select('*');if(r.error)throw r.error;clearToken(tok.key);await fetchVisits();notify('تم تسجيل دخول '+workers.length+' عامل');openWhatsapp(waMessage('تم تسجيل دخول المشروع',pid,workers))}catch(e){console.error(e);notify('تعذر الحفظ: '+(e.message||e),'err')}finally{setBusy(btn,false)}};
-  window.supervisorExitSelectedWorkers=async function(btn){const pid=currentPid(),ids=selectedIds('.sup-exit-worker');if(!ids.length)return notify('حدد العامل المطلوب خروجه','err');if(state.action)return;setBusy(btn,true,'جارٍ تسجيل الخروج...');try{await fetchVisits();const openRows=state.visits.filter(v=>ids.includes(N(v.worker_id))&&!v.check_out&&(!pid||S(v.project_id)===pid));if(!openRows.length){notify('لا توجد سجلات دخول مفتوحة للعامل المحدد','warn');return}const out=nowIso(),rowIds=openRows.map(v=>v.id);const r=await sb.from(TABLE).update({check_out:out,updated_by:N(supervisorId()),updated_at:out}).in('id',rowIds).is('check_out',null).select('*');if(r.error)throw r.error;const workers=assignedWorkers().filter(w=>openRows.some(v=>S(v.worker_id)===S(w.id)));await fetchVisits();notify('تم تسجيل خروج '+workers.length+' عامل');openWhatsapp(waMessage('تم تسجيل خروج عامل/عمال',pid||openRows[0].project_id,workers))}catch(e){notify('تعذر تسجيل الخروج: '+(e.message||e),'err')}finally{setBusy(btn,false)}};
-  window.supervisorCheckOut=async function(btn){const pid=currentPid();if(!pid)return notify('اختر المشروع','err');if(state.action)return;setBusy(btn,true,'جارٍ تسجيل خروج الجميع...');try{await fetchVisits();const rows=state.visits.filter(v=>S(v.project_id)===pid&&!v.check_out),out=nowIso();if(rows.length){const r=await sb.from(TABLE).update({check_out:out,updated_by:N(supervisorId()),updated_at:out}).in('id',rows.map(v=>v.id)).is('check_out',null);if(r.error)throw r.error}const u=currentUser(),openLogs=(window.data?.logs||[]).filter(l=>S(l.supervisor_id)===S(u.id)&&S(l.project_id)===pid&&!l.check_out);for(const l of openLogs){await sb.from('time_logs').update({check_out:out,duration_minutes:Math.max(0,Math.round((new Date(out)-new Date(l.check_in))/60000))}).eq('id',l.id).is('check_out',null);l.check_out=out}const workers=assignedWorkers().filter(w=>rows.some(v=>S(v.worker_id)===S(w.id)));await fetchVisits();if(typeof renderTimeLogs==='function')renderTimeLogs();notify('تم تسجيل خروج المشرف وجميع العمال');openWhatsapp(waMessage('تم تسجيل خروج المشروع',pid,workers))}catch(e){notify('تعذر تسجيل الخروج: '+(e.message||e),'err')}finally{setBusy(btn,false)}};
+  window.supervisorExitSelectedWorkers=async function(btn){const pid=currentPid(),ids=selectedIds('.sup-exit-worker');if(!ids.length)return notify('حدد العامل المطلوب خروجه','err');if(state.action)return;setBusy(btn,true,'جارٍ تسجيل الخروج...');try{await fetchVisits();const openRows=state.visits.filter(v=>ids.includes(N(v.worker_id))&&!v.check_out&&(!pid||S(v.project_id)===pid));if(!openRows.length){notify('لا توجد سجلات دخول مفتوحة للعامل المحدد','warn');return}const out=nowIso(),rowIds=openRows.map(v=>v.id);const r=await sb.from(TABLE).update({check_out:out,updated_by:N(supervisorId()),updated_at:out}).in('id',rowIds).is('check_out',null).select('*');if(r.error)throw r.error;const workers=workersFromVisits(openRows);await fetchVisits();notify('تم تسجيل خروج '+workers.length+' عامل');openWhatsapp(waMessage('تم تسجيل خروج عامل/عمال',pid||openRows[0].project_id,workers))}catch(e){notify('تعذر تسجيل الخروج: '+(e.message||e),'err')}finally{setBusy(btn,false)}};
+  window.supervisorCheckOut=async function(btn){const pid=currentPid();if(!pid)return notify('اختر المشروع','err');if(state.action)return;setBusy(btn,true,'جارٍ تسجيل خروج الجميع...');try{await fetchVisits();const rows=state.visits.filter(v=>S(v.project_id)===pid&&!v.check_out),out=nowIso();if(rows.length){const r=await sb.from(TABLE).update({check_out:out,updated_by:N(supervisorId()),updated_at:out}).in('id',rows.map(v=>v.id)).is('check_out',null);if(r.error)throw r.error}const u=currentUser(),openLogs=(window.data?.logs||[]).filter(l=>S(l.supervisor_id)===S(u.id)&&S(l.project_id)===pid&&!l.check_out);for(const l of openLogs){await sb.from('time_logs').update({check_out:out,duration_minutes:Math.max(0,Math.round((new Date(out)-new Date(l.check_in))/60000))}).eq('id',l.id).is('check_out',null);l.check_out=out}const workers=workersFromVisits(rows);await fetchVisits();if(typeof renderTimeLogs==='function')renderTimeLogs();notify('تم تسجيل خروج المشرف وجميع العمال');await captureAndShareCheckout('تم تسجيل خروج المشروع',pid,workers)}catch(e){notify('تعذر تسجيل الخروج: '+(e.message||e),'err')}finally{setBusy(btn,false)}};
   const oldProjectChange=window.onLogProjectChange;window.onLogProjectChange=function(){try{if(typeof oldProjectChange==='function')oldProjectChange()}catch(_){}state.lastProject=currentPid();render()};
   const oldInit=window.initSupervisor;window.initSupervisor=async function(){await oldInit.apply(this,arguments);await fetchVisits();render()};
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchVisits()});
