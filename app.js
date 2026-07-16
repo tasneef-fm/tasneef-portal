@@ -25191,45 +25191,99 @@ ${finalUrl}
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchVisits()});
 })();;
 
-/* ===== V10506 FAST DAILY LOGS BRIDGE ===== */
+
+/* V10506 legacy daily bridge removed: superseded by V10508 unified daily logs. */
+
+
+
+/* ===== V10508 UNIFIED DAILY LOGS - SINGLE SOURCE FOR ADMIN & SUPERVISOR ===== */
 (function(){
   'use strict';
-  if(window.__tasneefFastDailyLogsV10506)return;window.__tasneefFastDailyLogsV10506=true;
-  const S=v=>String(v??'').trim(), A=v=>Array.isArray(v)?v:[];
-  let busy=false,lastKey='',lastAt=0,timer=null;
-  function dateValue(id,fallback){const el=document.getElementById(id);return S(el&&el.value)||fallback}
-  function todayRiyadh(){try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}catch(_){return new Date().toISOString().slice(0,10)}}
-  function nextDay(d){const x=new Date(d+'T00:00:00');x.setDate(x.getDate()+1);return x.toISOString().slice(0,10)}
-  function dailyVisible(){const el=document.getElementById('daily');if(!el)return false;const st=getComputedStyle(el);return st.display!=='none'&&!el.hidden&&el.offsetParent!==null}
-  function range(){const t=todayRiyadh();const from=dateValue('dailyDateFromV10310',dateValue('dailyFrom',t));const to=dateValue('dailyDateToV10310',dateValue('dailyTo',from));return{from,to}}
-  function mergeLogs(rows){window.data=window.data||{};const map=new Map(A(window.data.logs).map(x=>[S(x.id),x]));A(rows).forEach(x=>map.set(S(x.id),x));window.data.logs=[...map.values()]}
-  async function refreshFast(force){
-    if(!window.sb||busy||!dailyVisible())return;
-    const r=range(),key=r.from+'|'+r.to;
-    if(!force&&key===lastKey&&Date.now()-lastAt<15000)return;
-    busy=true;
-    try{
-      const cols='id,user_id,supervisor_id,project_id,check_in,check_out,log_date,duration_minutes,travel_minutes,visit_type,required_minutes,time_difference_minutes,time_status,notes,created_at,updated_at';
-      const next=nextDay(r.to);
-      const [byDate,byTime]=await Promise.all([
-        sb.from('time_logs').select(cols).gte('log_date',r.from).lte('log_date',r.to).order('check_in',{ascending:false}).limit(800),
-        sb.from('time_logs').select(cols).gte('check_in',r.from+'T00:00:00').lt('check_in',next+'T00:00:00').order('check_in',{ascending:false}).limit(800)
-      ]);
-      if(byDate.error&&byTime.error)throw byDate.error||byTime.error;
-      const map=new Map();[...(byDate.data||[]),...(byTime.data||[])].forEach(x=>map.set(S(x.id),x));
-      mergeLogs([...map.values()]);lastKey=key;lastAt=Date.now();
-      if(typeof window.renderTimeLogs==='function')await window.renderTimeLogs();
-    }catch(e){console.warn('V10506 daily fast refresh',e&&e.message||e)}finally{busy=false}
+  if(window.__tasneefUnifiedDailyLogsV10508) return;
+  window.__tasneefUnifiedDailyLogsV10508=true;
+  window.__tasneefLegacyDailyScriptsDisabled=true;
+
+  const S=v=>String(v??'').trim();
+  const A=v=>Array.isArray(v)?v:[];
+  const $=id=>document.getElementById(id);
+  let requestSeq=0;
+  let lastRows=[];
+
+  function todayRiyadh(){
+    try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
+    catch(_){return new Date().toISOString().slice(0,10)}
   }
-  window.tasneefRefreshDailyFastV10506=refreshFast;
-  document.addEventListener('click',e=>{
-    const target=e.target&&e.target.closest?e.target.closest('[data-tab="daily"],button,a'):null;
-    const txt=S(target&&target.textContent);
-    if(target&&(target.dataset?.tab==='daily'||txt.includes('التسجيلات اليومية')))setTimeout(()=>refreshFast(true),120);
-  });
-  ['dailyDateFromV10310','dailyDateToV10310','dailyFrom','dailyTo','dailySupervisor','dailyProject'].forEach(id=>document.addEventListener('change',e=>{if(e.target&&e.target.id===id)setTimeout(()=>refreshFast(true),80)}));
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dailyVisible())refreshFast(true)});
-  timer=setInterval(()=>{if(dailyVisible())refreshFast(false)},30000);
-  window.addEventListener('beforeunload',()=>{if(timer)clearInterval(timer)});
+  function nextDay(d){const x=new Date(d+'T00:00:00');x.setDate(x.getDate()+1);return x.toISOString().slice(0,10)}
+  function range(){
+    const t=todayRiyadh();
+    let from=S($('dailyDateFromV10310')?.value||$('dailyDate')?.value||$('supDailyDateFromV10310')?.value||$('supLogDate')?.value||t);
+    let to=S($('dailyDateToV10310')?.value||$('dailyDate')?.value||$('supDailyDateToV10310')?.value||$('supLogDate')?.value||from);
+    if(from>to){const z=from;from=to;to=z}
+    return{from,to};
+  }
+  function currentSession(){try{return typeof session==='function'?(session()||{}):{}}catch(_){return{}}}
+  function isSupervisorPage(){return !!$('supLogProject') || currentSession().role==='supervisor'}
+  function supFilter(){const u=currentSession();return isSupervisorPage()?S(u.id):S($('dailySupervisor')?.value||'')}
+  function projectFilter(){return S($('dailyProject')?.value||$('supLogProject')?.value||'')}
+  function searchFilter(){return S($('dailySearch')?.value||'').toLowerCase()}
+  function esc(v){return S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function supName(id){try{return typeof supervisorName==='function'?supervisorName(id):S((window.data?.users||[]).find(x=>S(x.id)===S(id))?.full_name||id)}catch(_){return S(id)}}
+  function projName(id){try{return typeof projectName==='function'?projectName(id):S((window.data?.projects||[]).find(x=>S(x.id)===S(id))?.name||id)}catch(_){return S(id)}}
+  function visitName(v){return ({surface:'نظافة سطحية',deep:'نظافة عميقة',maintenance:'صيانة',inspection:'تفقد'}[S(v)]||S(v)||'-')}
+  function timeTxt(v){if(!v)return '-';try{return new Date(v).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Riyadh'})}catch(_){return S(v)}}
+  function dateTxt(v){if(!v)return '-';try{return new Date(v).toLocaleDateString('en-CA',{timeZone:'Asia/Riyadh'})}catch(_){return S(v).slice(0,10)}}
+  function mins(a,b){if(!a||!b)return 0;const n=Math.round((new Date(b)-new Date(a))/60000);return isFinite(n)&&n>0?n:0}
+  function minsTxt(n){n=Math.max(0,Math.round(Number(n)||0));const h=Math.floor(n/60),m=n%60;return h?`${h}:${String(m).padStart(2,'0')}`:`0:${String(m).padStart(2,'0')}`}
+  function statusMeta(l){const req=Number(l.required_minutes)||0;const act=Number(l.duration_minutes)||mins(l.check_in,l.check_out);if(!l.check_out)return{txt:'داخل المشروع',cls:'open',diff:0};const d=act-req;if(!req||Math.abs(d)<=5)return{txt:'ضمن الوقت',cls:'ok',diff:d};return d>0?{txt:'زيادة وقت',cls:'over',diff:d}:{txt:'نقص وقت',cls:'under',diff:d}}
+  function workersText(l){const note=S(l.notes);const m=note.match(/العمال(?: المختارون| المرتبطون)?\s*:\s*([^\n]+)/i);return m?m[1]:''}
+
+  async function fetchRows(){
+    if(!window.sb)return[];
+    const seq=++requestSeq,r=range(),next=nextDay(r.to),sup=supFilter(),proj=projectFilter();
+    const cols='id,user_id,supervisor_id,project_id,check_in,check_out,log_date,duration_minutes,travel_minutes,visit_type,required_minutes,time_difference_minutes,time_status,notes,created_at,updated_at';
+    let q=sb.from('time_logs').select(cols).gte('check_in',r.from+'T00:00:00').lt('check_in',next+'T00:00:00').order('check_in',{ascending:false}).limit(1500);
+    if(sup)q=q.eq('supervisor_id',sup);
+    if(proj)q=q.eq('project_id',proj);
+    let res=await q;
+    if(res.error){
+      q=sb.from('time_logs').select(cols).gte('log_date',r.from).lte('log_date',r.to).order('check_in',{ascending:false}).limit(1500);
+      if(sup)q=q.eq('supervisor_id',sup);if(proj)q=q.eq('project_id',proj);
+      res=await q;
+    }
+    if(seq!==requestSeq)return lastRows;
+    if(res.error)throw res.error;
+    const search=searchFilter();
+    lastRows=A(res.data).filter(l=>{
+      if(!search)return true;
+      const t=[supName(l.supervisor_id),projName(l.project_id),visitName(l.visit_type),l.notes,workersText(l)].join(' ').toLowerCase();
+      return t.includes(search);
+    });
+    window.data=window.data||{};window.data.logs=lastRows;try{data.logs=lastRows}catch(_){ }
+    return lastRows;
+  }
+  function renderAdmin(rows){
+    const body=$('logsBody');if(!body)return;
+    body.innerHTML=rows.map(l=>{const st=statusMeta(l),req=Number(l.required_minutes)||0,act=Number(l.duration_minutes)||mins(l.check_in,l.check_out);return `<tr><td>${esc(l.log_date||dateTxt(l.check_in))}</td><td>${esc(supName(l.supervisor_id))}</td><td>${esc(projName(l.project_id))}</td><td>${esc(visitName(l.visit_type))}</td><td>${esc(timeTxt(l.check_in))}</td><td>${esc(timeTxt(l.check_out))}</td><td>${esc(minsTxt(req))}</td><td>${esc(minsTxt(act))}</td><td>${esc((st.diff>=0?'+':'')+st.diff+' د')}</td><td><span class="daily-status-v10508 ${st.cls}">${esc(st.txt)}</span></td><td>${esc(l.travel_minutes||0)}</td><td>${esc(l.notes||'')}</td><td><button class="light" onclick="sendLogWhatsapp&&sendLogWhatsapp(${Number(l.id)||0},'${l.check_out?'out':'in'}')">واتساب</button></td><td><button onclick="editTimeLog(${Number(l.id)||0})">تعديل</button><button class="danger" onclick="deleteRow('time_logs',${Number(l.id)||0})">حذف</button></td></tr>`}).join('')||'<tr><td colspan="14">لا توجد تسجيلات في الفترة المحددة</td></tr>';
+  }
+  function renderSupervisor(rows){
+    const body=$('logsBody');if(!body)return;
+    body.innerHTML=rows.map(l=>{const st=statusMeta(l),req=Number(l.required_minutes)||0,act=Number(l.duration_minutes)||mins(l.check_in,l.check_out);return `<tr><td>${esc(projName(l.project_id))}</td><td>${esc(visitName(l.visit_type))}</td><td>${esc(timeTxt(l.check_in))}</td><td>${esc(timeTxt(l.check_out))}</td><td>${esc(minsTxt(req))}</td><td>${esc(minsTxt(act))}</td><td><span class="daily-status-v10508 ${st.cls}">${esc(st.txt)}</span></td><td><button class="light" onclick="sendLogWhatsapp&&sendLogWhatsapp(${Number(l.id)||0},'${l.check_out?'out':'in'}')">واتساب</button></td></tr>`}).join('')||'<tr><td colspan="8">لا توجد تسجيلات اليوم</td></tr>';
+  }
+  async function unifiedRender(){
+    const body=$('logsBody');if(body)body.innerHTML=`<tr><td colspan="${isSupervisorPage()?8:14}">جاري تحميل التسجيلات...</td></tr>`;
+    try{const rows=await fetchRows();isSupervisorPage()?renderSupervisor(rows):renderAdmin(rows);return rows}catch(e){console.error('V10508 daily logs',e);if(body)body.innerHTML=`<tr><td colspan="${isSupervisorPage()?8:14}">تعذر تحميل التسجيلات: ${esc(e.message||e)}</td></tr>`;return[]}
+  }
+  window.renderTimeLogs=unifiedRender;
+  try{renderTimeLogs=window.renderTimeLogs}catch(_){ }
+  window.refreshDailyRangeLogsV10353=async()=>unifiedRender();
+  window.tasneefRefreshDailyFastV10506=async()=>unifiedRender();
+  window.tasneefRefreshDailyV10508=unifiedRender;
+
+  if(!$('dailyStyleV10508')){const st=document.createElement('style');st.id='dailyStyleV10508';st.textContent='.daily-status-v10508{display:inline-block;padding:4px 8px;border-radius:999px;font-weight:800}.daily-status-v10508.open{background:#fff3cd;color:#7a5600}.daily-status-v10508.ok{background:#e4f6ea;color:#0b6b36}.daily-status-v10508.over{background:#e5efff;color:#174b91}.daily-status-v10508.under{background:#fde8e8;color:#9b1c1c}';document.head.appendChild(st)}
+
+  ['dailyDate','dailyDateFromV10310','dailyDateToV10310','dailySupervisor','dailyProject'].forEach(id=>document.addEventListener('change',e=>{if(e.target&&e.target.id===id)unifiedRender()}));
+  document.addEventListener('input',e=>{if(e.target&&e.target.id==='dailySearch'){clearTimeout(window.__dailySearchTimerV10508);window.__dailySearchTimerV10508=setTimeout(unifiedRender,300)}});
+  document.addEventListener('click',e=>{const b=e.target&&e.target.closest?e.target.closest('button,a'):null;if(b&&S(b.textContent).includes('التسجيلات اليومية'))setTimeout(unifiedRender,100)});
+  console.info('V10508 unified daily logs active. Legacy daily loaders disabled.');
 })();
-/* ===== END V10506 FAST DAILY LOGS BRIDGE ===== */
+/* ===== END V10508 UNIFIED DAILY LOGS ===== */
