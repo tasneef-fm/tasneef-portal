@@ -75,7 +75,7 @@
 <button class="sup-tab" onclick="showSupervisorWindow('supAttendance',this)">تسجيل الحضور</button>
 <button class="sup-tab" onclick="showSupervisorWindow('supTickets',this)">تذاكر</button>
 <button class="sup-tab" onclick="showSupervisorWindow('supAdminTasks',this); if(window.TasneefFieldAdminTasksV10130) window.TasneefFieldAdminTasksV10130.open('supervisor')">مهام إدارية</button>
-<button class="sup-tab" onclick="showSupervisorWindow('supOrders',this); supOrdersLoadV10061()">الأوردرات</button>
+<button class="sup-tab" onclick="showSupervisorWindow('supOrders',this); loadUnifiedOrdersForSupervisor()">الأوردرات</button>
 <button class="sup-tab" onclick="showSupervisorWindow('supSummary',this)">الملخص اليومي</button>
 <button class="sup-tab" onclick="showSupervisorWindow('supClientDailyReport',this); supClientReportInit()">تقرير يومي</button>
 </nav>
@@ -157,7 +157,7 @@ window.__tasneefOrdersRootCleanV10189=true;
 window.__tasneefSupervisorOrdersV10061=true;
 </script>
 <script defer="" src="app.js?v=483-report-fast"></script>
-<script defer="" src="tasneef_orders_unified_v10400.js?v=10416"></script>
+
 
 
 
@@ -168,5 +168,42 @@ window.__tasneefSupervisorOrdersV10061=true;
 
 
 <script defer="" src="tasneef_supervisor_attendance_from_unified_v434.js?v=435"></script>
+
+<script id="supervisor-orders-lazy-loader-v10417">
+(function(){
+  let loadingPromise = null;
+  window.loadUnifiedOrdersForSupervisor = function(){
+    if (window.tasneefOrders10400 && typeof window.supOrdersLoadV10061 === 'function') {
+      window.supOrdersLoadV10061();
+      return Promise.resolve();
+    }
+    if (loadingPromise) return loadingPromise;
+    loadingPromise = new Promise(function(resolve,reject){
+      const script=document.createElement('script');
+      script.src='tasneef_orders_unified_v10400.js?v=10417-supervisor-isolated';
+      script.async=true;
+      script.onload=function(){
+        try { if(typeof window.supOrdersLoadV10061==='function') window.supOrdersLoadV10061(); } finally { resolve(); }
+      };
+      script.onerror=function(){ loadingPromise=null; reject(new Error('تعذر تحميل قسم الأوردرات')); };
+      document.head.appendChild(script);
+    });
+    return loadingPromise;
+  };
+})();
+</script>
+<style id="supervisor-logs-original-layout-v10417">
+/* إبقاء صفحة الدخول والخروج مستقلة تمامًا عن تنسيقات الأوردرات */
+#supLogs .card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 8px 24px rgba(10,64,51,.05);margin-bottom:16px}
+#supLogs .card h2{margin:0 0 14px;color:var(--brand)}
+#supLogs label{display:block;margin:10px 0 6px;color:var(--brand);font-weight:700;font-size:13px}
+#supLogs input,#supLogs select,#supLogs textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px;background:#fff;font-family:inherit;font-size:14px}
+#supLogs textarea{min-height:82px;resize:vertical}
+#supLogs .split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#supLogs .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:12px 0}
+#supLogs .actions button{font-family:inherit;border:0;background:var(--brand);color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;min-width:0}
+#supLogs .actions button.light{background:#eef6f3;color:var(--brand);border:1px solid var(--line)}
+@media(max-width:760px){#supLogs .split{grid-template-columns:1fr}}
+</style>
 </body>
 </html>
