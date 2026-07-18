@@ -377,7 +377,31 @@ function toCSV(rows){ if(!rows.length) return ''; const keys=Object.keys(rows[0]
 function download(name,text){ const blob=new Blob([text],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 async function exportTable(table){ const {data:rows,error}=await sb.from(table).select('*'); if(error) return msg(error.message,'err'); download(`${table}.csv`, toCSV(rows||[])); }
 function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent)); const csv=['المشرف,المشروع,عدد السجلات,الساعات المطلوبة,الساعات الفعلية,وقت الانتقال,نسبة العمل,حالة الأداء',...rows.map(r=>r.map(x=>'"'+x+'"').join(','))].join('\n'); download('monthly.csv',csv); }
-async function initSupervisor(){ const u=requireRole('supervisor'); if(!u) return; await loadAll(); data.projects=data.projects.filter(p=>String(p.supervisor_id)===String(u.id)); data.workers=data.workers.filter(w=>String(workerSupId(w))===String(u.id)); data.logs=data.logs.filter(l=>String(l.supervisor_id)===String(u.id)); const supProjectIds = new Set(data.projects.map(p=>String(p.id))); data.tickets=data.tickets.filter(t=>String(t.supervisor_id)===String(u.id) || String(t.created_by)===String(u.id) || supProjectIds.has(String(t.project_id))); $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`; fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','اختر المشروع'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today(); renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad(); }
+async function initSupervisor(){
+  const u=requireRole('supervisor'); if(!u) return;
+  await loadAll();
+  // V10602: تحميل الربط من مصدره الموحد في كل مرة، ثم بناء نطاق المشرف دون إسقاط أسماء أو مشاريع.
+  let assignments=[];
+  try{ const ar=await sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id'); if(!ar.error) assignments=ar.data||[]; }catch(_){ assignments=[]; }
+  data.workerAssignments=assignments;
+  const sid=String(u.id);
+  const allProjects=[...(data.projects||[])], allWorkers=[...(data.workers||[])];
+  const directProjectIds=new Set(allProjects.filter(p=>String(p.supervisor_id||p.app_supervisor_id||p.manager_id||p.supervisor_user_id||'')===sid).map(p=>String(p.id)));
+  const directWorkerIds=new Set(allWorkers.filter(w=>String(w.app_supervisor_id||w.supervisor_id||w.assigned_supervisor_id||w.manager_id||'')===sid).map(w=>String(w.id)));
+  assignments.forEach(a=>{ if(directWorkerIds.has(String(a.worker_id)) && a.project_id) directProjectIds.add(String(a.project_id)); });
+  // أي عامل مربوط فعليًا بمشروع المشرف يجب أن يظهر حتى لو كان حقل المشرف القديم ناقصًا.
+  const assignedWorkerIds=new Set(assignments.filter(a=>directProjectIds.has(String(a.project_id)) && a.is_active!==false).map(a=>String(a.worker_id)));
+  data.projects=allProjects.filter(p=>directProjectIds.has(String(p.id)));
+  data.workers=allWorkers.filter(w=>directWorkerIds.has(String(w.id)) || directProjectIds.has(String(workerProjectId(w))) || assignedWorkerIds.has(String(w.id)));
+  data.logs=(data.logs||[]).filter(l=>String(l.supervisor_id)===sid || directProjectIds.has(String(l.project_id)));
+  data.tickets=(data.tickets||[]).filter(t=>String(t.supervisor_id)===sid || String(t.created_by)===sid || directProjectIds.has(String(t.project_id)));
+  $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`;
+  fillSelect('logProject',data.projects,'name','اختر المشروع');
+  fillSelect('attendanceProject',data.projects,'name','اختر المشروع');
+  fillSelect('ticketProject',data.projects,'name','اختر المشروع');
+  if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today();
+  renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad();
+}
 async function supervisorCheckIn(){ if(!$('logProject').value) return msg('اختر المشروع','err'); $('logDate').value=today(); $('logIn').value=nowTime(); $('logOut').value=''; await saveTimeLog(); await initSupervisor(); }
 async function supervisorCheckOut(){ const u=session(); const pid=$('logProject').value; const open=data.logs.find(l=>String(l.project_id)===String(pid)&&!l.check_out); if(open) editTimeLog(open.id); $('logOut').value=nowTime(); await saveTimeLog(); await initSupervisor(); }
 function renderSupervisorAttendanceList(){ const div=$('supervisorAttendanceList'); if(!div) return; div.innerHTML=data.workers.map(w=>`<div class="quick-item"><b>${esc(w.name)}</b><select data-worker="${w.id}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('')||'<div class="quick-item">لا يوجد عمال مرتبطين بك</div>'; }
@@ -24811,7 +24835,7 @@ ${finalUrl}
   const supervisorId=()=>S(currentUser().id||'');
   const userKeys=()=>[currentUser().id,currentUser().employee_code,currentUser().code,currentUser().username,currentUser().full_name,currentUser().name].map(S).filter(Boolean);
   const rowSupKeys=r=>[r.supervisor_id,r.app_supervisor_id,r.supervisor_employee_code,r.supervisor_code,r.supervisor_name,r.supervisor].map(S).filter(Boolean);
-  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);return !uk.length||rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b)))};
+  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);if(!uk.length)return true;if(rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b))))return true;const pid=S(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key);return !!pid&&(window.data?.projects||[]).some(p=>S(p.id)===pid)};
   const dedupeWorkers=rows=>{
     const map=new Map();
     const master=window.data?.workers||[];
@@ -25349,3 +25373,36 @@ ${finalUrl}
   setInterval(()=>{if(dailyVisible()&&typeof window.renderTimeLogs==='function'&&!window.__tasneefDailyRootV10511)window.renderTimeLogs()},30000);
 })();
 /* ===== END V10512 ===== */
+
+
+/* ===== V10602 SUPERVISOR SESSION + SCOPE STABILITY FIX ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefSupervisorStableV10602)return;
+  window.__tasneefSupervisorStableV10602=true;
+  let loginBusy=false, logoutBusy=false;
+  const oldLogin=window.login;
+  if(typeof oldLogin==='function') window.login=async function(){
+    if(loginBusy)return; loginBusy=true;
+    const btn=document.querySelector('#loginForm button,button[onclick="login()"]');
+    if(btn)btn.disabled=true;
+    try{return await oldLogin.apply(this,arguments)}finally{loginBusy=false;if(btn)btn.disabled=false}
+  };
+  window.logout=function(){
+    if(logoutBusy)return; logoutBusy=true;
+    try{
+      localStorage.removeItem('tasneef_user');
+      sessionStorage.clear();
+      Object.keys(localStorage).filter(k=>/^tasneef_(worker_checkin|worker_checkout|supervisor|time_log)/i.test(k)).forEach(k=>localStorage.removeItem(k));
+    }catch(_){}
+    location.replace('index.html?v='+Date.now());
+  };
+  // عند العودة للتطبيق بعد إغلاق الشاشة نعيد تحميل نطاق المشرف مرة واحدة فقط.
+  let reloading=false;
+  document.addEventListener('visibilitychange',async()=>{
+    if(document.hidden||reloading||!document.getElementById('supTitle'))return;
+    const u=typeof session==='function'?session():null;if(!u||u.role!=='supervisor')return;
+    reloading=true;try{if(typeof window.initSupervisor==='function')await window.initSupervisor()}catch(e){console.warn('V10602 supervisor resume refresh',e)}finally{reloading=false}
+  });
+})();
+/* ===== END V10602 ===== */
