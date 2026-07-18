@@ -377,31 +377,7 @@ function toCSV(rows){ if(!rows.length) return ''; const keys=Object.keys(rows[0]
 function download(name,text){ const blob=new Blob([text],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 async function exportTable(table){ const {data:rows,error}=await sb.from(table).select('*'); if(error) return msg(error.message,'err'); download(`${table}.csv`, toCSV(rows||[])); }
 function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent)); const csv=['المشرف,المشروع,عدد السجلات,الساعات المطلوبة,الساعات الفعلية,وقت الانتقال,نسبة العمل,حالة الأداء',...rows.map(r=>r.map(x=>'"'+x+'"').join(','))].join('\n'); download('monthly.csv',csv); }
-async function initSupervisor(){
-  const u=requireRole('supervisor'); if(!u) return;
-  await loadAll();
-  // V10602: تحميل الربط من مصدره الموحد في كل مرة، ثم بناء نطاق المشرف دون إسقاط أسماء أو مشاريع.
-  let assignments=[];
-  try{ const ar=await sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id'); if(!ar.error) assignments=ar.data||[]; }catch(_){ assignments=[]; }
-  data.workerAssignments=assignments;
-  const sid=String(u.id);
-  const allProjects=[...(data.projects||[])], allWorkers=[...(data.workers||[])];
-  const directProjectIds=new Set(allProjects.filter(p=>String(p.supervisor_id||p.app_supervisor_id||p.manager_id||p.supervisor_user_id||'')===sid).map(p=>String(p.id)));
-  const directWorkerIds=new Set(allWorkers.filter(w=>String(w.app_supervisor_id||w.supervisor_id||w.assigned_supervisor_id||w.manager_id||'')===sid).map(w=>String(w.id)));
-  assignments.forEach(a=>{ if(directWorkerIds.has(String(a.worker_id)) && a.project_id) directProjectIds.add(String(a.project_id)); });
-  // أي عامل مربوط فعليًا بمشروع المشرف يجب أن يظهر حتى لو كان حقل المشرف القديم ناقصًا.
-  const assignedWorkerIds=new Set(assignments.filter(a=>directProjectIds.has(String(a.project_id)) && a.is_active!==false).map(a=>String(a.worker_id)));
-  data.projects=allProjects.filter(p=>directProjectIds.has(String(p.id)));
-  data.workers=allWorkers.filter(w=>directWorkerIds.has(String(w.id)) || directProjectIds.has(String(workerProjectId(w))) || assignedWorkerIds.has(String(w.id)));
-  data.logs=(data.logs||[]).filter(l=>String(l.supervisor_id)===sid || directProjectIds.has(String(l.project_id)));
-  data.tickets=(data.tickets||[]).filter(t=>String(t.supervisor_id)===sid || String(t.created_by)===sid || directProjectIds.has(String(t.project_id)));
-  $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`;
-  fillSelect('logProject',data.projects,'name','اختر المشروع');
-  fillSelect('attendanceProject',data.projects,'name','اختر المشروع');
-  fillSelect('ticketProject',data.projects,'name','اختر المشروع');
-  if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today();
-  renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad();
-}
+async function initSupervisor(){ const u=requireRole('supervisor'); if(!u) return; await loadAll(); data.projects=data.projects.filter(p=>String(p.supervisor_id)===String(u.id)); data.workers=data.workers.filter(w=>String(workerSupId(w))===String(u.id)); data.logs=data.logs.filter(l=>String(l.supervisor_id)===String(u.id)); const supProjectIds = new Set(data.projects.map(p=>String(p.id))); data.tickets=data.tickets.filter(t=>String(t.supervisor_id)===String(u.id) || String(t.created_by)===String(u.id) || supProjectIds.has(String(t.project_id))); $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`; fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','اختر المشروع'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today(); renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad(); }
 async function supervisorCheckIn(){ if(!$('logProject').value) return msg('اختر المشروع','err'); $('logDate').value=today(); $('logIn').value=nowTime(); $('logOut').value=''; await saveTimeLog(); await initSupervisor(); }
 async function supervisorCheckOut(){ const u=session(); const pid=$('logProject').value; const open=data.logs.find(l=>String(l.project_id)===String(pid)&&!l.check_out); if(open) editTimeLog(open.id); $('logOut').value=nowTime(); await saveTimeLog(); await initSupervisor(); }
 function renderSupervisorAttendanceList(){ const div=$('supervisorAttendanceList'); if(!div) return; div.innerHTML=data.workers.map(w=>`<div class="quick-item"><b>${esc(w.name)}</b><select data-worker="${w.id}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('')||'<div class="quick-item">لا يوجد عمال مرتبطين بك</div>'; }
@@ -24835,7 +24811,7 @@ ${finalUrl}
   const supervisorId=()=>S(currentUser().id||'');
   const userKeys=()=>[currentUser().id,currentUser().employee_code,currentUser().code,currentUser().username,currentUser().full_name,currentUser().name].map(S).filter(Boolean);
   const rowSupKeys=r=>[r.supervisor_id,r.app_supervisor_id,r.supervisor_employee_code,r.supervisor_code,r.supervisor_name,r.supervisor].map(S).filter(Boolean);
-  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);if(!uk.length)return true;if(rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b))))return true;const pid=S(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key);return !!pid&&(window.data?.projects||[]).some(p=>S(p.id)===pid)};
+  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);return !uk.length||rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b)))};
   const dedupeWorkers=rows=>{
     const map=new Map();
     const master=window.data?.workers||[];
@@ -25373,149 +25349,3 @@ ${finalUrl}
   setInterval(()=>{if(dailyVisible()&&typeof window.renderTimeLogs==='function'&&!window.__tasneefDailyRootV10511)window.renderTimeLogs()},30000);
 })();
 /* ===== END V10512 ===== */
-
-
-/* ===== V10602 SUPERVISOR SESSION + SCOPE STABILITY FIX ===== */
-(function(){
-  'use strict';
-  if(window.__tasneefSupervisorStableV10602)return;
-  window.__tasneefSupervisorStableV10602=true;
-  let loginBusy=false, logoutBusy=false;
-  const oldLogin=window.login;
-  if(typeof oldLogin==='function') window.login=async function(){
-    if(loginBusy)return; loginBusy=true;
-    const btn=document.querySelector('#loginForm button,button[onclick="login()"]');
-    if(btn)btn.disabled=true;
-    try{return await oldLogin.apply(this,arguments)}finally{loginBusy=false;if(btn)btn.disabled=false}
-  };
-  window.logout=function(){
-    if(logoutBusy)return; logoutBusy=true;
-    try{
-      localStorage.removeItem('tasneef_user');
-      sessionStorage.clear();
-      Object.keys(localStorage).filter(k=>/^tasneef_(worker_checkin|worker_checkout|supervisor|time_log)/i.test(k)).forEach(k=>localStorage.removeItem(k));
-    }catch(_){}
-    location.replace('index.html?v='+Date.now());
-  };
-  // عند العودة للتطبيق بعد إغلاق الشاشة نعيد تحميل نطاق المشرف مرة واحدة فقط.
-  let reloading=false;
-  document.addEventListener('visibilitychange',async()=>{
-    if(document.hidden||reloading||!document.getElementById('supTitle'))return;
-    const u=typeof session==='function'?session():null;if(!u||u.role!=='supervisor')return;
-    reloading=true;try{if(typeof window.initSupervisor==='function')await window.initSupervisor()}catch(e){console.warn('V10602 supervisor resume refresh',e)}finally{reloading=false}
-  });
-})();
-/* ===== END V10602 ===== */
-
-/* ===== V10601 ROOT FIX: ACTIVE RECORDS + DAILY PRINT SNAPSHOT ===== */
-(function(){
-  'use strict';
-  if(window.__tasneefActivePrintRootV10601) return;
-  window.__tasneefActivePrintRootV10601=true;
-  const BUILD='V10601_ACTIVE_PRINT_ROOT_2026_07_18';
-  const $=id=>document.getElementById(id);
-  const S=v=>String(v??'').trim();
-  const N=v=>Number(v)||0;
-  const A=v=>Array.isArray(v)?v:[];
-  const norm=v=>S(v).toLowerCase().replace(/\s+/g,' ');
-  const inactiveWords=['inactive','stopped','stop','paused','disabled','ended','archived','deleted','موقوف','موقف','متوقف','غير نشط','غيرنشط','خارج العمل','منتهي','محذوف','معطل'];
-  function isActiveRecord(x){
-    if(!x) return false;
-    if(x.is_active===false||x.active===false||x.enabled===false||x.is_stopped===true||x.stopped===true||x.disabled===true||x.deleted_at||x.is_deleted===true) return false;
-    const text=norm([x.status,x.state,x.active_status,x.project_status,x.worker_status].filter(Boolean).join(' '));
-    return !inactiveWords.some(w=>text.includes(norm(w)));
-  }
-  window.tasneefIsActiveV10601=isActiveRecord;
-  function recId(x){return S(x?.id||x?.project_id||x?.worker_id||x?.employee_code||'');}
-  function recName(x){return S(x?.name||x?.project_name||x?.worker_name||x?.full_name||x?.app_name||x?.title||'');}
-  function activeProjects(){return A(window.data?.projects).filter(isActiveRecord);}
-  function activeWorkers(){return A(window.data?.workers).filter(isActiveRecord);}
-  function inactiveMaps(){
-    const pId=new Set(),pName=new Set(),wId=new Set(),wName=new Set();
-    A(window.data?.projects).filter(x=>!isActiveRecord(x)).forEach(x=>{if(recId(x))pId.add(recId(x));if(recName(x))pName.add(norm(recName(x)));});
-    A(window.data?.workers).filter(x=>!isActiveRecord(x)).forEach(x=>{if(recId(x))wId.add(recId(x));if(recName(x))wName.add(norm(recName(x)));});
-    return {pId,pName,wId,wName};
-  }
-  const operationalProjectHints=/project|مشروع/i;
-  const operationalWorkerHints=/worker|employee|عامل|موظف/i;
-  const historicalHints=/filterstatus|statusfilter|history|archive|reportstatus/i;
-  function sanitizeSelect(sel){
-    if(!sel||sel.tagName!=='SELECT'||historicalHints.test(sel.id||'')) return;
-    const hint=[sel.id,sel.name,sel.getAttribute('aria-label'),sel.closest('label')?.textContent].filter(Boolean).join(' ');
-    const projectLike=operationalProjectHints.test(hint);
-    const workerLike=operationalWorkerHints.test(hint);
-    if(!projectLike&&!workerLike) return;
-    const m=inactiveMaps();
-    [...sel.options].forEach(opt=>{
-      if(!S(opt.value)) return;
-      const txt=norm(opt.textContent);
-      const inactive=projectLike?(m.pId.has(S(opt.value))||m.pName.has(txt)):workerLike?(m.wId.has(S(opt.value))||m.wName.has(txt)):false;
-      if(inactive){opt.disabled=true;opt.hidden=true;opt.dataset.inactiveV10601='1'; if(sel.value===opt.value) sel.value='';}
-      else if(opt.dataset.inactiveV10601==='1'){opt.disabled=false;opt.hidden=false;delete opt.dataset.inactiveV10601;}
-    });
-  }
-  function sanitizeAll(){document.querySelectorAll('select').forEach(sanitizeSelect);}
-  const mo=new MutationObserver(ms=>{let needed=false; for(const m of ms){if(m.type==='childList'){needed=true;break;}} if(needed) setTimeout(sanitizeAll,0);});
-  document.addEventListener('DOMContentLoaded',()=>{mo.observe(document.documentElement,{subtree:true,childList:true});setTimeout(sanitizeAll,400);setTimeout(sanitizeAll,1500);});
-  window.addEventListener('load',()=>setTimeout(sanitizeAll,700));
-  ['refreshAll','loadAll','renderProjects','renderWorkers','renderAttendance','renderTimeLogs','renderMonthly','renderDistribution'].forEach(name=>{
-    const old=window[name]; if(typeof old==='function'&&!old.__activeWrappedV10601){
-      const wrapped=function(){const r=old.apply(this,arguments);Promise.resolve(r).finally(()=>setTimeout(sanitizeAll,0));return r;};
-      wrapped.__activeWrappedV10601=true;window[name]=wrapped;
-    }
-  });
-  const oldSaveLog=window.saveTimeLog;
-  if(typeof oldSaveLog==='function') window.saveTimeLog=async function(){
-    const pid=S($('logProject')?.value); const p=A(window.data?.projects).find(x=>recId(x)===pid);
-    if(pid&&p&&!isActiveRecord(p)){if(typeof msg==='function')msg('لا يمكن إنشاء تسجيل جديد لمشروع موقوف. أعد تفعيل المشروع أولًا.','err');else alert('لا يمكن إنشاء تسجيل جديد لمشروع موقوف.');return;}
-    return oldSaveLog.apply(this,arguments);
-  };
-  function esc(v){return S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function pad(n){return String(n).padStart(2,'0');}
-  function dOnly(v){const s=S(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const d=new Date(s);return isNaN(d)?'':`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
-  function time12(v){if(!v)return'-';const s=S(v);const m=s.match(/(?:T|\s)(\d{1,2}):(\d{2})/)||s.match(/^(\d{1,2}):(\d{2})/);if(!m)return s;let h=+m[1];const ap=h<12?'ص':'م';h=h%12||12;return `${h}:${m[2]} ${ap}`;}
-  function pName(id){const p=A(window.data?.projects).find(x=>recId(x)===S(id));return recName(p)||'-';}
-  function uName(id){const u=A(window.data?.users).find(x=>S(x.id)===S(id));return S(u?.full_name||u?.name||'-');}
-  function workerNames(log){
-    const direct=S(log.worker_names||log.workers_names||log.worker_name||log.workers||''); if(direct)return direct;
-    const ids=A(log.worker_ids||log.workers_ids); if(ids.length)return ids.map(id=>recName(A(window.data?.workers).find(w=>recId(w)===S(id)))).filter(Boolean).join('، ');
-    const pid=S(log.project_id); const assigned=new Set();
-    A(window.data?.workerAssignments).filter(a=>a?.is_active!==false&&S(a.project_id)===pid).forEach(a=>{const w=A(window.data?.workers).find(x=>recId(x)===S(a.worker_id));if(w)assigned.add(recName(w));});
-    return [...assigned].filter(Boolean).join('، ')||'-';
-  }
-  function actual(l){if(N(l.duration_minutes))return N(l.duration_minutes);try{return typeof minutesBetween==='function'?N(minutesBetween(l.check_in,l.check_out)):0;}catch(_){return 0;}}
-  function required(l){try{return typeof logRequiredMinutes==='function'?N(logRequiredMinutes(l)):N(l.required_minutes);}catch(_){return N(l.required_minutes);}}
-  function minTxt(m){m=Math.round(N(m));return `${Math.floor(m/60)}س ${m%60}د`;}
-  function status(a,r){const d=a-r;return !r?'غير محدد':d>5?'زيادة':d<-5?'ناقص':'ضمن الوقت';}
-  function filterSnapshot(){
-    let rows=[];try{rows=typeof window.filterLogs==='function'?window.filterLogs():A(window.data?.logs);}catch(_){rows=A(window.data?.logs);}
-    return rows.map(x=>JSON.parse(JSON.stringify(x)));
-  }
-  function filterState(){const ids=['dailyDateFromV10310','dailyDateToV10310','dailyDate','dailySupervisor','dailyProject','dailySearch'];const o={};ids.forEach(id=>{const e=$(id);if(e)o[id]=e.value;});return o;}
-  function restoreState(o){Object.entries(o||{}).forEach(([id,v])=>{const e=$(id);if(e)e.value=v;});}
-  async function waitImages(doc,timeout=5000){const imgs=[...doc.images];await Promise.all(imgs.map(img=>new Promise(resolve=>{if(img.complete)return resolve();const t=setTimeout(resolve,timeout);img.onload=img.onerror=()=>{clearTimeout(t);resolve();};})));}
-  window.exportDailyManagerPDF=async function(){
-    if(window.__dailyPrintBusyV10601) return;
-    window.__dailyPrintBusyV10601=true;
-    const btn=document.querySelector('[onclick*="exportDailyManagerPDF"]'); const oldText=btn?.textContent;
-    if(btn){btn.disabled=true;btn.textContent='جاري تجهيز التقرير...';}
-    const state=filterState(); const rows=filterSnapshot();
-    let w=null;
-    try{
-      if(!rows.length) throw new Error('لا توجد سجلات مطابقة للفلاتر الحالية.');
-      w=window.open('','_blank','width=1280,height=900'); if(!w)throw new Error('المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.');
-      const from=S($('dailyDateFromV10310')?.value||$('dailyDate')?.value||''); const to=S($('dailyDateToV10310')?.value||$('dailyDate')?.value||from);
-      const sup=S($('dailySupervisor')?.selectedOptions?.[0]?.textContent||'كل المشرفين');
-      const proj=S($('dailyProject')?.selectedOptions?.[0]?.textContent||'كل المشاريع');
-      const user=(()=>{try{return typeof session==='function'?session():JSON.parse(localStorage.getItem('tasneef_user')||'null');}catch(_){return null;}})();
-      let ta=0,tr=0; const trs=rows.map((l,i)=>{const a=actual(l),r=required(l),d=a-r;ta+=a;tr+=r;const st=status(a,r);const currentProject=A(window.data?.projects).find(p=>recId(p)===S(l.project_id));const stopped=currentProject&&!isActiveRecord(currentProject)?' <small class="stopped">المشروع موقوف حاليًا</small>':'';return `<tr><td>${i+1}</td><td>${esc(dOnly(l.log_date||l.check_in))}</td><td>${esc(uName(l.supervisor_id))}</td><td>${esc(pName(l.project_id))}${stopped}</td><td>${esc(workerNames(l))}</td><td>${esc(time12(l.check_in))}</td><td>${esc(time12(l.check_out))}</td><td>${esc(minTxt(a))}</td><td>${esc(minTxt(r))}</td><td>${d>=0?'+':'-'}${esc(minTxt(Math.abs(d)))}</td><td><span class="s ${st==='ضمن الوقت'?'ok':st==='زيادة'?'over':'bad'}">${esc(st)}</span></td><td>${esc(l.attendance_status||l.status||'-')}</td><td>${esc(l.notes||'-')}</td></tr>`;}).join('');
-      const logo='tasneef_logo_print.png';
-      const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>التسجيلات اليومية</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#153d33;margin:0;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{padding:10px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0a5a49;padding-bottom:9px}.brand{display:flex;gap:10px;align-items:center}.brand img{width:120px;max-height:55px;object-fit:contain}.head h1{margin:0;color:#0a5a49}.meta{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:9px 0}.box{border:1px solid #d4e2dd;border-radius:9px;padding:7px;background:#f8fbfa}.box b{display:block;color:#0a5a49}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:8px}.sum{border:1px solid #d4e2dd;border-radius:9px;padding:7px;text-align:center}.sum strong{display:block;font-size:15px;color:#0a5a49}table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{background:#0a5a49;color:#fff;padding:6px;border:1px solid #0a5a49}td{border:1px solid #d8e4e0;padding:5px;text-align:center;vertical-align:top}tr{break-inside:avoid}.s{padding:3px 6px;border-radius:999px;font-weight:bold}.ok{background:#e3f5ea;color:#14713a}.over{background:#fff3cf;color:#855b00}.bad{background:#ffe3e3;color:#9a2222}.stopped{display:block;color:#a12626;font-weight:bold}.foot{margin-top:8px;display:flex;justify-content:space-between;border-top:1px solid #d4e2dd;padding-top:7px}.pages:after{content:"صفحة " counter(page)}@media print{.sheet{padding:0}}</style></head><body><div class="sheet"><div class="head"><div class="brand"><img src="${logo}" onerror="this.style.display='none'"><div><b>شركة تصنيف لإدارة المرافق</b><br><small>TASNEF FACILITIES MANAGEMENT</small></div></div><div><h1>تقرير التسجيلات اليومية</h1><div>تم الإنشاء: ${esc(new Date().toLocaleString('ar-SA'))}</div></div></div><div class="meta"><div class="box"><b>الفترة</b>${esc(from||'-')} إلى ${esc(to||from||'-')}</div><div class="box"><b>المشروع</b>${esc(proj)}</div><div class="box"><b>المشرف</b>${esc(sup)}</div><div class="box"><b>عدد السجلات</b>${rows.length}</div><div class="box"><b>طبع بواسطة</b>${esc(user?.full_name||user?.username||'-')}</div></div><div class="summary"><div class="sum"><strong>${esc(minTxt(ta))}</strong>الوقت الفعلي</div><div class="sum"><strong>${esc(minTxt(tr))}</strong>الوقت المطلوب</div><div class="sum"><strong>${esc(minTxt(Math.abs(ta-tr)))}</strong>إجمالي الفرق</div><div class="sum"><strong>${rows.length}</strong>إجمالي السجلات</div></div><table><thead><tr><th>#</th><th>التاريخ</th><th>المشرف</th><th>المشروع</th><th>العمال</th><th>الدخول</th><th>الخروج</th><th>الفعلي</th><th>المطلوب</th><th>الفرق</th><th>حالة الوقت</th><th>الحضور</th><th>الملاحظات</th></tr></thead><tbody>${trs}</tbody></table><div class="foot"><span>تم إنشاء هذا التقرير من نظام شركة تصنيف لإدارة المرافق ويعتبر معتمدًا ما لم يبرر العميل خلاف ذلك</span><span class="pages"></span></div></div></body></html>`;
-      w.document.open();w.document.write(html);w.document.close();
-      await new Promise(r=>setTimeout(r,150)); await waitImages(w.document); restoreState(state);
-      w.focus();w.print();
-    }catch(e){console.error(BUILD,e);if(w&&!w.closed)w.close();restoreState(state);if(typeof msg==='function')msg('تعذر تجهيز تقرير الطباعة. لم يتم تعديل أو حذف أي بيانات. '+S(e.message),'err');else alert('تعذر تجهيز تقرير الطباعة. لم يتم تعديل أو حذف أي بيانات.');}
-    finally{window.__dailyPrintBusyV10601=false;if(btn){btn.disabled=false;btn.textContent=oldText||'طباعة التقرير / PDF';}setTimeout(sanitizeAll,0);}
-  };
-  console.log(BUILD+' loaded');
-})();
