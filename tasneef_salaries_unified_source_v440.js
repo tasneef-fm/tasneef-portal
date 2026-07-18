@@ -2,7 +2,7 @@
 'use strict';
 if(window.__tasneefPayrollServerOnlyV474) return;
 window.__tasneefPayrollServerOnlyV474=true;
-const VERSION='V478 مصدر الرواتب من السيرفر فقط';
+const VERSION='V479 مصدر الرواتب من السيرفر فقط';
 const $=id=>document.getElementById(id);
 const S=v=>String(v??'').trim();
 const N=v=>Number(String(v??'').replace(/,/g,''))||0;
