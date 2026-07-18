@@ -44,7 +44,7 @@
   function projectEndDate(p){return S(p.project_end_date||p.contract_end_date||p.contract_end||p.end_date||p.service_end_date||'');}
   function projectSupervisorCode(p){return S(p.supervisor_employee_code||p.current_supervisor_code||p.supervisor_code||p.supervisor_id||p.current_supervisor_id||'');}
   function projectSupervisorName(p){const code=projectSupervisorCode(p); const w=state.workers.find(x=>workerCode(x)===code||S(x.id)===code); return w?workerDisplay(w):S(p.supervisor_name||p.current_supervisor_name||code||'-');}
-  function statusActive(x){const st=norm(x?.status||x?.state||x?.active_status||'active'); if(x?.deleted_at||x?.is_deleted===true||['deleted','archived','محذوف'].includes(st)) return false; if(['active','enabled','working','نشط','فعال','على راس العمل','علي راس العمل'].includes(st)) return true; if(['inactive','stopped','disabled','موقوف','متوقف','غير نشط','غيرنشط','خارج العمل'].includes(st)) return false; return !(x?.active===false||x?.is_active===false);}
+  function statusActive(x){const st=norm(x?.status||x?.state||x?.active_status||'active'); if(x?.deleted_at||x?.is_deleted===true||['deleted','archived','محذوف'].includes(st)) return false; if(['active','enabled','working','نشط','فعال','على راس العمل','علي راس العمل'].includes(st)) return true; if(['inactive','stopped','disabled','موقوف','متوقف','غير نشط','غيرنشط','خارج العمل'].includes(st)) return false; return x?.is_active===true;}
   function statusDeleted(x){const st=norm(x?.status||x?.state||x?.active_status||'active'); return !!(x?.deleted_at||x?.is_deleted===true||['deleted','archived','محذوف'].includes(st));}
   function projectStatusLabel(p){return statusActive(p)?'نشط':'موقوف';}
   function byWorkerCode(code){const c=S(code); return (state.workers||[]).find(w=>workerCode(w)===c)||null;}
@@ -121,7 +121,7 @@
     if(state.workers.length&&!force) return state.workers;
     const c=client(); if(!c) return [];
     const r1=await safe('employees_master_v386', c.from('employees_master_v386').select('*').limit(10000));
-    const r2=await safe('workers', c.from('workers').select('*').limit(10000));
+    const r2=await safe('workers', c.from('workers').select('*').eq('is_active', true).limit(10000));
     const map=new Map(), nameIndex=new Map();
     function mergeWorker(a,b){
       const out=Object.assign({},a||{});
@@ -165,7 +165,7 @@
   async function loadProjects(force){
     if(state.projects.length&&!force) return state.projects;
     const c=client(); if(!c) return [];
-    const r=await safe('projects', c.from('projects').select('*').limit(5000));
+    const r=await safe('projects', c.from('projects').select('*').eq('is_active', true).limit(5000));
     state.projects=(r.data||[]).filter(p=>!statusDeleted(p)).sort((a,b)=>projectName(a).localeCompare(projectName(b),'ar')); // V456: عرض كل المشاريع غير المحذوفة في قائمة المشاريع، والموقوف لا يدخل التوزيع
     return state.projects;
   }
@@ -809,7 +809,7 @@
     try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_name',oldName).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old name skipped',e.message||e);}
     if(oldUser){try{const r=await c.from('monthly_distribution').update(distPayload).eq('supervisor_id',oldUser.id).gte('month_key',month).select(); if(!r.error) dist+=(r.data||[]).length;}catch(e){console.warn('distribution by old user id skipped',e.message||e);}}
 
-    const pr=await c.from('projects').select('*').limit(20000);
+    const pr=await c.from('projects').select('*').eq('is_active', true).limit(20000);
     const list=(pr.data||[]).filter(p=>projectSupMatch(p,oldCode,oldName,oldUser));
     for(const p of list){projects += await updateProjectSupervisorById(p.id,newCode,supName,newUser);}
     projects += await safeUpdate('projects',{supervisor_employee_code:newCode,supervisor_name:supName,updated_at:new Date().toISOString()},'supervisor_employee_code',oldCode);
@@ -899,8 +899,8 @@
     try{
       const [e,w,p]=await Promise.all([
         c.from('employees_master_v386').select('*').limit(10000),
-        c.from('workers').select('*').limit(10000),
-        c.from('projects').select('*').limit(10000)
+        c.from('workers').select('*').eq('is_active', true).limit(10000),
+        c.from('projects').select('*').eq('is_active', true).limit(10000)
       ]);
       const map=new Map();
       [...(e.data||[]),...(w.data||[])].forEach(x=>{const cde=code(x); if(!cde)return; if(!map.has(cde))map.set(cde,x); else map.set(cde,Object.assign({},map.get(cde),x));});

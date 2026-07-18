@@ -35,7 +35,7 @@
     if(client){
       rows=await safe(client.from('employees_master_v386').select('*').limit(5000),'employees_master_v386');
       if(!rows.length) rows=await safe(client.from('employees').select('*').limit(5000),'employees');
-      if(!rows.length) rows=await safe(client.from('workers').select('*').limit(5000),'workers');
+      if(!rows.length) rows=await safe(client.from('workers').select('*').eq('is_active', true).limit(5000),'workers');
     }
     if(!rows.length && window.data){rows=[...(window.data.workers||[]),...(window.data.users||[])];}
     state.employees=normalizeEmployeeRows(rows); writeSession('td404_employees',state.employees); return state.employees;
@@ -44,7 +44,7 @@
     if(!force && state.projects) return state.projects;
     const c=readSession('td404_projects'); if(!force&&c){state.projects=c; return c;}
     const client=sb(); let rows=[];
-    if(client) rows=await safe(client.from('projects').select('id,name,project_name,title,supervisor_id,operation_type,status,is_active,active,required_daily_minutes,friday_minutes').order('name').limit(3000),'projects');
+    if(client) rows=await safe(client.from('projects').select('id,name,project_name,title,supervisor_id,operation_type,status,is_active,active,required_daily_minutes,friday_minutes').eq('is_active', true).order('name').limit(3000),'projects');
     if(!rows.length && window.data) rows=window.data.projects||[];
     state.projects=(rows||[]).filter(projectActive); writeSession('td404_projects',state.projects); return state.projects;
   }

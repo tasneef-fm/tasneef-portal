@@ -55,9 +55,9 @@
   async function loadBase(){
     const c=sb(); if(!c) return {projects:[],dist:[],logs:[]};
     const m=month(), r=monthRange(m);
-    const projects=await safe(c.from('projects').select('*').order('id').limit(5000),'projects');
+    const projects=await safe(c.from('projects').select('*').eq('is_active', true).order('id').limit(5000),'projects');
     let emps=await safe(c.from('employees_master_v386').select('*').limit(10000),'employees_master_v386');
-    if(!emps.length) emps=await safe(c.from('workers').select('*').limit(10000),'workers');
+    if(!emps.length) emps=await safe(c.from('workers').select('*').eq('is_active', true).limit(10000),'workers');
     employeesCache=emps;
     usersCache=await safe(c.from('app_users').select('*').limit(3000),'app_users');
     let dist=await safe(c.from('monthly_distribution').select('*').eq('month_key',m).limit(20000),'monthly_distribution');

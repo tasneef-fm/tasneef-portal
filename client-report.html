@@ -116,7 +116,7 @@ async function loadData(){
   let rtQ=sb.from('client_service_ratings').select('*').eq('project_id',portal.projectId).order('created_at',{ascending:false}).limit(30);
   if(portal.from)rtQ=rtQ.gte('created_at',portal.from+'T00:00:00');if(portal.to)rtQ=rtQ.lte('created_at',portal.to+'T23:59:59');
   const settled=await Promise.allSettled([
-    sb.from('projects').select('*').eq('id',portal.projectId).maybeSingle(),
+    sb.from('projects').select('*').eq('is_active', true).eq('id',portal.projectId).maybeSingle(),
     sb.from('project_contract_smart').select('*').eq('project_id',portal.projectId).maybeSingle(),
     logsQ,ticQ,repQ,rtQ
   ]);
@@ -334,6 +334,5 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
 </script>
 
 
-<script defer src="tasneef_active_entities_v10522.js?v=10522-final"></script>
 </body>
 </html>

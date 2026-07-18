@@ -38,13 +38,13 @@
     if(c){
       rows=await safe(c.from('employees_master_v386').select('*').limit(10000));
       if(!rows.length) rows=await safe(c.from('employees_master').select('*').limit(10000));
-      if(!rows.length) rows=await safe(c.from('workers').select('*').limit(10000));
+      if(!rows.length) rows=await safe(c.from('workers').select('*').eq('is_active', true).limit(10000));
     }
     cache.workers=(rows||[]).filter(isActive); return cache.workers;
   }
   async function loadProjects(){
     if(cache.projects) return cache.projects;
-    const c=window.sb; cache.projects=c?(await safe(c.from('projects').select('*').limit(10000))).filter(isActive):[];
+    const c=window.sb; cache.projects=c?(await safe(c.from('projects').select('*').eq('is_active', true).limit(10000))).filter(isActive):[];
     return cache.projects;
   }
   function empCode(e){return S(e.employee_code||e.code||e.emp_code||e.worker_code||e.id_code||e.employee_id||e.id)}

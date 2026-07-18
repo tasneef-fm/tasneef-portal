@@ -52,14 +52,14 @@
     if(client){
       rows=await safe(client.from('employees_master_v386').select('*').limit(10000));
       if(!rows.length) rows=await safe(client.from('employees_master').select('*').limit(10000));
-      if(!rows.length) rows=await safe(client.from('workers').select('*').limit(10000));
+      if(!rows.length) rows=await safe(client.from('workers').select('*').eq('is_active', true).limit(10000));
     }
     cache.emps=rows||[]; return cache.emps;
   }
   async function projects(){
     if(cache.projects) return cache.projects;
     const client=sb(); let rows=[];
-    if(client) rows=await safe(client.from('projects').select('id,name,project_name,title').limit(5000));
+    if(client) rows=await safe(client.from('projects').select('id,name,project_name,title').eq('is_active', true).limit(5000));
     cache.projects=rows||[]; return cache.projects;
   }
   function empCode(e){return S(e.employee_code||e.code||e.emp_code||e.worker_code||e.id_code||e.employee_id||e.id)}

@@ -73,6 +73,11 @@ window.num = num;
 window.money = money;
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[], contractServices:[], financeContracts:[], financeInvoices:[], financeReceipts:[], financeExpenses:[], inventoryItems:[], inventoryMovements:[], inventoryRequests:[] };
+// V10601: القاعدة التشغيلية الموحدة — لا تُعامل null أو الحقول القديمة كنشطة.
+function tasneefIsActiveRecord(row){ return !!row && row.is_active === true; }
+function activeProjects(){ return (data.projects||[]).filter(tasneefIsActiveRecord); }
+function activeWorkers(){ return (data.workers||[]).filter(tasneefIsActiveRecord); }
+window.tasneefIsActiveRecord=tasneefIsActiveRecord; window.activeProjects=activeProjects; window.activeWorkers=activeWorkers;
 function msg(text, type='ok'){ const el=$('globalMsg')||$('loginMsg'); if(!el) return; el.className='msg '+(type==='err'?'err':''); el.textContent=text; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),4000); }
 function playAppSound(type){ try{ const files={checkin:'sounds/checkin.wav', checkout:'sounds/checkout.wav', ticket:'sounds/ticket.wav'}; const src=files[type]; if(!src) return; const a=new Audio(src); a.volume=0.75; a.play().catch(()=>{}); }catch(e){} }
 function roleHomeUrl(role){ return ['admin','general_manager','financial_manager','operations_manager','warehouse_manager'].includes(role) ? 'admin.html' : (role==='technician' ? 'technician.html' : 'supervisor.html'); }
@@ -93,8 +98,8 @@ function logout(){ clearSession(); tasneefGo('index.html'); }
 async function loadAll(){
   const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
     sb.from('app_users').select('*').order('id'),
-    sb.from('projects').select('*').order('id'),
-    sb.from('workers').select('*').order('id'),
+    sb.from('projects').select('*').eq('is_active', true).order('id'),
+    sb.from('workers').select('*').eq('is_active', true).order('id'),
     sb.from('attendance').select('*').order('attendance_date',{ascending:false}),
     sb.from('time_logs').select('*').order('check_in',{ascending:false}),
     sb.rpc('tasneef_tickets_all_v10519')
@@ -104,8 +109,8 @@ async function loadAll(){
 
   for(const r of [users,projects,workers,attendance,logs,tickets,contractServices]) if(r.error) console.warn(r.error.message);
   data.users = users.data || [];
-  data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-  data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+  data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+  data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
   data.projects = projects.data || [];
   data.workers = workers.data || [];
   data.attendance = attendance.data || [];
@@ -128,7 +133,7 @@ function logRequiredMinutes(l){ const logDate = l.log_date || String(l.check_in|
 async function initAdmin(){ requireRole('admin'); await refreshAll(); }
 async function refreshAll(){ await loadAll(); hydrateForms(); renderAll(); }
 function hydrateForms(){
-  const sups = data.supervisors; const pros = data.projects; const workers = data.workers;
+  const sups = data.supervisors; const pros = activeProjects(); const workers = activeWorkers();
   ['logSupervisor','dailySupervisor','projectSupervisor','projectFilterSupervisor','projectManageSupervisor','workerSupervisor','workerFilterSupervisor','attendanceSupervisor','attendanceFilterSupervisor','ticketSupervisor','monthlySupervisor'].forEach(id=>fillSelect(id,sups,'full_name','الكل'));
   fillSelect('manageWorkerSelect', workers, 'name', 'اختر العامل');
   ['logProject','dailyProject','attendanceProject','ticketProject','workerProject','workerFilterProject'].forEach(id=>fillSelect(id,pros,'name','الكل'));
@@ -243,17 +248,17 @@ function projectOperationText(t){ return t==='full_time'?'دوام كامل':(t=
 function visitTypeText(t){ return t==='deep'?'نظافة عميقة':'نظافة سطحية'; }
 function projectRequiredMinutes(p, dateStr){ const day=dateStr?new Date(dateStr+'T00:00:00').getDay():null; return day===5?Number(p.friday_minutes??90):Number(p.required_daily_minutes??180); }
 function clearProjectForm(){ ['projectId','projectName','projectLocation','projectNotes'].forEach(id=>$(id)&&($(id).value='')); if($('projectSupervisor')) $('projectSupervisor').value=''; if($('projectStatus')) $('projectStatus').value='active'; if($('projectRequiredDaily')) $('projectRequiredDaily').value=180; if($('projectFridayMinutes')) $('projectFridayMinutes').value=90; if($('projectOperationType')) $('projectOperationType').value='daily_visit'; if($('projectVisitDefault')) $('projectVisitDefault').value='surface'; $('projectFormTitle')&&($('projectFormTitle').textContent='إضافة مشروع'); $('projectSaveBtn')&&($('projectSaveBtn').textContent='حفظ المشروع'); }
-async function saveProject(){ const id=$('projectId').value; const row={name:$('projectName').value.trim(), location:$('projectLocation').value.trim(), supervisor_id:Number($('projectSupervisor').value)||null, required_daily_minutes:Number($('projectRequiredDaily')?.value||180), friday_minutes:Number($('projectFridayMinutes')?.value||90), operation_type:$('projectOperationType')?.value||'daily_visit', visit_type_default:$('projectVisitDefault')?.value||'surface', status:$('projectStatus').value, notes:$('projectNotes').value}; if(!row.name) return msg('اسم المشروع مطلوب','err'); const res=id?await sb.from('projects').update(row).eq('id',id):await sb.from('projects').insert(row); if(res.error) return msg(res.error.message,'err'); msg(id?'تم تحديث المشروع':'تم حفظ المشروع'); clearProjectForm(); await refreshAll(); }
+async function saveProject(){ const id=$('projectId').value; const row={name:$('projectName').value.trim(), location:$('projectLocation').value.trim(), supervisor_id:Number($('projectSupervisor').value)||null, required_daily_minutes:Number($('projectRequiredDaily')?.value||180), friday_minutes:Number($('projectFridayMinutes')?.value||90), operation_type:$('projectOperationType')?.value||'daily_visit', visit_type_default:$('projectVisitDefault')?.value||'surface', status:$('projectStatus').value, is_active:$('projectStatus').value==='active', active:$('projectStatus').value==='active', notes:$('projectNotes').value}; if(!row.name) return msg('اسم المشروع مطلوب','err'); const res=id?await sb.from('projects').update(row).eq('id',id):await sb.from('projects').insert(row); if(res.error) return msg(res.error.message,'err'); msg(id?'تم تحديث المشروع':'تم حفظ المشروع'); clearProjectForm(); await refreshAll(); }
 function renderProjects(){ const b=$('projectsBody'); if(!b) return; const q=($('projectSearch')?.value||'').trim(), sid=$('projectFilterSupervisor')?.value, st=$('projectFilterStatus')?.value; let rows=data.projects; if(q) rows=rows.filter(p=>[p.name,p.location,supervisorName(p.supervisor_id),p.notes].join(' ').includes(q)); if(sid) rows=rows.filter(p=>String(p.supervisor_id)===String(sid)); if(st) rows=rows.filter(p=>(p.status||'active')===st); b.innerHTML=rows.map(p=>`<tr><td><b>${esc(p.name)}</b><br><small>${esc(p.location||'')}</small></td><td>${esc(supervisorName(p.supervisor_id))}</td><td>${minsToText(p.required_daily_minutes??180)}</td><td>${minsToText(p.friday_minutes??90)}</td><td>${projectOperationText(p.operation_type)}</td><td>${visitTypeText(p.visit_type_default)}</td><td><span class="badge ${p.status==='inactive'?'red':'green'}">${p.status==='inactive'?'متوقف':'نشط'}</span></td><td class="row-actions"><button onclick="editProject(${p.id})">تعديل</button><button class="light" onclick="openProjectManager(${p.id})">إدارة المشروع</button><button class="light" onclick="toggleProjectStatus(${p.id})">${p.status==='inactive'?'تفعيل':'إيقاف'}</button><button class="danger" onclick="deleteRow('projects',${p.id})">حذف</button></td></tr>`).join('')||'<tr><td colspan="8">لا توجد بيانات</td></tr>'; renderProjectManager(); }
 function editProject(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; $('projectId').value=p.id; $('projectName').value=p.name||''; $('projectLocation').value=p.location||''; $('projectSupervisor').value=p.supervisor_id||''; $('projectStatus').value=p.status||'active'; $('projectNotes').value=p.notes||''; if($('projectRequiredDaily')) $('projectRequiredDaily').value=p.required_daily_minutes??180; if($('projectFridayMinutes')) $('projectFridayMinutes').value=p.friday_minutes??90; if($('projectOperationType')) $('projectOperationType').value=p.operation_type||'daily_visit'; if($('projectVisitDefault')) $('projectVisitDefault').value=p.visit_type_default||'surface'; $('projectFormTitle').textContent='تعديل مشروع'; $('projectSaveBtn')&&($('projectSaveBtn').textContent='تحديث المشروع'); }
-async function toggleProjectStatus(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; const next=p.status==='inactive'?'active':'inactive'; const {error}=await sb.from('projects').update({status:next}).eq('id',id); if(error) return msg(error.message,'err'); msg(next==='active'?'تم تفعيل المشروع':'تم إيقاف المشروع'); await refreshAll(); }
+async function toggleProjectStatus(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; const next=p.status==='inactive'?'active':'inactive'; const {error}=await sb.from('projects').update({status:next,is_active:next==='active',active:next==='active',updated_at:new Date().toISOString()}).eq('id',id); if(error) return msg(error.message,'err'); msg(next==='active'?'تم تفعيل المشروع':'تم إيقاف المشروع'); await refreshAll(); }
 function openProjectManager(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; $('manageProjectId').value=id; $('projectManagerCard')?.classList.remove('hidden'); $('projectManagerTitle').textContent=`إدارة المشروع: ${p.name}`; if($('projectManageSupervisor')) $('projectManageSupervisor').value=p.supervisor_id||''; renderProjectManager(); setTimeout(()=>$('projectManagerCard')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 function closeProjectManager(){ $('projectManagerCard')?.classList.add('hidden'); if($('manageProjectId')) $('manageProjectId').value=''; }
-function renderProjectManager(){ const b=$('projectWorkersBody'); if(!b) return; const pid=$('manageProjectId')?.value; if(!pid){ b.innerHTML='<tr><td colspan="5">اختر مشروع من زر إدارة المشروع</td></tr>'; return; } const rows=data.workers.filter(w=>String(workerProjectId(w))===String(pid)); b.innerHTML=rows.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc(supervisorName(workerSupId(w)))}</td><td><span class="badge ${w.worker_type==='support'?'amber':'green'}">${workerTypeText(w.worker_type)}</span></td><td><span class="badge ${w.status==='inactive'?'red':'green'}">${w.status==='inactive'?'موقوف':'نشط'}</span></td><td class="row-actions"><button class="danger" onclick="removeWorkerFromProject(${w.id})">إزالة من المشروع</button></td></tr>`).join('')||'<tr><td colspan="5">لا يوجد عمال مرتبطون بهذا المشروع</td></tr>'; }
+function renderProjectManager(){ const b=$('projectWorkersBody'); if(!b) return; const pid=$('manageProjectId')?.value; if(!pid){ b.innerHTML='<tr><td colspan="5">اختر مشروع من زر إدارة المشروع</td></tr>'; return; } const rows=activeWorkers().filter(w=>String(workerProjectId(w))===String(pid)); b.innerHTML=rows.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc(supervisorName(workerSupId(w)))}</td><td><span class="badge ${w.worker_type==='support'?'amber':'green'}">${workerTypeText(w.worker_type)}</span></td><td><span class="badge ${w.status==='inactive'?'red':'green'}">${w.status==='inactive'?'موقوف':'نشط'}</span></td><td class="row-actions"><button class="danger" onclick="removeWorkerFromProject(${w.id})">إزالة من المشروع</button></td></tr>`).join('')||'<tr><td colspan="5">لا يوجد عمال مرتبطون بهذا المشروع</td></tr>'; }
 async function saveProjectManagerSupervisor(){ const pid=Number($('manageProjectId')?.value), sid=Number($('projectManageSupervisor')?.value)||null; if(!pid) return msg('اختر المشروع أولاً','err'); const {error}=await sb.from('projects').update({supervisor_id:sid}).eq('id',pid); if(error) return msg(error.message,'err'); await sb.from('workers').update({supervisor_id:sid, app_supervisor_id:sid}).eq('project_id',pid); msg('تم ربط المشرف بالمشروع وتحديث عمال المشروع'); await refreshAll(); openProjectManager(pid); }
 async function addExistingWorkerToProject(){ const pid=Number($('manageProjectId')?.value), wid=Number($('manageWorkerSelect')?.value), type=$('manageWorkerType')?.value||'primary'; if(!pid||!wid) return msg('اختر المشروع والعامل','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const {error}=await sb.from('workers').update({project_id:pid, supervisor_id:sid, app_supervisor_id:sid, worker_type:type}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تم ربط العامل بالمشروع'); await refreshAll(); openProjectManager(pid); }
 async function removeWorkerFromProject(wid){ if(!confirm('إزالة العامل من هذا المشروع؟')) return; const pid=Number($('manageProjectId')?.value); const {error}=await sb.from('workers').update({project_id:null}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تمت إزالة العامل من المشروع'); await refreshAll(); if(pid) openProjectManager(pid); }
-async function addWorkerInsideProject(){ const pid=Number($('manageProjectId')?.value); if(!pid) return msg('اختر المشروع أولاً','err'); const name=$('manageNewWorkerName')?.value.trim(); if(!name) return msg('اسم العامل مطلوب','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active'}; const {error}=await sb.from('workers').insert(row); if(error) return msg(error.message,'err'); ['manageNewWorkerName','manageNewWorkerPhone'].forEach(id=>$(id)&&($(id).value='')); if($('manageNewWorkerSalary')) $('manageNewWorkerSalary').value=1500; msg('تم إضافة العامل وربطه بالمشروع'); await refreshAll(); openProjectManager(pid); }
+async function addWorkerInsideProject(){ const pid=Number($('manageProjectId')?.value); if(!pid) return msg('اختر المشروع أولاً','err'); const name=$('manageNewWorkerName')?.value.trim(); if(!name) return msg('اسم العامل مطلوب','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active', is_active:true, active:true}; const {error}=await sb.from('workers').insert(row); if(error) return msg(error.message,'err'); ['manageNewWorkerName','manageNewWorkerPhone'].forEach(id=>$(id)&&($(id).value='')); if($('manageNewWorkerSalary')) $('manageNewWorkerSalary').value=1500; msg('تم إضافة العامل وربطه بالمشروع'); await refreshAll(); openProjectManager(pid); }
 function clearWorkerForm(){
   ['workerId','workerName','workerPhone','workerNotes'].forEach(id=>$(id)&&($(id).value=''));
   if($('workerSalary')) $('workerSalary').value=1500;
@@ -326,16 +331,16 @@ function editWorker(id){
 async function toggleWorkerStatus(id){
   const w=data.workers.find(x=>x.id===id); if(!w) return;
   const next=w.status==='inactive'?'active':'inactive';
-  const {error}=await sb.from('workers').update({status:next}).eq('id',id);
+  const {error}=await sb.from('workers').update({status:next,is_active:next==='active',active:next==='active',updated_at:new Date().toISOString()}).eq('id',id);
   if(error) return msg(error.message,'err');
   msg(next==='active'?'تم تفعيل العامل':'تم إيقاف العامل');
   await refreshAll();
 }
 function clearAttendanceForm(){ ['attendanceId','attendanceNotes'].forEach(id=>$(id)&&($(id).value='')); if($('attendanceDate')) $('attendanceDate').value=today(); if($('attendanceStatus')) $('attendanceStatus').value='present'; $('attendanceFormTitle')&&($('attendanceFormTitle').textContent='تسجيل حضور / غياب'); }
-async function saveAttendance(){ const id=$('attendanceId').value; const row={attendance_date:$('attendanceDate').value||today(), worker_id:Number($('attendanceWorker').value), supervisor_id:Number($('attendanceSupervisor').value)||null, project_id:Number($('attendanceProject').value)||null, status:$('attendanceStatus').value, notes:$('attendanceNotes').value, created_by:session()?.id||null}; if(!row.worker_id) return msg('اختر العامل','err'); const res=id?await sb.from('attendance').update(row).eq('id',id):await sb.from('attendance').upsert(row,{onConflict:'attendance_date,worker_id'}); if(res.error) return msg(res.error.message,'err'); msg('تم حفظ الحضور'); clearAttendanceForm(); await refreshAll(); }
+async function saveAttendance(){ const id=$('attendanceId').value; const row={attendance_date:$('attendanceDate').value||today(), worker_id:Number($('attendanceWorker').value), supervisor_id:Number($('attendanceSupervisor').value)||null, project_id:Number($('attendanceProject').value)||null, status:$('attendanceStatus').value, notes:$('attendanceNotes').value, created_by:session()?.id||null}; if(!row.worker_id) return msg('اختر العامل','err'); if(!activeWorkers().some(w=>String(w.id)===String(row.worker_id))) return msg('لا يمكن إنشاء حضور لعامل موقوف','err'); if(row.project_id&&!activeProjects().some(p=>String(p.id)===String(row.project_id))) return msg('لا يمكن إنشاء حضور لمشروع موقوف','err'); const res=id?await sb.from('attendance').update(row).eq('id',id):await sb.from('attendance').upsert(row,{onConflict:'attendance_date,worker_id'}); if(res.error) return msg(res.error.message,'err'); msg('تم حفظ الحضور'); clearAttendanceForm(); await refreshAll(); }
 function renderAttendance(){ const b=$('attendanceBody'); if(!b) return; const d=$('attendanceFilterDate')?.value, s=$('attendanceFilterSupervisor')?.value, q=($('attendanceSearch')?.value||'').trim(); let rows=data.attendance; if(d) rows=rows.filter(a=>a.attendance_date===d); if(s) rows=rows.filter(a=>String(a.supervisor_id)===String(s)); if(q) rows=rows.filter(a=>[workerName(a.worker_id),supervisorName(a.supervisor_id),projectName(a.project_id),a.notes].join(' ').includes(q)); b.innerHTML=rows.map(a=>`<tr><td>${a.attendance_date}</td><td>${esc(workerName(a.worker_id))}</td><td>${esc(supervisorName(a.supervisor_id))}</td><td>${esc(projectName(a.project_id))}</td><td><span class="badge ${a.status==='present'?'green':'red'}">${a.status==='present'?'حاضر':'غائب'}</span></td><td>${esc(a.notes)}</td><td class="row-actions"><button onclick="editAttendance(${a.id})">تعديل</button><button class="danger" onclick="deleteRow('attendance',${a.id})">حذف</button></td></tr>`).join('')||'<tr><td colspan="7">لا توجد بيانات</td></tr>'; renderAttendanceWorkersQuick(); }
 function editAttendance(id){ const a=data.attendance.find(x=>x.id===id); if(!a)return; $('attendanceId').value=a.id; $('attendanceDate').value=a.attendance_date; $('attendanceSupervisor').value=a.supervisor_id||''; $('attendanceProject').value=a.project_id||''; $('attendanceWorker').value=a.worker_id||''; $('attendanceStatus').value=a.status; $('attendanceNotes').value=a.notes||''; $('attendanceFormTitle').textContent='تعديل حضور'; }
-function renderAttendanceWorkersQuick(){ const div=$('attendanceQuick'); if(!div) return; const sid=$('attendanceSupervisor')?.value; if(!sid){ div.innerHTML=''; return; } const ws=data.workers.filter(w=>String(workerSupId(w))===String(sid)); div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${esc(w.name)}</b><div><button onclick="quickAttendance(${w.id},'present')">حاضر</button> <button class="danger" onclick="quickAttendance(${w.id},'absent')">غائب</button></div></div>`).join(''); }
+function renderAttendanceWorkersQuick(){ const div=$('attendanceQuick'); if(!div) return; const sid=$('attendanceSupervisor')?.value; if(!sid){ div.innerHTML=''; return; } const ws=activeWorkers().filter(w=>String(workerSupId(w))===String(sid)); div.innerHTML=ws.map(w=>`<div class="quick-item"><b>${esc(w.name)}</b><div><button onclick="quickAttendance(${w.id},'present')">حاضر</button> <button class="danger" onclick="quickAttendance(${w.id},'absent')">غائب</button></div></div>`).join(''); }
 async function quickAttendance(workerId,status){ $('attendanceWorker').value=workerId; $('attendanceStatus').value=status; await saveAttendance(); }
 function renderMonthly(){
   const body=$('monthlyBody');
@@ -377,7 +382,31 @@ function toCSV(rows){ if(!rows.length) return ''; const keys=Object.keys(rows[0]
 function download(name,text){ const blob=new Blob([text],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 async function exportTable(table){ const {data:rows,error}=await sb.from(table).select('*'); if(error) return msg(error.message,'err'); download(`${table}.csv`, toCSV(rows||[])); }
 function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyBody tr')].map(tr=>[...tr.children].map(td=>td.textContent)); const csv=['المشرف,المشروع,عدد السجلات,الساعات المطلوبة,الساعات الفعلية,وقت الانتقال,نسبة العمل,حالة الأداء',...rows.map(r=>r.map(x=>'"'+x+'"').join(','))].join('\n'); download('monthly.csv',csv); }
-async function initSupervisor(){ const u=requireRole('supervisor'); if(!u) return; await loadAll(); data.projects=data.projects.filter(p=>String(p.supervisor_id)===String(u.id)); data.workers=data.workers.filter(w=>String(workerSupId(w))===String(u.id)); data.logs=data.logs.filter(l=>String(l.supervisor_id)===String(u.id)); const supProjectIds = new Set(data.projects.map(p=>String(p.id))); data.tickets=data.tickets.filter(t=>String(t.supervisor_id)===String(u.id) || String(t.created_by)===String(u.id) || supProjectIds.has(String(t.project_id))); $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`; fillSelect('logProject',data.projects,'name','اختر المشروع'); fillSelect('attendanceProject',data.projects,'name','اختر المشروع'); fillSelect('ticketProject',data.projects,'name','اختر المشروع'); if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today(); renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad(); }
+async function initSupervisor(){
+  const u=requireRole('supervisor'); if(!u) return;
+  await loadAll();
+  // V10602: تحميل الربط من مصدره الموحد في كل مرة، ثم بناء نطاق المشرف دون إسقاط أسماء أو مشاريع.
+  let assignments=[];
+  try{ const ar=await sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id'); if(!ar.error) assignments=ar.data||[]; }catch(_){ assignments=[]; }
+  data.workerAssignments=assignments;
+  const sid=String(u.id);
+  const allProjects=[...(data.projects||[])], allWorkers=[...(data.workers||[])];
+  const directProjectIds=new Set(allProjects.filter(p=>String(p.supervisor_id||p.app_supervisor_id||p.manager_id||p.supervisor_user_id||'')===sid).map(p=>String(p.id)));
+  const directWorkerIds=new Set(allWorkers.filter(w=>String(w.app_supervisor_id||w.supervisor_id||w.assigned_supervisor_id||w.manager_id||'')===sid).map(w=>String(w.id)));
+  assignments.forEach(a=>{ if(directWorkerIds.has(String(a.worker_id)) && a.project_id) directProjectIds.add(String(a.project_id)); });
+  // أي عامل مربوط فعليًا بمشروع المشرف يجب أن يظهر حتى لو كان حقل المشرف القديم ناقصًا.
+  const assignedWorkerIds=new Set(assignments.filter(a=>directProjectIds.has(String(a.project_id)) && a.is_active!==false).map(a=>String(a.worker_id)));
+  data.projects=allProjects.filter(p=>directProjectIds.has(String(p.id)));
+  data.workers=allWorkers.filter(w=>directWorkerIds.has(String(w.id)) || directProjectIds.has(String(workerProjectId(w))) || assignedWorkerIds.has(String(w.id)));
+  data.logs=(data.logs||[]).filter(l=>String(l.supervisor_id)===sid || directProjectIds.has(String(l.project_id)));
+  data.tickets=(data.tickets||[]).filter(t=>String(t.supervisor_id)===sid || String(t.created_by)===sid || directProjectIds.has(String(t.project_id)));
+  $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`;
+  fillSelect('logProject',data.projects,'name','اختر المشروع');
+  fillSelect('attendanceProject',data.projects,'name','اختر المشروع');
+  fillSelect('ticketProject',data.projects,'name','اختر المشروع');
+  if($('logDate')) $('logDate').value=today(); if($('attendanceDate')) $('attendanceDate').value=today();
+  renderSupervisorAttendanceList(); renderTimeLogs(); await supervisorInventoryLoad();
+}
 async function supervisorCheckIn(){ if(!$('logProject').value) return msg('اختر المشروع','err'); $('logDate').value=today(); $('logIn').value=nowTime(); $('logOut').value=''; await saveTimeLog(); await initSupervisor(); }
 async function supervisorCheckOut(){ const u=session(); const pid=$('logProject').value; const open=data.logs.find(l=>String(l.project_id)===String(pid)&&!l.check_out); if(open) editTimeLog(open.id); $('logOut').value=nowTime(); await saveTimeLog(); await initSupervisor(); }
 function renderSupervisorAttendanceList(){ const div=$('supervisorAttendanceList'); if(!div) return; div.innerHTML=data.workers.map(w=>`<div class="quick-item"><b>${esc(w.name)}</b><select data-worker="${w.id}"><option value="present">حاضر</option><option value="absent">غائب</option></select></div>`).join('')||'<div class="quick-item">لا يوجد عمال مرتبطين بك</div>'; }
@@ -2491,8 +2520,8 @@ function exportContractServicesCSV(){
     const end=monthEnd(cm);
 
     const usersP = safeQuery('المستخدمين', sb.from('app_users').select('*').order('id'));
-    const projectsP = safeQuery('المشاريع', sb.from('projects').select('*').order('id'));
-    const workersP = safeQuery('العمال', sb.from('workers').select('*').order('id'));
+    const projectsP = safeQuery('المشاريع', sb.from('projects').select('*').eq('is_active', true).order('id'));
+    const workersP = safeQuery('العمال', sb.from('workers').select('*').eq('is_active', true).order('id'));
     const attendanceP = safeQuery('الحضور', sb.from('attendance').select('*').gte('attendance_date', addDays(d,-45)).order('attendance_date',{ascending:false}).limit(2000));
     const ticketsP = safeQuery('التكتات', sb.from('tickets').select('*').order('id',{ascending:false}).limit(1000));
     const servicesP = safeQuery('الخدمات', sb.from('contract_services').select('*').order('id',{ascending:false}).limit(1000));
@@ -2500,8 +2529,8 @@ function exportContractServicesCSV(){
     const [users, projects, workers, attendance, tickets, contractServices] = await Promise.all([usersP,projectsP,workersP,attendanceP,ticketsP,servicesP]);
 
     data.users = users.data || [];
-    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
     data.projects = projects.data || [];
     data.workers = workers.data || [];
     data.attendance = attendance.data || [];
@@ -3001,7 +3030,7 @@ async function financeSaveExpense(btn){ try{ if(btn) btn.disabled=true; const pi
 function financeClearExpenseForm(){ ['financeExpenseId','financeExpenseSubtotal','financeExpenseVat','financeExpenseTotal','financeExpenseSupplier','financeExpenseNotes'].forEach(id=>$(id)&&($(id).value='')); if($('financeExpenseDate')) $('financeExpenseDate').value=today(); }
 function financeRenderExpenses(){ const b=$('financeExpensesBody'); if(!b) return; let rows=financeFilterRows(data.financeExpenses||[],'expense_date'); const cat=$('financeExpenseTypeFilter')?.value; if(cat) rows=rows.filter(e=>e.category===cat); b.innerHTML=rows.map(e=>`<tr><td>${esc(e.expense_date||'')}</td><td>${esc(e.project_name||financeProjectName(e.project_id))}</td><td>${esc(e.category||'')}</td><td>${esc(e.supplier||'-')}</td><td>${money(e.total)}</td><td>${esc(e.payment_method||'')}</td><td class="row-actions"><button onclick="financeEditExpense('${e.id}')">تعديل</button><button class="danger" onclick="financeDelete('finance_expenses','${e.id}')">حذف</button></td></tr>`).join('')||`<tr><td colspan="7">${data.financeError||'لا توجد مصروفات'}</td></tr>`; }
 function financeEditExpense(id){ const e=(data.financeExpenses||[]).find(x=>String(x.id)===String(id)); if(!e) return; $('financeExpenseId').value=e.id; $('financeExpenseProject').value=e.project_id||''; $('financeExpenseCategory').value=e.category||'مصروف عام'; $('financeExpenseDate').value=e.expense_date||today(); $('financeExpenseSubtotal').value=e.subtotal||0; $('financeExpenseVat').value=e.vat||0; $('financeExpenseTotal').value=e.total||0; $('financeExpenseSupplier').value=e.supplier||''; $('financeExpenseMethod').value=e.payment_method||'تحويل'; $('financeExpenseNotes').value=e.notes||''; financeShowTab('expenses',document.querySelectorAll('.finance-tab')[1]); $('financeExpenseId')?.scrollIntoView({behavior:'smooth'}); }
-async function financeOpenNewProject(){ const name=prompt('اسم المشروع الجديد'); if(!name) return; try{ const row={name:name.trim(),status:'active',required_daily_minutes:180,friday_minutes:90,operation_type:'daily_visit',visit_type_default:'surface'}; const {data:newp,error}=await sb.from('projects').insert(row).select('*').single(); if(error) throw error; data.projects.unshift(newp); financeHydrateForms(); financeRenderAll(); msg('تم إضافة المشروع'); }catch(e){ msg(e.message||String(e),'err'); } }
+async function financeOpenNewProject(){ const name=prompt('اسم المشروع الجديد'); if(!name) return; try{ const row={name:name.trim(),status:'active',is_active:true,active:true,required_daily_minutes:180,friday_minutes:90,operation_type:'daily_visit',visit_type_default:'surface'}; const {data:newp,error}=await sb.from('projects').insert(row).select('*').single(); if(error) throw error; data.projects.unshift(newp); financeHydrateForms(); financeRenderAll(); msg('تم إضافة المشروع'); }catch(e){ msg(e.message||String(e),'err'); } }
 function inventoryFillItemSelect(){ const el=$('inventoryMovementItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} ${i.serial_number?'('+esc(i.serial_number)+')':''} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
 
 function inventoryFillRequestSelect(){ const el=$('inventoryRequestItem'); if(!el) return; el.innerHTML='<option value="">اختر الصنف</option>'+ (data.inventoryItems||[]).map(i=>`<option value="${i.id}">${esc(i.name)} ${i.serial_number?'('+esc(i.serial_number)+')':''} - المتوفر ${num(i.quantity)} ${esc(i.unit||'')}</option>`).join(''); }
@@ -16604,8 +16633,8 @@ function financePrintReport(kind){
 
     if(!window.sb){ if(typeof oldLoadAllV232 === 'function') return oldLoadAllV232(); return; }
     const usersP = safeV232('المستخدمين', sb.from('app_users').select('*').order('id'));
-    const projectsP = safeV232('المشاريع', sb.from('projects').select('*').order('id'));
-    const workersP = safeV232('العمال', sb.from('workers').select('*').order('id'));
+    const projectsP = safeV232('المشاريع', sb.from('projects').select('*').eq('is_active', true).order('id'));
+    const workersP = safeV232('العمال', sb.from('workers').select('*').eq('is_active', true).order('id'));
     const attendanceP = safeV232('الحضور', sb.from('attendance').select('*').gte('attendance_date', addDaysV232(d,-45)).order('attendance_date',{ascending:false}).limit(3000));
     const ticketsP = safeV232('التكتات', sb.from('tickets').select('*').order('id',{ascending:false}).limit(3000));
     const servicesP = safeV232('الخدمات', sb.from('contract_services').select('*').order('id',{ascending:false}).limit(3000));
@@ -16613,8 +16642,8 @@ function financePrintReport(kind){
     const [users, projects, workers, attendance, tickets, contractServices] = await Promise.all([usersP,projectsP,workersP,attendanceP,ticketsP,servicesP]);
     window.data = window.data || {};
     data.users = users.data || [];
-    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
     data.projects = projects.data || [];
     data.workers = workers.data || [];
     data.attendance = attendance.data || [];
@@ -17140,8 +17169,8 @@ function financePrintReport(kind){
     const r = monthRange();
     const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
       safeSelect('app_users', sb.from('app_users').select('id,full_name,username,password,role,is_active,permissions').order('id')),
-      safeSelect('projects', sb.from('projects').select('*').order('id')),
-      safeSelect('workers', sb.from('workers').select('*').order('id')),
+      safeSelect('projects', sb.from('projects').select('*').eq('is_active', true).order('id')),
+      safeSelect('workers', sb.from('workers').select('*').eq('is_active', true).order('id')),
       selectAllPaged(sb.from('attendance').select('*').gte('attendance_date', r.start).lt('attendance_date', r.end).order('attendance_date',{ascending:false})),
       selectAllPaged(sb.from('time_logs').select('*').gte('log_date', r.start).lt('log_date', r.end).order('check_in',{ascending:false})),
       safeSelect('tickets', sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(300))
@@ -17149,8 +17178,8 @@ function financePrintReport(kind){
     let contractServices = {data:[],error:null};
     try{ contractServices = await sb.from('contract_services').select('*').order('id', { ascending:false }).limit(500); }catch(e){ console.warn(e); }
     data.users = users || [];
-    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
     data.projects = projects || [];
     data.workers = workers || [];
     data.attendance = attendance.data || [];
@@ -17319,8 +17348,8 @@ function financePrintReport(kind){
     const r = monthRange();
     const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
       safe('app_users', sb.from('app_users').select('id,full_name,username,password,role,is_active,permissions').order('id')),
-      safe('projects', sb.from('projects').select('*').order('id')),
-      safe('workers', sb.from('workers').select('*').order('id')),
+      safe('projects', sb.from('projects').select('*').eq('is_active', true).order('id')),
+      safe('workers', sb.from('workers').select('*').eq('is_active', true).order('id')),
       pageAll(sb.from('attendance').select('*').gte('attendance_date', r.start).lt('attendance_date', r.end).order('attendance_date',{ascending:false})),
       loadTimeLogsMonthV281(r),
       safe('tickets', sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(300))
@@ -17328,8 +17357,8 @@ function financePrintReport(kind){
     let contractServices = {data:[],error:null};
     try{ contractServices = await sb.from('contract_services').select('*').order('id', { ascending:false }).limit(500); }catch(e){ console.warn(e); }
     data.users = users || [];
-    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
     data.projects = projects || [];
     data.workers = workers || [];
     data.attendance = attendance.data || [];
@@ -17476,7 +17505,7 @@ function financePrintReport(kind){
     const pid=Number($('manageProjectId')?.value); if(!pid) return msg('اختر المشروع أولاً','err');
     const name=$('manageNewWorkerName')?.value.trim(); if(!name) return msg('اسم العامل مطلوب','err');
     const p=(data.projects||[]).find(x=>x.id===pid); const sid=p?.supervisor_id||null;
-    const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active'};
+    const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active', is_active:true, active:true};
     const ins=await sb.from('workers').insert(row).select('id').single();
     if(ins.error) return msg(ins.error.message,'err');
     await sb.from('worker_project_assignments').upsert({worker_id:ins.data.id, project_id:pid, worker_type:row.worker_type, is_active:true},{onConflict:'worker_id,project_id'});
@@ -18067,15 +18096,15 @@ function financePrintReport(kind){
     const since = dateBack(45);
     const [users, projects, workers, assignments, logs, tickets] = await Promise.all([
       safeData(sb.from('app_users').select('*').order('id')),
-      safeData(sb.from('projects').select('*').eq('supervisor_id', u.id).order('name')),
-      safeData(sb.from('workers').select('*').order('name')),
+      safeData(sb.from('projects').select('*').eq('is_active', true).eq('supervisor_id', u.id).order('name')),
+      safeData(sb.from('workers').select('*').eq('is_active', true).order('name')),
       safeData(sb.from('worker_project_assignments').select('*').eq('is_active', true).order('id')),
       safeData(sb.from('time_logs').select('*').gte('log_date', since).order('check_in',{ascending:false}).limit(250)),
       safeData(sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(250))
     ]);
     data.users = users;
-    data.supervisors = users.filter(x=>x.role==='supervisor' && x.is_active!==false);
-    data.technicians = users.filter(x=>x.role==='technician' && x.is_active!==false);
+    data.supervisors = users.filter(x=>x.role==='supervisor' && x.is_active===true);
+    data.technicians = users.filter(x=>x.role==='technician' && x.is_active===true);
     data.projects = projects;
     data.workerAssignments = assignments;
     const supProjectIds = new Set(projects.map(p=>normId(p.id)));
@@ -19782,16 +19811,16 @@ function financePrintReport(kind){
     const d = today();
     const [users, projects, workers, tickets, services, logs] = await Promise.all([
       sb.from('app_users').select('*').order('id'),
-      sb.from('projects').select('*').order('id'),
-      sb.from('workers').select('*').order('id'),
+      sb.from('projects').select('*').eq('is_active', true).order('id'),
+      sb.from('workers').select('*').eq('is_active', true).order('id'),
       sb.from('tickets').select('*').order('id', {ascending:false}).limit(300),
       sb.from('contract_services').select('*').order('id', {ascending:false}).limit(300),
       sb.from('time_logs').select('id,user_id,supervisor_id,project_id,check_in,check_out,duration_minutes,travel_minutes,visit_type,required_minutes,time_difference_minutes,time_status,notes,created_at,updated_at,log_date').gte('log_date', d).lte('log_date', d).order('id', {ascending:false}).limit(500)
     ]);
 
     data.users = safeRows(users);
-    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active===true);
     data.projects = safeRows(projects);
     data.workers = safeRows(workers);
     data.tickets = safeRows(tickets);
@@ -19916,12 +19945,12 @@ function financePrintReport(kind){
     if(!window.data) return;
     const tasks=[];
     if(!(data.users||[]).length) tasks.push(queryV(sb.from('app_users').select('*').order('id')).then(x=>data.users=x));
-    if(!(data.projects||[]).length) tasks.push(queryV(sb.from('projects').select('*').order('id')).then(x=>data.projects=x));
-    if(!(data.workers||[]).length) tasks.push(queryV(sb.from('workers').select('*').order('id')).then(x=>data.workers=x));
+    if(!(data.projects||[]).length) tasks.push(queryV(sb.from('projects').select('*').eq('is_active', true).order('id')).then(x=>data.projects=x));
+    if(!(data.workers||[]).length) tasks.push(queryV(sb.from('workers').select('*').eq('is_active', true).order('id')).then(x=>data.workers=x));
     if(!(data.tickets||[]).length) tasks.push(queryV(sb.from('tickets').select('*').order('created_at',{ascending:false}).limit(500)).then(x=>data.tickets=x));
     await Promise.all(tasks);
-    data.supervisors = (data.users||[]).filter(u=>u.role==='supervisor' && u.is_active!==false);
-    data.technicians = (data.users||[]).filter(u=>u.role==='technician' && u.is_active!==false);
+    data.supervisors = (data.users||[]).filter(u=>u.role==='supervisor' && u.is_active===true);
+    data.technicians = (data.users||[]).filter(u=>u.role==='technician' && u.is_active===true);
   }
   async function loadAllV10174(){
     try{ if(typeof oldLoadAllV10174==='function') await oldLoadAllV10174(); }catch(e){ console.warn(FIX_VERSION,'old loadAll failed',e); }
@@ -21324,8 +21353,8 @@ function financePrintReport(kind){
     const to = toDate.toISOString().slice(0,10);
     try{
       const [projects, workers, users, logs] = await Promise.all([
-        sb.from('projects').select('*').order('id'),
-        sb.from('workers').select('*').order('id'),
+        sb.from('projects').select('*').eq('is_active', true).order('id'),
+        sb.from('workers').select('*').eq('is_active', true).order('id'),
         sb.from('app_users').select('*').order('id'),
         sb.from('time_logs').select('*').gte('log_date', from).lt('log_date', to).order('check_in',{ascending:false})
       ]);
@@ -21333,7 +21362,7 @@ function financePrintReport(kind){
       const d = DATA();
       d.projects = projects.data || [];
       if(!workers.error) d.workers = workers.data || [];
-      if(!users.error){ d.users = users.data || []; d.supervisors = d.users.filter(u=>u.role==='supervisor' && u.is_active!==false); }
+      if(!users.error){ d.users = users.data || []; d.supervisors = d.users.filter(u=>u.role==='supervisor' && u.is_active===true); }
       if(!logs.error) d.logs = logs.data || [];
     }catch(e){ console.warn('V10194 monthly fresh load failed', e); }
   }
@@ -21496,8 +21525,8 @@ function financePrintReport(kind){
     const r=monthRange();
     try{
       const [projects, workers, users, byLogDate, byCheckIn, assigns] = await Promise.all([
-        sb.from('projects').select('*').order('id'),
-        sb.from('workers').select('*').order('id'),
+        sb.from('projects').select('*').eq('is_active', true).order('id'),
+        sb.from('workers').select('*').eq('is_active', true).order('id'),
         sb.from('app_users').select('*').order('id'),
         sb.from('time_logs').select('*').gte('log_date', r.from).lt('log_date', r.to),
         sb.from('time_logs').select('*').gte('check_in', r.fromIso).lt('check_in', r.toIso),
@@ -21506,7 +21535,7 @@ function financePrintReport(kind){
       const d=D();
       if(!projects.error) d.projects = projects.data || [];
       if(!workers.error) d.workers = workers.data || [];
-      if(!users.error){ d.users = users.data || []; d.supervisors = d.users.filter(u=>u.role==='supervisor' && u.is_active!==false); }
+      if(!users.error){ d.users = users.data || []; d.supervisors = d.users.filter(u=>u.role==='supervisor' && u.is_active===true); }
       const map=new Map();
       if(!byLogDate.error) (byLogDate.data||[]).forEach(l=>map.set(idv(l.id)||('ld_'+Math.random()),l));
       if(!byCheckIn.error) (byCheckIn.data||[]).forEach(l=>map.set(idv(l.id)||('ci_'+Math.random()),l));
@@ -21615,8 +21644,8 @@ function financePrintReport(kind){
       return cache;
     }
     const [pr,wr]=await Promise.all([
-      sb.from('projects').select('*'),
-      sb.from('workers').select('*')
+      sb.from('projects').select('*').eq('is_active', true),
+      sb.from('workers').select('*').eq('is_active', true)
     ]);
     if(pr.error) throw pr.error;
     if(wr.error) throw wr.error;
@@ -24811,7 +24840,7 @@ ${finalUrl}
   const supervisorId=()=>S(currentUser().id||'');
   const userKeys=()=>[currentUser().id,currentUser().employee_code,currentUser().code,currentUser().username,currentUser().full_name,currentUser().name].map(S).filter(Boolean);
   const rowSupKeys=r=>[r.supervisor_id,r.app_supervisor_id,r.supervisor_employee_code,r.supervisor_code,r.supervisor_name,r.supervisor].map(S).filter(Boolean);
-  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);return !uk.length||rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b)))};
+  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);if(!uk.length)return true;if(rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b))))return true;const pid=S(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key);return !!pid&&(window.data?.projects||[]).some(p=>S(p.id)===pid)};
   const dedupeWorkers=rows=>{
     const map=new Map();
     const master=window.data?.workers||[];
@@ -25349,3 +25378,149 @@ ${finalUrl}
   setInterval(()=>{if(dailyVisible()&&typeof window.renderTimeLogs==='function'&&!window.__tasneefDailyRootV10511)window.renderTimeLogs()},30000);
 })();
 /* ===== END V10512 ===== */
+
+
+/* ===== V10602 SUPERVISOR SESSION + SCOPE STABILITY FIX ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefSupervisorStableV10602)return;
+  window.__tasneefSupervisorStableV10602=true;
+  let loginBusy=false, logoutBusy=false;
+  const oldLogin=window.login;
+  if(typeof oldLogin==='function') window.login=async function(){
+    if(loginBusy)return; loginBusy=true;
+    const btn=document.querySelector('#loginForm button,button[onclick="login()"]');
+    if(btn)btn.disabled=true;
+    try{return await oldLogin.apply(this,arguments)}finally{loginBusy=false;if(btn)btn.disabled=false}
+  };
+  window.logout=function(){
+    if(logoutBusy)return; logoutBusy=true;
+    try{
+      localStorage.removeItem('tasneef_user');
+      sessionStorage.clear();
+      Object.keys(localStorage).filter(k=>/^tasneef_(worker_checkin|worker_checkout|supervisor|time_log)/i.test(k)).forEach(k=>localStorage.removeItem(k));
+    }catch(_){}
+    location.replace('index.html?v='+Date.now());
+  };
+  // عند العودة للتطبيق بعد إغلاق الشاشة نعيد تحميل نطاق المشرف مرة واحدة فقط.
+  let reloading=false;
+  document.addEventListener('visibilitychange',async()=>{
+    if(document.hidden||reloading||!document.getElementById('supTitle'))return;
+    const u=typeof session==='function'?session():null;if(!u||u.role!=='supervisor')return;
+    reloading=true;try{if(typeof window.initSupervisor==='function')await window.initSupervisor()}catch(e){console.warn('V10602 supervisor resume refresh',e)}finally{reloading=false}
+  });
+})();
+/* ===== END V10602 ===== */
+
+/* ===== V10601 ROOT FIX: ACTIVE RECORDS + DAILY PRINT SNAPSHOT ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefActivePrintRootV10601) return;
+  window.__tasneefActivePrintRootV10601=true;
+  const BUILD='V10601_ACTIVE_PRINT_ROOT_2026_07_18';
+  const $=id=>document.getElementById(id);
+  const S=v=>String(v??'').trim();
+  const N=v=>Number(v)||0;
+  const A=v=>Array.isArray(v)?v:[];
+  const norm=v=>S(v).toLowerCase().replace(/\s+/g,' ');
+  const inactiveWords=['inactive','stopped','stop','paused','disabled','ended','archived','deleted','موقوف','موقف','متوقف','غير نشط','غيرنشط','خارج العمل','منتهي','محذوف','معطل'];
+  function isActiveRecord(x){
+    if(!x) return false;
+    if(x.is_active===false||x.active===false||x.enabled===false||x.is_stopped===true||x.stopped===true||x.disabled===true||x.deleted_at||x.is_deleted===true) return false;
+    const text=norm([x.status,x.state,x.active_status,x.project_status,x.worker_status].filter(Boolean).join(' '));
+    return !inactiveWords.some(w=>text.includes(norm(w)));
+  }
+  window.tasneefIsActiveV10601=isActiveRecord;
+  function recId(x){return S(x?.id||x?.project_id||x?.worker_id||x?.employee_code||'');}
+  function recName(x){return S(x?.name||x?.project_name||x?.worker_name||x?.full_name||x?.app_name||x?.title||'');}
+  function activeProjects(){return A(window.data?.projects).filter(isActiveRecord);}
+  function activeWorkers(){return A(window.data?.workers).filter(isActiveRecord);}
+  function inactiveMaps(){
+    const pId=new Set(),pName=new Set(),wId=new Set(),wName=new Set();
+    A(window.data?.projects).filter(x=>!isActiveRecord(x)).forEach(x=>{if(recId(x))pId.add(recId(x));if(recName(x))pName.add(norm(recName(x)));});
+    A(window.data?.workers).filter(x=>!isActiveRecord(x)).forEach(x=>{if(recId(x))wId.add(recId(x));if(recName(x))wName.add(norm(recName(x)));});
+    return {pId,pName,wId,wName};
+  }
+  const operationalProjectHints=/project|مشروع/i;
+  const operationalWorkerHints=/worker|employee|عامل|موظف/i;
+  const historicalHints=/filterstatus|statusfilter|history|archive|reportstatus/i;
+  function sanitizeSelect(sel){
+    if(!sel||sel.tagName!=='SELECT'||historicalHints.test(sel.id||'')) return;
+    const hint=[sel.id,sel.name,sel.getAttribute('aria-label'),sel.closest('label')?.textContent].filter(Boolean).join(' ');
+    const projectLike=operationalProjectHints.test(hint);
+    const workerLike=operationalWorkerHints.test(hint);
+    if(!projectLike&&!workerLike) return;
+    const m=inactiveMaps();
+    [...sel.options].forEach(opt=>{
+      if(!S(opt.value)) return;
+      const txt=norm(opt.textContent);
+      const inactive=projectLike?(m.pId.has(S(opt.value))||m.pName.has(txt)):workerLike?(m.wId.has(S(opt.value))||m.wName.has(txt)):false;
+      if(inactive){opt.disabled=true;opt.hidden=true;opt.dataset.inactiveV10601='1'; if(sel.value===opt.value) sel.value='';}
+      else if(opt.dataset.inactiveV10601==='1'){opt.disabled=false;opt.hidden=false;delete opt.dataset.inactiveV10601;}
+    });
+  }
+  function sanitizeAll(){document.querySelectorAll('select').forEach(sanitizeSelect);}
+  const mo=new MutationObserver(ms=>{let needed=false; for(const m of ms){if(m.type==='childList'){needed=true;break;}} if(needed) setTimeout(sanitizeAll,0);});
+  document.addEventListener('DOMContentLoaded',()=>{mo.observe(document.documentElement,{subtree:true,childList:true});setTimeout(sanitizeAll,400);setTimeout(sanitizeAll,1500);});
+  window.addEventListener('load',()=>setTimeout(sanitizeAll,700));
+  ['refreshAll','loadAll','renderProjects','renderWorkers','renderAttendance','renderTimeLogs','renderMonthly','renderDistribution'].forEach(name=>{
+    const old=window[name]; if(typeof old==='function'&&!old.__activeWrappedV10601){
+      const wrapped=function(){const r=old.apply(this,arguments);Promise.resolve(r).finally(()=>setTimeout(sanitizeAll,0));return r;};
+      wrapped.__activeWrappedV10601=true;window[name]=wrapped;
+    }
+  });
+  const oldSaveLog=window.saveTimeLog;
+  if(typeof oldSaveLog==='function') window.saveTimeLog=async function(){
+    const pid=S($('logProject')?.value); const p=A(window.data?.projects).find(x=>recId(x)===pid);
+    if(pid&&p&&!isActiveRecord(p)){if(typeof msg==='function')msg('لا يمكن إنشاء تسجيل جديد لمشروع موقوف. أعد تفعيل المشروع أولًا.','err');else alert('لا يمكن إنشاء تسجيل جديد لمشروع موقوف.');return;}
+    return oldSaveLog.apply(this,arguments);
+  };
+  function esc(v){return S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function pad(n){return String(n).padStart(2,'0');}
+  function dOnly(v){const s=S(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);const d=new Date(s);return isNaN(d)?'':`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+  function time12(v){if(!v)return'-';const s=S(v);const m=s.match(/(?:T|\s)(\d{1,2}):(\d{2})/)||s.match(/^(\d{1,2}):(\d{2})/);if(!m)return s;let h=+m[1];const ap=h<12?'ص':'م';h=h%12||12;return `${h}:${m[2]} ${ap}`;}
+  function pName(id){const p=A(window.data?.projects).find(x=>recId(x)===S(id));return recName(p)||'-';}
+  function uName(id){const u=A(window.data?.users).find(x=>S(x.id)===S(id));return S(u?.full_name||u?.name||'-');}
+  function workerNames(log){
+    const direct=S(log.worker_names||log.workers_names||log.worker_name||log.workers||''); if(direct)return direct;
+    const ids=A(log.worker_ids||log.workers_ids); if(ids.length)return ids.map(id=>recName(A(window.data?.workers).find(w=>recId(w)===S(id)))).filter(Boolean).join('، ');
+    const pid=S(log.project_id); const assigned=new Set();
+    A(window.data?.workerAssignments).filter(a=>a?.is_active!==false&&S(a.project_id)===pid).forEach(a=>{const w=A(window.data?.workers).find(x=>recId(x)===S(a.worker_id));if(w)assigned.add(recName(w));});
+    return [...assigned].filter(Boolean).join('، ')||'-';
+  }
+  function actual(l){if(N(l.duration_minutes))return N(l.duration_minutes);try{return typeof minutesBetween==='function'?N(minutesBetween(l.check_in,l.check_out)):0;}catch(_){return 0;}}
+  function required(l){try{return typeof logRequiredMinutes==='function'?N(logRequiredMinutes(l)):N(l.required_minutes);}catch(_){return N(l.required_minutes);}}
+  function minTxt(m){m=Math.round(N(m));return `${Math.floor(m/60)}س ${m%60}د`;}
+  function status(a,r){const d=a-r;return !r?'غير محدد':d>5?'زيادة':d<-5?'ناقص':'ضمن الوقت';}
+  function filterSnapshot(){
+    let rows=[];try{rows=typeof window.filterLogs==='function'?window.filterLogs():A(window.data?.logs);}catch(_){rows=A(window.data?.logs);}
+    return rows.map(x=>JSON.parse(JSON.stringify(x)));
+  }
+  function filterState(){const ids=['dailyDateFromV10310','dailyDateToV10310','dailyDate','dailySupervisor','dailyProject','dailySearch'];const o={};ids.forEach(id=>{const e=$(id);if(e)o[id]=e.value;});return o;}
+  function restoreState(o){Object.entries(o||{}).forEach(([id,v])=>{const e=$(id);if(e)e.value=v;});}
+  async function waitImages(doc,timeout=5000){const imgs=[...doc.images];await Promise.all(imgs.map(img=>new Promise(resolve=>{if(img.complete)return resolve();const t=setTimeout(resolve,timeout);img.onload=img.onerror=()=>{clearTimeout(t);resolve();};})));}
+  window.exportDailyManagerPDF=async function(){
+    if(window.__dailyPrintBusyV10601) return;
+    window.__dailyPrintBusyV10601=true;
+    const btn=document.querySelector('[onclick*="exportDailyManagerPDF"]'); const oldText=btn?.textContent;
+    if(btn){btn.disabled=true;btn.textContent='جاري تجهيز التقرير...';}
+    const state=filterState(); const rows=filterSnapshot();
+    let w=null;
+    try{
+      if(!rows.length) throw new Error('لا توجد سجلات مطابقة للفلاتر الحالية.');
+      w=window.open('','_blank','width=1280,height=900'); if(!w)throw new Error('المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.');
+      const from=S($('dailyDateFromV10310')?.value||$('dailyDate')?.value||''); const to=S($('dailyDateToV10310')?.value||$('dailyDate')?.value||from);
+      const sup=S($('dailySupervisor')?.selectedOptions?.[0]?.textContent||'كل المشرفين');
+      const proj=S($('dailyProject')?.selectedOptions?.[0]?.textContent||'كل المشاريع');
+      const user=(()=>{try{return typeof session==='function'?session():JSON.parse(localStorage.getItem('tasneef_user')||'null');}catch(_){return null;}})();
+      let ta=0,tr=0; const trs=rows.map((l,i)=>{const a=actual(l),r=required(l),d=a-r;ta+=a;tr+=r;const st=status(a,r);const currentProject=A(window.data?.projects).find(p=>recId(p)===S(l.project_id));const stopped=currentProject&&!isActiveRecord(currentProject)?' <small class="stopped">المشروع موقوف حاليًا</small>':'';return `<tr><td>${i+1}</td><td>${esc(dOnly(l.log_date||l.check_in))}</td><td>${esc(uName(l.supervisor_id))}</td><td>${esc(pName(l.project_id))}${stopped}</td><td>${esc(workerNames(l))}</td><td>${esc(time12(l.check_in))}</td><td>${esc(time12(l.check_out))}</td><td>${esc(minTxt(a))}</td><td>${esc(minTxt(r))}</td><td>${d>=0?'+':'-'}${esc(minTxt(Math.abs(d)))}</td><td><span class="s ${st==='ضمن الوقت'?'ok':st==='زيادة'?'over':'bad'}">${esc(st)}</span></td><td>${esc(l.attendance_status||l.status||'-')}</td><td>${esc(l.notes||'-')}</td></tr>`;}).join('');
+      const logo='tasneef_logo_print.png';
+      const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>التسجيلات اليومية</title><style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#153d33;margin:0;font-size:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{padding:10px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0a5a49;padding-bottom:9px}.brand{display:flex;gap:10px;align-items:center}.brand img{width:120px;max-height:55px;object-fit:contain}.head h1{margin:0;color:#0a5a49}.meta{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:9px 0}.box{border:1px solid #d4e2dd;border-radius:9px;padding:7px;background:#f8fbfa}.box b{display:block;color:#0a5a49}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:8px}.sum{border:1px solid #d4e2dd;border-radius:9px;padding:7px;text-align:center}.sum strong{display:block;font-size:15px;color:#0a5a49}table{width:100%;border-collapse:collapse}thead{display:table-header-group}th{background:#0a5a49;color:#fff;padding:6px;border:1px solid #0a5a49}td{border:1px solid #d8e4e0;padding:5px;text-align:center;vertical-align:top}tr{break-inside:avoid}.s{padding:3px 6px;border-radius:999px;font-weight:bold}.ok{background:#e3f5ea;color:#14713a}.over{background:#fff3cf;color:#855b00}.bad{background:#ffe3e3;color:#9a2222}.stopped{display:block;color:#a12626;font-weight:bold}.foot{margin-top:8px;display:flex;justify-content:space-between;border-top:1px solid #d4e2dd;padding-top:7px}.pages:after{content:"صفحة " counter(page)}@media print{.sheet{padding:0}}</style></head><body><div class="sheet"><div class="head"><div class="brand"><img src="${logo}" onerror="this.style.display='none'"><div><b>شركة تصنيف لإدارة المرافق</b><br><small>TASNEF FACILITIES MANAGEMENT</small></div></div><div><h1>تقرير التسجيلات اليومية</h1><div>تم الإنشاء: ${esc(new Date().toLocaleString('ar-SA'))}</div></div></div><div class="meta"><div class="box"><b>الفترة</b>${esc(from||'-')} إلى ${esc(to||from||'-')}</div><div class="box"><b>المشروع</b>${esc(proj)}</div><div class="box"><b>المشرف</b>${esc(sup)}</div><div class="box"><b>عدد السجلات</b>${rows.length}</div><div class="box"><b>طبع بواسطة</b>${esc(user?.full_name||user?.username||'-')}</div></div><div class="summary"><div class="sum"><strong>${esc(minTxt(ta))}</strong>الوقت الفعلي</div><div class="sum"><strong>${esc(minTxt(tr))}</strong>الوقت المطلوب</div><div class="sum"><strong>${esc(minTxt(Math.abs(ta-tr)))}</strong>إجمالي الفرق</div><div class="sum"><strong>${rows.length}</strong>إجمالي السجلات</div></div><table><thead><tr><th>#</th><th>التاريخ</th><th>المشرف</th><th>المشروع</th><th>العمال</th><th>الدخول</th><th>الخروج</th><th>الفعلي</th><th>المطلوب</th><th>الفرق</th><th>حالة الوقت</th><th>الحضور</th><th>الملاحظات</th></tr></thead><tbody>${trs}</tbody></table><div class="foot"><span>تم إنشاء هذا التقرير من نظام شركة تصنيف لإدارة المرافق ويعتبر معتمدًا ما لم يبرر العميل خلاف ذلك</span><span class="pages"></span></div></div></body></html>`;
+      w.document.open();w.document.write(html);w.document.close();
+      await new Promise(r=>setTimeout(r,150)); await waitImages(w.document); restoreState(state);
+      w.focus();w.print();
+    }catch(e){console.error(BUILD,e);if(w&&!w.closed)w.close();restoreState(state);if(typeof msg==='function')msg('تعذر تجهيز تقرير الطباعة. لم يتم تعديل أو حذف أي بيانات. '+S(e.message),'err');else alert('تعذر تجهيز تقرير الطباعة. لم يتم تعديل أو حذف أي بيانات.');}
+    finally{window.__dailyPrintBusyV10601=false;if(btn){btn.disabled=false;btn.textContent=oldText||'طباعة التقرير / PDF';}setTimeout(sanitizeAll,0);}
+  };
+  console.log(BUILD+' loaded');
+})();

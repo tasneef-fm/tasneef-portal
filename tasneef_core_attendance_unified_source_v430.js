@@ -173,9 +173,9 @@
     const [dr,ar,wr,er,pr,ur]=await Promise.all([
       safe('monthly_distribution unified', c.from('monthly_distribution').select('*').eq('month_key',month).limit(50000)),
       (async()=>{try{return {data:await fetchAttendanceMonthV444(c,month),error:null};}catch(e){return {data:[],error:e};}})(),
-      safe('workers legacy', c.from('workers').select('*').limit(50000)),
+      safe('workers legacy', c.from('workers').select('*').eq('is_active', true).limit(50000)),
       safe('employees master', c.from('employees_master_v386').select('*').limit(50000)),
-      safe('projects active filter', c.from('projects').select('*').limit(50000)),
+      safe('projects active filter', c.from('projects').select('*').eq('is_active', true).limit(50000)),
       safe('app users active filter', c.from('app_users').select('*').limit(50000))
     ]);
     if(mySeq!==loadSeqV444) return false; // تجاهل أي طلب قديم وصل بعد طلب أحدث.
