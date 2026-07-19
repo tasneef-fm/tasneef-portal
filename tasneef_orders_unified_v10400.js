@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10423 / Final Server Source V488
+/* Tasneef Orders Unified v10423 / Final Server Source V489
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,8 +9,8 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10423) return;
-  window.__tasneefOrdersUnifiedV10423=true;
+  if(window.__tasneefOrdersUnifiedV10424) return;
+  window.__tasneefOrdersUnifiedV10424=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
@@ -368,15 +368,15 @@
     const res=await fetch(`${URL}/rest/v1/rpc/${name}`,{method:'POST',cache:'no-store',signal,headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(payload)});
     const text=await res.text();if(!res.ok)throw new Error(text||`HTTP ${res.status}`);return text?JSON.parse(text):null;
   }
-  async function loadFilterOptions(){try{const out=await rpc('get_orders_filter_options_server_v488',{p_request:{p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]}});filterOptions=out||filterOptions;hydrateFilters();}catch(e){console.warn('تعذر تحميل خيارات فلاتر الأوردرات',e);hydrateFilters();}}
+  async function loadFilterOptions(){try{const out=await rpc('get_orders_filter_options_server_v489',{p_request:{p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]}});filterOptions=out||filterOptions;hydrateFilters();}catch(e){console.warn('تعذر تحميل خيارات فلاتر الأوردرات',e);hydrateFilters();}}
   function showOrdersError(message){const html=`<div class="ou-note" style="background:#fff0f0;color:#a32121">تعذر تحميل الأوردرات من السيرفر: ${E(message)} <button class="light" onclick="tasneefOrders10400.load()">إعادة المحاولة</button></div>`;const admin=$('ordersCardsV360');if(admin)admin.innerHTML=html;const sup=$('supOrdersBodyV10061');if(sup)sup.innerHTML=html;}
   async function load(){
     if(ordersAbort)ordersAbort.abort();ordersAbort=new AbortController();const requestId=Date.now();window.__tasneefOrdersRequestId=requestId;ordersLoading=true;setOrdersLoadingState('جارٍ تحميل الأوردرات من السيرفر...');const t0=performance.now();
-    try{const out=await rpc('get_unified_orders_from_server_v488',{p_request:getFilterPayload()},ordersAbort.signal);if(requestId!==window.__tasneefOrdersRequestId)return;if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر قراءة مصدر الأوردرات');rows=Array.isArray(out.rows)?out.rows:[];totalRows=Number(out.total||0);summaryState=out.summary||{total_orders:0,completed_orders:0,unpaid_orders:0,billed_orders:0,total_before_vat:0,total_vat:0,total_inclusive:0,total_cost:0,total_net_profit:0};window.__tasneefOrdersDiagnostics={...(out?.diagnostics||{}),client_duration_ms:Math.round(performance.now()-t0),loaded_rows:rows.length,total_rows:totalRows,request_id:requestId};render();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));}
+    try{const out=await rpc('get_unified_orders_from_server_v489',{p_request:getFilterPayload()},ordersAbort.signal);if(requestId!==window.__tasneefOrdersRequestId)return;if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر قراءة مصدر الأوردرات');rows=Array.isArray(out.rows)?out.rows:[];totalRows=Number(out.total||0);summaryState=out.summary||{total_orders:0,completed_orders:0,unpaid_orders:0,billed_orders:0,total_before_vat:0,total_vat:0,total_inclusive:0,total_cost:0,total_net_profit:0};window.__tasneefOrdersDiagnostics={...(out?.diagnostics||{}),client_duration_ms:Math.round(performance.now()-t0),loaded_rows:rows.length,total_rows:totalRows,request_id:requestId};render();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));}
     catch(e){if(e?.name==='AbortError')return;console.error('Orders server load failed',e);showOrdersError(e.message);}finally{if(requestId===window.__tasneefOrdersRequestId)ordersLoading=false;}
   }
-  async function fetchAllFilteredOrders(){const out=await rpc('get_unified_orders_from_server_v488',{p_request:{...getFilterPayload(),p_page:1,p_page_size:5000,p_export_mode:true}});if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر جلب بيانات التصدير');return Array.isArray(out.rows)?out.rows:[];}
-  async function checkSystemHealth(){try{const t=performance.now(),out=await rpc('get_orders_health_v488',{}),ms=Math.round(performance.now()-t);window.__tasneefSystemHealth={...out,client_response_time_ms:ms};let el=$('ordersHealthV483');if(!el){el=document.createElement('button');el.id='ordersHealthV483';el.className='light';el.style.cssText='padding:7px 10px;border-radius:999px';document.querySelector('#orders .section-head .actions')?.appendChild(el);}if(el){const status=out?.status==='healthy'?'يعمل':out?.status==='partial'?'مشكلة جزئية':out?.status==='slow'?'بطء في الاستجابة':'غير متصل';el.textContent=`حالة النظام: ${status}`;el.onclick=()=>alert(`حالة السيرفر: ${status}
+  async function fetchAllFilteredOrders(){const out=await rpc('get_unified_orders_from_server_v489',{p_request:{...getFilterPayload(),p_page:1,p_page_size:5000,p_export_mode:true}});if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر جلب بيانات التصدير');return Array.isArray(out.rows)?out.rows:[];}
+  async function checkSystemHealth(){try{const t=performance.now(),out=await rpc('get_orders_health_v489',{}),ms=Math.round(performance.now()-t);window.__tasneefSystemHealth={...out,client_response_time_ms:ms};let el=$('ordersHealthV483');if(!el){el=document.createElement('button');el.id='ordersHealthV483';el.className='light';el.style.cssText='padding:7px 10px;border-radius:999px';document.querySelector('#orders .section-head .actions')?.appendChild(el);}if(el){const status=out?.status==='healthy'?'يعمل':out?.status==='partial'?'مشكلة جزئية':out?.status==='slow'?'بطء في الاستجابة':'غير متصل';el.textContent=`حالة النظام: ${status}`;el.onclick=()=>alert(`حالة السيرفر: ${status}
 زمن الاستجابة: ${ms}ms
 عدد الأوردرات: ${out?.source_count??'-'}
 آخر فحص: ${out?.checked_at||'-'}`);}}catch(e){console.warn('System health failed',e);}}
