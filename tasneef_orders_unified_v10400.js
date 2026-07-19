@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10416
+/* Tasneef Orders Unified v10417
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,8 +9,8 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10416) return;
-  window.__tasneefOrdersUnifiedV10416=true;
+  if(window.__tasneefOrdersUnifiedV10417) return;
+  window.__tasneefOrdersUnifiedV10417=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
@@ -369,25 +369,35 @@
   }
   async function load(attempt=0){
     const token=(window.__tasneefOrdersLoadToken=(window.__tasneefOrdersLoadToken||0)+1);
-    if(!rows.length)setOrdersLoadingState(attempt?'إعادة محاولة تحميل الأوردرات...':'جارٍ تحميل الأوردرات...');
+    const INITIAL_SIZE=30, BATCH_SIZE=200;
+    if(!rows.length)setOrdersLoadingState(attempt?'إعادة محاولة تحميل الأوردرات...':'جارٍ تحميل أحدث الأوردرات...');
     try{
-      const first=await fetchOrdersPage(0,1000);
+      // عرض أول دفعة صغيرة فوراً بدلاً من انتظار 1000 سجل كامل مع الإيصالات.
+      const first=await fetchOrdersPage(0,INITIAL_SIZE);
       if(token!==window.__tasneefOrdersLoadToken)return;
-      rows=first||[];render();hydrateFilters();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
-      // تحميل باقي البيانات على دفعات، مع تحديث العدادات والنتائج بعد كل دفعة.
+      rows=first||[];
+      render();hydrateFilters();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
+      if(!rows.length && attempt<3){await wait(900*(attempt+1));return load(attempt+1);}
+
+      // إتاحة فرصة للمتصفح لرسم الكروت أولاً، ثم تحميل بقية الأوردرات تدريجياً.
+      await wait(0);
       let offset=rows.length;
-      while(first.length===1000 || offset>=1000){
-        const batch=await fetchOrdersPage(offset,1000);
+      while(first.length===INITIAL_SIZE){
+        const batch=await fetchOrdersPage(offset,BATCH_SIZE);
         if(token!==window.__tasneefOrdersLoadToken)return;
         if(!batch.length)break;
         const byNo=new Map(rows.map(r=>[orderNo(r),r]));
-        batch.forEach(r=>byNo.set(orderNo(r),r));rows=[...byNo.values()];
+        batch.forEach(r=>byNo.set(orderNo(r),r));
+        rows=[...byNo.values()];
         render();hydrateFilters();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));
-        offset+=batch.length;if(batch.length<1000)break;
+        offset+=batch.length;
+        if(batch.length<BATCH_SIZE)break;
+        await wait(0);
       }
-      if(!rows.length && attempt<3){await wait(900*(attempt+1));return load(attempt+1);}
     }catch(e){
       console.error('Orders load failed',e);
+      // لا نخفي الدفعات التي ظهرت بالفعل إذا تعطل تحميل دفعة لاحقة.
+      if(rows.length){notify('ظهرت الأوردرات المتاحة، وتعذر إكمال دفعة لاحقة. اضغط تحديث للمحاولة مرة أخرى.','err');return;}
       if(attempt<3){await wait(900*(attempt+1));return load(attempt+1);}
       notify('تعذر تحميل الأوردرات: '+e.message,'err');
       const admin=$('ordersCardsV360');if(admin)admin.innerHTML='<div class="ou-note">تعذر تحميل الأوردرات. اضغط تحديث للمحاولة مرة أخرى.</div>';
