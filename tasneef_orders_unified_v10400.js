@@ -1,4 +1,4 @@
-/* Tasneef Orders Unified v10422 / Show All Fast V487
+/* Tasneef Orders Unified v10423 / Final Server Source V488
    المصدر الوحيد لقسم الأوردرات.
    - يحافظ على كل بيانات orders_shared القديمة دون حذف أو إعادة كتابة جماعية.
    - يمنع تشغيل سكربتات الأوردرات القديمة.
@@ -9,14 +9,14 @@
 */
 (function(){
   'use strict';
-  if(window.__tasneefOrdersUnifiedV10422) return;
-  window.__tasneefOrdersUnifiedV10422=true;
+  if(window.__tasneefOrdersUnifiedV10423) return;
+  window.__tasneefOrdersUnifiedV10423=true;
 
   const URL='https://zmjdqiswytxlbfgnfjfv.supabase.co';
   const KEY='sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb';
   const TABLE='orders_shared';
   const AUDIT='order_audit_logs';
-  const PAGE_SIZE=10000;
+  const PAGE_SIZE=25;
   const RENDER_BATCH_SIZE=80;
   let rows=[], page=1, totalRows=0, saving=false, editNo='', ordersLoading=false, ordersAbort=null, searchTimer=null, ordersRenderToken=0, summaryState={total_orders:0,completed_orders:0,unpaid_orders:0,billed_orders:0,total_before_vat:0,total_vat:0,total_inclusive:0,total_cost:0,total_net_profit:0};
   let filterOptions={projects:[],executors:[],senders:[],statuses:[],payments:[],billings:[],types:[]};
@@ -34,7 +34,7 @@
   const dataOf=r=>r&&r.data&&typeof r.data==='object'?r.data:r||{};
   const field=(r,...keys)=>{const d=dataOf(r); for(const k of keys){ if(d[k]!==undefined&&d[k]!==null&&S(d[k])!=='') return d[k]; } return '';};
   const num=v=>{const n=Number(S(v).replace(/,/g,'').replace(/[^0-9.-]/g,''));return Number.isFinite(n)?n:0;};
-  const money=v=>num(v).toLocaleString('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2})+' ر.س';
+  const money=v=>new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}).format(num(v))+' ر.س';
   const isSupervisorPage=()=>!!document.getElementById('supOrdersBodyV10061')&&!document.getElementById('ordersCardsV360');
   const norm=v=>S(v).toLowerCase().replace(/[\s_\-]+/g,'').replace(/[^\p{L}\p{N}@.]/gu,'');
   function userKeys(){
@@ -362,22 +362,23 @@
   function getFilterPayload(){
     const isSup=!!$('supOrderSearchV10061')&&!$('orderSearchV233');
     const clean=v=>{const x=S(v);return !x||/^(الكل|كل\s|جميع\s)/.test(x)?null:x;};
-    return {p_page:1,p_page_size:PAGE_SIZE,p_show_all:true,p_export_mode:true,p_search:clean($(isSup?'supOrderSearchV10061':'orderSearchV233')?.value),p_project:clean($(isSup?'supOrderFilterProjectV10061':'orderProjectFilterV233')?.value),p_executor:clean($(isSup?'ouSupExecutorFilter':'orderExecutorFilterV233')?.value),p_sender:isSup?null:clean($('orderSenderFilterV233')?.value),p_order_type:clean($(isSup?'ouSupTypeFilter':'ouAdminTypeFilter')?.value),p_execution_status:clean($(isSup?'supOrderFilterStatusV10061':'orderStatusFilterV233')?.value),p_payment_status:clean($(isSup?'ouSupPaymentFilter':'orderPaymentFilterV233')?.value),p_billing_status:clean($(isSup?'ouSupBillingFilter':'orderBillingFilterV233')?.value),p_date_from:isSup?null:clean($('orderFromDateV233')?.value),p_date_to:isSup?null:clean($('orderToDateV233')?.value),p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]};
+    return {p_page:page,p_page_size:PAGE_SIZE,p_export_mode:false,p_search:clean($(isSup?'supOrderSearchV10061':'orderSearchV233')?.value),p_project:clean($(isSup?'supOrderFilterProjectV10061':'orderProjectFilterV233')?.value),p_executor:clean($(isSup?'ouSupExecutorFilter':'orderExecutorFilterV233')?.value),p_sender:isSup?null:clean($('orderSenderFilterV233')?.value),p_order_type:clean($(isSup?'ouSupTypeFilter':'ouAdminTypeFilter')?.value),p_execution_status:clean($(isSup?'supOrderFilterStatusV10061':'orderStatusFilterV233')?.value),p_payment_status:clean($(isSup?'ouSupPaymentFilter':'orderPaymentFilterV233')?.value),p_billing_status:clean($(isSup?'ouSupBillingFilter':'orderBillingFilterV233')?.value),p_date_from:isSup?null:clean($('orderFromDateV233')?.value),p_date_to:isSup?null:clean($('orderToDateV233')?.value),p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]};
   }
   async function rpc(name,payload={},signal){
     const res=await fetch(`${URL}/rest/v1/rpc/${name}`,{method:'POST',cache:'no-store',signal,headers:{apikey:KEY,Authorization:'Bearer '+KEY,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(payload)});
     const text=await res.text();if(!res.ok)throw new Error(text||`HTTP ${res.status}`);return text?JSON.parse(text):null;
   }
-  async function loadFilterOptions(){try{const out=await rpc('get_orders_filter_options_server_v486',{p_request:{p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]}});filterOptions=out||filterOptions;hydrateFilters();}catch(e){console.warn('تعذر تحميل خيارات فلاتر الأوردرات',e);hydrateFilters();}}
+  async function loadFilterOptions(){try{const out=await rpc('get_orders_filter_options_server_v488',{p_request:{p_supervisor_scope:isSupervisorPage()?[...supervisorProjectNames()]:[]}});filterOptions=out||filterOptions;hydrateFilters();}catch(e){console.warn('تعذر تحميل خيارات فلاتر الأوردرات',e);hydrateFilters();}}
   function showOrdersError(message){const html=`<div class="ou-note" style="background:#fff0f0;color:#a32121">تعذر تحميل الأوردرات من السيرفر: ${E(message)} <button class="light" onclick="tasneefOrders10400.load()">إعادة المحاولة</button></div>`;const admin=$('ordersCardsV360');if(admin)admin.innerHTML=html;const sup=$('supOrdersBodyV10061');if(sup)sup.innerHTML=html;}
   async function load(){
-    if(ordersAbort)ordersAbort.abort();ordersAbort=new AbortController();const requestId=Date.now();window.__tasneefOrdersRequestId=requestId;ordersLoading=true;setOrdersLoadingState('جارٍ تحميل الصفحة المطلوبة من السيرفر...');const t0=performance.now();
-    try{const out=await rpc('get_unified_orders_from_server_v487',{p_request:getFilterPayload()},ordersAbort.signal);if(requestId!==window.__tasneefOrdersRequestId)return;rows=Array.isArray(out?.rows)?out.rows:[];totalRows=Number(out?.total||0);summaryState=out?.summary||summaryState;window.__tasneefOrdersDiagnostics={...(out?.diagnostics||{}),client_duration_ms:Math.round(performance.now()-t0),loaded_rows:rows.length,total_rows:totalRows,request_id:requestId};render();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));}
+    if(ordersAbort)ordersAbort.abort();ordersAbort=new AbortController();const requestId=Date.now();window.__tasneefOrdersRequestId=requestId;ordersLoading=true;setOrdersLoadingState('جارٍ تحميل الأوردرات من السيرفر...');const t0=performance.now();
+    try{const out=await rpc('get_unified_orders_from_server_v488',{p_request:getFilterPayload()},ordersAbort.signal);if(requestId!==window.__tasneefOrdersRequestId)return;if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر قراءة مصدر الأوردرات');rows=Array.isArray(out.rows)?out.rows:[];totalRows=Number(out.total||0);summaryState=out.summary||{total_orders:0,completed_orders:0,unpaid_orders:0,billed_orders:0,total_before_vat:0,total_vat:0,total_inclusive:0,total_cost:0,total_net_profit:0};window.__tasneefOrdersDiagnostics={...(out?.diagnostics||{}),client_duration_ms:Math.round(performance.now()-t0),loaded_rows:rows.length,total_rows:totalRows,request_id:requestId};render();optionList('ouCustomersList',rows.map(r=>S(field(r,'اسم العميل','customer_name'))));}
     catch(e){if(e?.name==='AbortError')return;console.error('Orders server load failed',e);showOrdersError(e.message);}finally{if(requestId===window.__tasneefOrdersRequestId)ordersLoading=false;}
   }
-  async function fetchAllFilteredOrders(){const out=await rpc('get_unified_orders_from_server_v487',{p_request:{...getFilterPayload(),p_page:1,p_page_size:10000,p_show_all:true,p_export_mode:true}});return Array.isArray(out?.rows)?out.rows:[];}
-  async function checkSystemHealth(){try{const t=performance.now(),out=await rpc('get_system_health',{}),ms=Math.round(performance.now()-t);window.__tasneefSystemHealth={...out,client_response_time_ms:ms};let el=$('ordersHealthV483');if(!el){el=document.createElement('button');el.id='ordersHealthV483';el.className='light';el.style.cssText='padding:7px 10px;border-radius:999px';document.querySelector('#orders .section-head .actions')?.appendChild(el);}if(el){const status=out?.status==='healthy'?'يعمل':out?.status==='slow'?'بطء في الاستجابة':'مشكلة جزئية';el.textContent=`حالة النظام: ${status}`;el.onclick=()=>alert(`حالة السيرفر: ${status}
+  async function fetchAllFilteredOrders(){const out=await rpc('get_unified_orders_from_server_v488',{p_request:{...getFilterPayload(),p_page:1,p_page_size:5000,p_export_mode:true}});if(!out||out.ok===false)throw new Error(out?.error_message||'تعذر جلب بيانات التصدير');return Array.isArray(out.rows)?out.rows:[];}
+  async function checkSystemHealth(){try{const t=performance.now(),out=await rpc('get_orders_health_v488',{}),ms=Math.round(performance.now()-t);window.__tasneefSystemHealth={...out,client_response_time_ms:ms};let el=$('ordersHealthV483');if(!el){el=document.createElement('button');el.id='ordersHealthV483';el.className='light';el.style.cssText='padding:7px 10px;border-radius:999px';document.querySelector('#orders .section-head .actions')?.appendChild(el);}if(el){const status=out?.status==='healthy'?'يعمل':out?.status==='partial'?'مشكلة جزئية':out?.status==='slow'?'بطء في الاستجابة':'غير متصل';el.textContent=`حالة النظام: ${status}`;el.onclick=()=>alert(`حالة السيرفر: ${status}
 زمن الاستجابة: ${ms}ms
+عدد الأوردرات: ${out?.source_count??'-'}
 آخر فحص: ${out?.checked_at||'-'}`);}}catch(e){console.warn('System health failed',e);}}
   async function save(ev){
     ev?.preventDefault?.(); if(saving)return; const v=values(); if(!validate(v))return; saving=true;
@@ -515,10 +516,21 @@
     step();
   }
   function render(){
-    const list=filterRows();page=1;renderSummary();
-    const admin=$('ordersCardsV360');if(admin){renderCardsProgressively(admin,list);const p=$('ordersPagerV360');if(p)p.innerHTML=`<b>تم عرض جميع الأوردرات: ${totalRows.toLocaleString('ar-SA')} نتيجة</b>`;}
+    const list=filterRows();renderSummary();
+    const admin=$('ordersCardsV360');
+    if(admin){
+      renderCardsProgressively(admin,list);
+      const p=$('ordersPagerV360');
+      if(p){
+        const pages=Math.max(1,Math.ceil(totalRows/PAGE_SIZE));
+        p.innerHTML=`<div style="display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap"><button class="light" ${page<=1?'disabled':''} onclick="tasneefOrders10400.prevPage()">السابق</button><b>صفحة ${page.toLocaleString('ar-SA')} من ${pages.toLocaleString('ar-SA')} — ${totalRows.toLocaleString('ar-SA')} نتيجة</b><button class="light" ${page>=pages?'disabled':''} onclick="tasneefOrders10400.nextPage()">التالي</button></div>`;
+      }
+    }
     const sup=$('supOrdersBodyV10061');if(sup)renderCardsProgressively(sup,list);
-    if($('ordersTotalKpiV233'))$('ordersTotalKpiV233').textContent=Number(summaryState.total_orders||0).toLocaleString('ar-SA');if($('ordersDoneKpiV233'))$('ordersDoneKpiV233').textContent=Number(summaryState.completed_orders||0).toLocaleString('ar-SA');if($('ordersDueKpiV233'))$('ordersDueKpiV233').textContent=Number(summaryState.unpaid_orders||0).toLocaleString('ar-SA');if($('ordersProfitKpiV233'))$('ordersProfitKpiV233').textContent=money(summaryState.total_net_profit||0).replace(' ر.س','');
+    if($('ordersTotalKpiV233'))$('ordersTotalKpiV233').textContent=Number(summaryState.total_orders||0).toLocaleString('ar-SA');
+    if($('ordersDoneKpiV233'))$('ordersDoneKpiV233').textContent=Number(summaryState.completed_orders||0).toLocaleString('ar-SA');
+    if($('ordersDueKpiV233'))$('ordersDueKpiV233').textContent=Number(summaryState.unpaid_orders||0).toLocaleString('ar-SA');
+    if($('ordersProfitKpiV233'))$('ordersProfitKpiV233').textContent=new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(num(summaryState.total_net_profit||0));
   }
   function hydrateFilters(){
     const fill=(id,vals,first)=>{const el=$(id);if(!el)return;const cur=el.value;el.innerHTML=`<option value="">${first}</option>`+[...new Set((vals||[]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(x=>`<option value="${E(x)}">${E(x)}</option>`).join('');if([...el.options].some(o=>o.value===cur))el.value=cur;};
@@ -529,6 +541,9 @@
     ['orderSearchV233','supOrderSearchV10061'].forEach(id=>{const el=$(id);if(el&&!el.dataset.ouBound){el.dataset.ouBound='1';el.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;load();},400);});}});
     ['orderProjectFilterV233','orderExecutorFilterV233','orderSenderFilterV233','orderStatusFilterV233','orderPaymentFilterV233','orderBillingFilterV233','orderFromDateV233','orderToDateV233','supOrderFilterProjectV10061','supOrderFilterStatusV10061','ouAdminTypeFilter','ouSupTypeFilter','ouSupExecutorFilter','ouSupPaymentFilter','ouSupBillingFilter'].forEach(id=>{const el=$(id);if(el&&!el.dataset.ouBound){el.dataset.ouBound='1';el.addEventListener('change',()=>{page=1;load();});}});
   }
+  function goToPage(n){const pages=Math.max(1,Math.ceil(totalRows/PAGE_SIZE));const next=Math.min(Math.max(Number(n)||1,1),pages);if(next===page)return;page=next;load();}
+  function nextPage(){goToPage(page+1);}
+  function prevPage(){goToPage(page-1);}
   window.resetOrdersFiltersV233=function(){['orderSearchV233','orderProjectFilterV233','orderExecutorFilterV233','orderSenderFilterV233','orderStatusFilterV233','orderPaymentFilterV233','orderBillingFilterV233','orderFromDateV233','orderToDateV233','ouAdminTypeFilter'].forEach(id=>{if($(id))$(id).value='';});page=1;load();};
   function boot(){stopLegacy();injectStyle();fixOrdersHeader();const ok=rebuildAdmin()||rebuildSupervisor();cleanupLegacyReceiptFields();if(!ok){setTimeout(boot,300);return;}ensureExtraFilters();setupSmartInputs();['ouInclusive','ouCost'].forEach(id=>{const el=$(id);if(el&&!el.dataset.ouCalc){el.dataset.ouCalc='1';el.addEventListener('input',recalcFinance);}});bind();const bill=$('ouBilling');if(bill&&!bill.dataset.ouBilling){bill.dataset.ouBilling='1';const sync=()=>{const done=bill.value==='تمت';if($('ouInvoiceNo'))$('ouInvoiceNo').disabled=!done;if($('ouInvoiceDate'))$('ouInvoiceDate').disabled=!done;if(!done){if($('ouInvoiceNo'))$('ouInvoiceNo').value='';if($('ouInvoiceDate'))$('ouInvoiceDate').value='';}};bill.addEventListener('change',sync);sync();}clear();Promise.allSettled([loadFilterOptions(),load(),checkSystemHealth()]);}
 
@@ -625,7 +640,7 @@
     const section=$('orders');if(!section)return;const head=section.querySelector('.section-head');if(!head)return;let actions=head.querySelector('.actions');if(!actions){actions=document.createElement('div');actions.className='actions';head.appendChild(actions);}actions.className='actions orders-section-actions-v10410';actions.innerHTML='<button onclick="clearOrderFormV233()">+ أوردر جديد</button><button class="light" onclick="tasneefOrders10400.exportExcel()">تصدير Excel</button><button class="light" onclick="tasneefOrders10400.openQuoteBuilder()">عروض الأسعار</button><button class="light" onclick="tasneefOrders10400.printFiltered()">طباعة حسب الفلتر</button>';
   }
 
-    window.tasneefOrders10400={load,save,edit,del,history,view:viewOrder,openReceipt,sendWhatsApp,page:d=>{page=Math.max(1,page+Number(d||0));load()},clear,render,exportExcel:exportOrdersExcel,openQuoteBuilder,printFiltered:printFilteredOrders};
+    window.tasneefOrders10400={nextPage,prevPage,goToPage,load,save,edit,del,history,view:viewOrder,openReceipt,sendWhatsApp,page:d=>{page=Math.max(1,page+Number(d||0));load()},clear,render,exportExcel:exportOrdersExcel,openQuoteBuilder,printFiltered:printFilteredOrders};
   window.saveOrderV233=save;window.clearOrderFormV233=clear;window.deleteCurrentOrderV233=deleteCurrent;window.editOrderV233=edit;window.deleteOrderV233=del;window.renderOrdersV233=render;
   window.supOrdersSaveV10061=save;window.supOrdersClearV10061=clear;window.supOrdersRenderV10061=render;
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
