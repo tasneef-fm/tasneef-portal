@@ -21570,6 +21570,10 @@ function financePrintReport(kind){
 /* ===== V10195 ROOT FIX: Monthly = live current projects + real month logs + safe project delete ===== */
 (function(){
   'use strict';
+  if(window.__tasneefMonthlyUnifiedOnlyV10801 || document.getElementById('monthlyCleanV403')) {
+    console.log('Tasneef V10195 legacy monthly loader disabled: V10801 unified monthly source is active');
+    return;
+  }
   if(window.__tasneefMonthlyRootV10195) return;
   window.__tasneefMonthlyRootV10195 = true;
 
