@@ -24939,7 +24939,13 @@ ${finalUrl}
 (function(){
   'use strict';
   const TABLE='project_worker_visits';
-  const state={visits:[],workers:[],loading:false,action:false,lastProject:''};
+  const state={
+    visits:[],workers:[],workersLoading:true,workersError:'',presenceLoading:true,presenceError:'',
+    action:false,lastProject:'',workersRequestId:0,presenceRequestId:0,
+    workersLoadedAt:0,presenceLoadedAt:0
+  };
+  const workersMemoryCache=new Map();
+  const WORKERS_CACHE_TTL=120000;
   const $id=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
@@ -24949,12 +24955,12 @@ ${finalUrl}
   const workerName=w=>S(w.name||w.full_name||w.worker_name||w.worker_identity||w.app_name||('عامل '+(w.id||'')));
   const workerCode=w=>S(w.worker_employee_code||w.employee_code||w.worker_code||w.code||'');
   const workerNumericId=w=>N(w.worker_id||w.app_worker_id||w.id);
-  const projectNameLocal=id=>{try{return typeof projectName==='function'?projectName(id):S((window.data?.projects||[]).find(p=>S(p.id)===S(id))?.name||id);}catch(_){return S(id)}};
+  const projectNameLocal=id=>{try{return typeof projectName==='function'?projectName(id):S((window.data?.projects||[]).find(p=>S(p.id)===S(id))?.name||id)}catch(_){return S(id)}};
   const currentUser=()=>typeof session==='function'?(session()||{}):{};
   const supervisorId=()=>S(currentUser().id||'');
   const userKeys=()=>[currentUser().id,currentUser().employee_code,currentUser().code,currentUser().username,currentUser().full_name,currentUser().name].map(S).filter(Boolean);
   const rowSupKeys=r=>[r.supervisor_id,r.app_supervisor_id,r.supervisor_employee_code,r.supervisor_code,r.supervisor_name,r.supervisor].map(S).filter(Boolean);
-  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);if(!uk.length)return true;if(rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b))))return true;const pid=S(r.project_id||r.assigned_project_id||r.app_project_id||r.project_key);return !!pid&&(window.data?.projects||[]).some(p=>S(p.id)===pid)};
+  const matchSupervisor=r=>{const uk=userKeys(),rk=rowSupKeys(r);if(!uk.length)return false;return rk.some(a=>uk.some(b=>a===b||norm(a)===norm(b)))};
   const dedupeWorkers=rows=>{
     const map=new Map();
     const master=window.data?.workers||[];
@@ -24971,8 +24977,6 @@ ${finalUrl}
       const code=mw?workerCode(mw):workerCode(r);
       const name=mw?workerName(mw):workerName(r);
       if(!id&&!code&&!name)return;
-      // المفتاح الموحّد يبدأ بكود الموظف، ثم رقم العامل في النظام الموحّد، ثم الاسم.
-      // هذا يمنع احتساب نفس العامل عدة مرات عند وجود سجلات توزيع قديمة بأرقام مختلفة.
       const key=code?'code:'+norm(code):(id?'id:'+id:'name:'+norm(name));
       let w=map.get(key);
       if(!w){w={id:id||0,worker_id:id||0,name,worker_name:name,employee_code:code,worker_employee_code:code,projects:[],raw:[]};map.set(key,w)}
@@ -24996,50 +25000,103 @@ ${finalUrl}
   function notify(text,type){try{if(typeof msg==='function')return msg(text,type||'')}catch(_){}alert(text)}
   function opToken(kind,pid){const key='tasneef_'+kind+'_'+supervisorId()+'_'+pid;let t=sessionStorage.getItem(key);if(!t){t=(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random());sessionStorage.setItem(key,t)}return{key,token:t}}
   function clearToken(key){sessionStorage.removeItem(key)}
-  async function fetchUnifiedWorkers(){
-    let rows=[];
+  function metric(id,text){const el=$id(id);if(el)el.textContent=text}
+  function loadingBox(text){return `<div class="sup-worker-empty">${esc2(text)}</div>`}
+  function retryBox(text,fn){return `<div class="sup-worker-empty">${esc2(text)}<br><button type="button" class="btn secondary" onclick="${fn}()">إعادة المحاولة</button></div>`}
+  function renderWorkersOnly(){
+    const assigned=$id('supAssignedWorkers');
+    if(state.workersLoading&&!state.workers.length){
+      metric('supWorkersTotalCount','...');
+      if(assigned)assigned.innerHTML=loadingBox('جاري تحميل عمال المشرف…');
+      return;
+    }
+    if(state.workersError&&!state.workers.length){
+      metric('supWorkersTotalCount','تعذر التحميل');
+      if(assigned)assigned.innerHTML=retryBox('تعذر تحميل عمال المشرف','reloadSupervisorWorkersV10710');
+      return;
+    }
+    metric('supWorkersTotalCount',state.workers.length);
+    if(assigned)assigned.innerHTML=state.workers.map(w=>{const ov=openVisitForWorker(w.id);return`<div class="sup-worker-row"><span><b>${esc2(workerName(w))}</b><br><small>${ov?'داخل '+esc2(projectNameLocal(ov.project_id)):esc2(workerProjectLabel(w))}</small></span></div>`}).join('')||'<div class="sup-worker-empty">لا يوجد عمال مرتبطون بالمشرف في النظام الموحد</div>';
+  }
+  function renderPresenceOnly(){
+    const pid=currentPid();
+    if(state.presenceLoading&&!state.visits.length){
+      metric('supWorkersInsideCount','...'); metric('supWorkersAvailableCount','...');
+      const inn=$id('supInsideWorkers'),av=$id('supAvailableWorkers');
+      if(inn)inn.innerHTML=loadingBox('جاري تحميل حالة الدخول…');
+      if(av)av.innerHTML=loadingBox('جاري تحديد العمال المتاحين…');
+      return;
+    }
+    if(state.presenceError&&!state.visits.length){
+      metric('supWorkersInsideCount','تعذر التحميل'); metric('supWorkersAvailableCount','تعذر التحميل');
+      const inn=$id('supInsideWorkers'),av=$id('supAvailableWorkers');
+      if(inn)inn.innerHTML=retryBox('تعذر تحميل حالة دخول العمال','reloadSupervisorPresenceV10710');
+      if(av)av.innerHTML=retryBox('تعذر تحديد العمال المتاحين','reloadSupervisorPresenceV10710');
+      return;
+    }
+    const insideRaw=state.visits.filter(v=>!v.check_out&&(!pid||S(v.project_id)===pid));
+    const insideMap=new Map();insideRaw.forEach(v=>insideMap.set(S(v.worker_id),v));const inside=[...insideMap.values()];
+    const available=state.workers.filter(w=>!openVisitForWorker(w.id));
+    metric('supWorkersInsideCount',inside.length);metric('supWorkersAvailableCount',available.length);
+    const inn=$id('supInsideWorkers');if(inn)inn.innerHTML=inside.map(v=>{const w=state.workers.find(x=>S(x.id)===S(v.worker_id));return`<label class="sup-worker-row"><input type="checkbox" class="sup-exit-worker" value="${N(v.worker_id)}"><span><b>${esc2(workerName(w||{id:v.worker_id}))}</b><br><small>دخول ${esc2(new Date(v.check_in).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit'}))}</small></span></label>`}).join('')||'<div class="sup-worker-empty">لا يوجد عمال داخل المشروع الآن</div>';
+    const av=$id('supAvailableWorkers');if(av)av.innerHTML=available.map(w=>`<label class="sup-worker-row"><input type="checkbox" class="sup-enter-worker" value="${N(w.id)}"><span><b>${esc2(workerName(w))}</b><br><small>${isForCurrentProject(w,pid)?'مخصص لهذا المشروع':'متاح للنقل — '+esc2(workerProjectLabel(w))}</small></span></label>`).join('')||'<div class="sup-worker-empty">لا يوجد عمال متاحون</div>';
+  }
+  function render(){renderWorkersOnly();renderPresenceOnly()}
+  async function fetchUnifiedWorkers(force=false){
+    const sid=supervisorId();if(!sid||!window.sb)return [];
+    const cacheKey='supervisor-workers:'+sid+':'+monthKey();
+    const cached=workersMemoryCache.get(cacheKey);
+    if(!force&&cached&&Date.now()-cached.at<WORKERS_CACHE_TTL){state.workers=cached.rows;state.workersLoading=false;state.workersError='';renderWorkersOnly()}
+    const requestId=++state.workersRequestId;state.workersLoading=!state.workers.length;state.workersError='';renderWorkersOnly();
+    const started=performance.now();
     try{
-      const r=await sb.from('monthly_distribution').select('*').eq('month_key',monthKey()).limit(5000);
-      if(r.error)throw r.error; rows=r.data||[];
-      // إثراء سجلات التوزيع بهوية العامل الرقمية من جدول العمال الموحد حتى يبقى الحفظ مرتبطًا بالعامل الصحيح.
+      let rows=[];
+      let r=await sb.from('monthly_distribution').select('*').eq('month_key',monthKey()).eq('supervisor_id',N(sid)).limit(2000);
+      if(r.error)throw r.error;rows=r.data||[];
+      // توافق مع السجلات القديمة التي خزنت هوية المشرف بالاسم أو الكود بدل الرقم.
+      if(!rows.length){
+        r=await sb.from('monthly_distribution').select('*').eq('month_key',monthKey()).limit(5000);
+        if(r.error)throw r.error;rows=(r.data||[]).filter(matchSupervisor);
+      }
       const baseWorkers=window.data?.workers||[];
       rows=rows.map(row=>{
         const code=workerCode(row),name=workerName(row);
         const match=baseWorkers.find(w=>(code&&workerCode(w)&&norm(workerCode(w))===norm(code))||(name&&workerName(w)&&norm(workerName(w))===norm(name)));
-        // نستخدم رقم العامل من النظام الموحّد دائمًا حتى لو كان سجل التوزيع القديم يحمل رقمًا مختلفًا.
         return match?{...row,worker_id:workerNumericId(match),app_worker_id:workerNumericId(match),worker_employee_code:workerCode(match)||code,worker_name:workerName(match)||name}:row;
       });
-    }catch(e){console.warn('monthly_distribution workers:',e.message);rows=[]}
-    if(!rows.length){
-      const fallback=(window.data?.workers||[]).map(w=>({...w,supervisor_id:(typeof workerSupId==='function'?workerSupId(w):(w.app_supervisor_id||w.supervisor_id)),project_id:(typeof workerProjectId==='function'?workerProjectId(w):(w.project_id||w.assigned_project_id))}));
-      rows=fallback;
+      if(!rows.length){
+        rows=baseWorkers.map(w=>({...w,supervisor_id:(typeof workerSupId==='function'?workerSupId(w):(w.app_supervisor_id||w.supervisor_id)),project_id:(typeof workerProjectId==='function'?workerProjectId(w):(w.project_id||w.assigned_project_id))})).filter(matchSupervisor);
+      }
+      const workers=dedupeWorkers(rows);
+      if(requestId!==state.workersRequestId)return state.workers;
+      state.workers=workers;state.workersLoading=false;state.workersError='';state.workersLoadedAt=Date.now();
+      workersMemoryCache.set(cacheKey,{at:Date.now(),rows:workers});
+      window.__tasneefSupervisorWorkersHealthV10710={supervisorId:sid,count:workers.length,loadMs:Math.round(performance.now()-started),requests:rows.length?1:2,responseRows:rows.length,loadedAt:new Date().toISOString()};
+      renderWorkersOnly();renderPresenceOnly();return workers;
+    }catch(e){
+      if(requestId!==state.workersRequestId)return state.workers;
+      state.workersLoading=false;state.workersError=S(e.message||e);console.error('supervisor workers load:',e);renderWorkersOnly();throw e;
     }
-    state.workers=dedupeWorkers(rows);
   }
-  async function fetchVisits(){
-    if(state.loading||!window.sb)return;state.loading=true;
+  async function fetchPresence(force=false){
+    const sid=supervisorId();if(!sid||!window.sb)return [];
+    const requestId=++state.presenceRequestId;state.presenceLoading=!state.visits.length;state.presenceError='';renderPresenceOnly();
     try{
-      const [vr]=await Promise.all([
-        sb.from(TABLE).select('*').eq('supervisor_id',N(supervisorId())).is('check_out',null).order('check_in',{ascending:false}).limit(500),
-        fetchUnifiedWorkers()
-      ]);
-      if(vr.error){console.warn('project_worker_visits load:',vr.error.message);state.visits=[]}else state.visits=vr.data||[];
-    }finally{state.loading=false;render()}
+      const vr=await sb.from(TABLE).select('*').eq('supervisor_id',N(sid)).is('check_out',null).order('check_in',{ascending:false}).limit(500);
+      if(requestId!==state.presenceRequestId)return state.visits;
+      if(vr.error)throw vr.error;
+      state.visits=vr.data||[];state.presenceLoading=false;state.presenceError='';state.presenceLoadedAt=Date.now();renderPresenceOnly();renderWorkersOnly();return state.visits;
+    }catch(e){
+      if(requestId!==state.presenceRequestId)return state.visits;
+      state.presenceLoading=false;state.presenceError=S(e.message||e);console.error('project_worker_visits load:',e);renderPresenceOnly();throw e;
+    }
   }
-  function workerProjectLabel(w){return (w.projects||[]).map(p=>p.name||projectNameLocal(p.id)).filter(Boolean).join('، ')||'غير مرتبط بمشروع'}
-  function isForCurrentProject(w,pid){return !pid||(w.projects||[]).some(p=>S(p.id)===S(pid)||norm(p.name)===norm(projectNameLocal(pid)))}
-  function render(){
-    const workers=assignedWorkers(),pid=currentPid();
-    const insideRaw=state.visits.filter(v=>!v.check_out&&(!pid||S(v.project_id)===pid));
-    const insideMap=new Map();insideRaw.forEach(v=>insideMap.set(S(v.worker_id),v));const inside=[...insideMap.values()];
-    const available=workers.filter(w=>!openVisitForWorker(w.id));
-    if($id('supWorkersTotalCount'))$id('supWorkersTotalCount').textContent=workers.length;
-    if($id('supWorkersInsideCount'))$id('supWorkersInsideCount').textContent=inside.length;
-    if($id('supWorkersAvailableCount'))$id('supWorkersAvailableCount').textContent=available.length;
-    const assigned=$id('supAssignedWorkers');if(assigned)assigned.innerHTML=workers.map(w=>{const ov=openVisitForWorker(w.id);return`<div class="sup-worker-row"><span><b>${esc2(workerName(w))}</b><br><small>${ov?'داخل '+esc2(projectNameLocal(ov.project_id)):esc2(workerProjectLabel(w))}</small></span></div>`}).join('')||'<div class="sup-worker-empty">لا يوجد عمال مرتبطون بالمشرف في النظام الموحد</div>';
-    const inn=$id('supInsideWorkers');if(inn)inn.innerHTML=inside.map(v=>{const w=workers.find(x=>S(x.id)===S(v.worker_id));return`<label class="sup-worker-row"><input type="checkbox" class="sup-exit-worker" value="${N(v.worker_id)}"><span><b>${esc2(workerName(w||{id:v.worker_id}))}</b><br><small>دخول ${esc2(new Date(v.check_in).toLocaleTimeString('ar-SA',{hour:'numeric',minute:'2-digit'}))}</small></span></label>`}).join('')||'<div class="sup-worker-empty">لا يوجد عمال داخل المشروع الآن</div>';
-    const av=$id('supAvailableWorkers');if(av)av.innerHTML=available.map(w=>`<label class="sup-worker-row"><input type="checkbox" class="sup-enter-worker" value="${N(w.id)}"><span><b>${esc2(workerName(w))}</b><br><small>${isForCurrentProject(w,pid)?'مخصص لهذا المشروع':'متاح للنقل — '+esc2(workerProjectLabel(w))}</small></span></label>`).join('')||'<div class="sup-worker-empty">لا يوجد عمال متاحون</div>';
+  async function fetchVisits(force=false){
+    const results=await Promise.allSettled([fetchUnifiedWorkers(force),fetchPresence(force)]);
+    render();return results;
   }
+  window.reloadSupervisorWorkersV10710=()=>fetchUnifiedWorkers(true);
+  window.reloadSupervisorPresenceV10710=()=>fetchPresence(true);
   function uniqueWorkers(workers){return [...new Map((workers||[]).map(w=>[S(w.id||workerNumericId(w)||workerCode(w)||norm(workerName(w))),w])).values()].filter(Boolean)}
   function workersFromVisits(rows){
     return uniqueWorkers((rows||[]).map(v=>{
@@ -25343,9 +25400,16 @@ ${finalUrl}
       await finalizeCameraShare(rawPhoto,'تم تسجيل خروج المشروع',pid,workers);
     }catch(e){notify('تعذر تسجيل الخروج: '+(e.message||e),'err')}finally{setBusy(btn,false)}
   };
-  const oldProjectChange=window.onLogProjectChange;window.onLogProjectChange=function(){try{if(typeof oldProjectChange==='function')oldProjectChange()}catch(_){}state.lastProject=currentPid();render()};
-  const oldInit=window.initSupervisor;window.initSupervisor=async function(){await oldInit.apply(this,arguments);await fetchVisits();render()};
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)fetchVisits()});
+  const oldProjectChange=window.onLogProjectChange;window.onLogProjectChange=function(){try{if(typeof oldProjectChange==='function')oldProjectChange()}catch(_){}state.lastProject=currentPid();renderPresenceOnly();renderWorkersOnly()};
+  const oldInit=window.initSupervisor;window.initSupervisor=async function(){
+    render();
+    const workersPromise=fetchUnifiedWorkers(false).catch(()=>null);
+    const presencePromise=fetchPresence(false).catch(()=>null);
+    const basePromise=typeof oldInit==='function'?Promise.resolve(oldInit.apply(this,arguments)).catch(e=>{console.warn('base supervisor init',e);return null}):Promise.resolve();
+    await Promise.allSettled([workersPromise,presencePromise,basePromise]);
+    render();
+  };
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){fetchUnifiedWorkers(false).catch(()=>{});fetchPresence(true).catch(()=>{})}});
 })();;
 
 
