@@ -522,7 +522,12 @@ body .tasneef-version-badge, body .version-badge, body .build-badge, body #versi
 <div class="card">
 <h2>تذاكر</h2>
 <div class="filters">
-<select id="ticketFilterStatus" onchange="renderTickets()"><option value="">كل الحالات</option><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select><select id="ticketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>
+<select id="ticketFilterStatus" onchange="renderTickets()"><option value="">كل الحالات</option><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select>
+<select id="ticketFilterReceiveV10801" onchange="renderTickets()" title="حالة الاستلام"><option value="">المستلمين وبدون استلام</option><option value="received">تم الاستلام</option><option value="unreceived">بدون استلام</option></select>
+<input id="ticketFilterFromV10801" type="date" onchange="renderTickets()" title="من تاريخ" aria-label="من تاريخ"/>
+<input id="ticketFilterToV10801" type="date" onchange="renderTickets()" title="إلى تاريخ" aria-label="إلى تاريخ"/>
+<select id="ticketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>
+<button type="button" class="light" onclick="resetTicketAdvancedFiltersV10801()">إعادة تعيين</button>
 <input id="ticketSearch" oninput="renderTickets()" placeholder="بحث برقم التذكرة، المشروع، العنوان أو الوصف"/>
 </div>
 <div class="smart-ticket-summary" id="ticketsSmartSummary"></div><div class="smart-ticket-grid" id="ticketsBody"></div>
@@ -792,7 +797,7 @@ window.__tasneefOrdersUnifiedOnlyV10800=true;
 window.__tasneefOrdersUnifiedOnlyV10801=true;
 window.__TASNEEF_BUILD__="V10801-CRM-CUSTOMER-NAME-FIX";
 </script>
-<script defer="" src="app.js?v=10801-monthly-timezone-hotfix"></script>
+<script defer="" src="app.js?v=10801-ticket-date-receive-scope"></script>
 <script defer="" src="tasneef_orders_v10801.js?v=10801-inclusive-price-status-cards"></script>
 
 

@@ -26027,3 +26027,135 @@ ${finalUrl}
   try{ initSupervisor=initSupervisorUnified; }catch(_){ }
   console.log('Tasneef '+VERSION+' loaded');
 })();
+
+/* ===== V10801: Ticket date range + received/unreceived + supervisor project scope ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefTicketDateReceiveScopeV10801) return;
+  window.__tasneefTicketDateReceiveScopeV10801=true;
+  const BUILD='V10801_TICKET_DATE_RECEIVE_SCOPE';
+  const $=id=>document.getElementById(id);
+  const A=v=>Array.isArray(v)?v:[];
+  const S=v=>String(v??'').trim();
+  const E=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function currentUser(){
+    try{ if(typeof window.session==='function') return window.session()||{}; }catch(_){}
+    try{ return JSON.parse(localStorage.getItem('tasneef_user')||'{}')||{}; }catch(_){ return {}; }
+  }
+  function isSupervisor(){ return S(currentUser().role).toLowerCase()==='supervisor'; }
+  function userId(){ const u=currentUser(); return S(u.id||u.user_id||u.uid); }
+  function notify(text,type){ try{ if(typeof window.msg==='function') return window.msg(text,type||'err'); }catch(_){} console.warn(text); }
+  function ticketProjectId(t){ return S(t?.project_id||t?.projectId||t?.project?.id); }
+  function ticketSupervisorId(t){ return S(t?.supervisor_id||t?.supervisorId); }
+  function ticketCreatedDate(t){
+    const raw=t?.created_at||t?.createdAt||t?.date||t?.updated_at||'';
+    if(!raw) return '';
+    try{
+      const d=new Date(raw); if(isNaN(d)) return S(raw).slice(0,10);
+      const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+      const m={}; parts.forEach(p=>m[p.type]=p.value);
+      return `${m.year}-${m.month}-${m.day}`;
+    }catch(_){ return S(raw).slice(0,10); }
+  }
+  function isReceived(t){
+    return !!S(t?.claimed_by||t?.claimed_by_name||t?.claimed_at||t?.received_by||t?.received_by_name||t?.received_at||t?.assigned_to||t?.assignee_id||t?.assignee_name||t?.technician_id||t?.technician_name);
+  }
+  function allowedProjectIds(){
+    const d=window.data||{}; const u=currentUser(); const uid=userId(); const set=new Set();
+    A(u.allowed_project_ids||u.project_ids||u.projects).forEach(v=>set.add(S(v?.id??v)));
+    A(d.projects).forEach(p=>{ if(S(p?.supervisor_id||p?.supervisorId)===uid) set.add(S(p.id)); });
+    try{ const x=window.__tasneefSupervisorProjectIdsV371; if(x&&typeof x.forEach==='function') x.forEach(v=>set.add(S(v))); }catch(_){}
+    return set;
+  }
+  function ticketInSupervisorScope(t){
+    if(!isSupervisor()) return true;
+    const set=allowedProjectIds(); const pid=ticketProjectId(t);
+    if(set.size) return !!pid && set.has(pid);
+    return ticketSupervisorId(t)===userId();
+  }
+  function filterControls(){
+    const sup=!!$('supTicketsBody');
+    return {
+      from:S($(sup?'supTicketFilterFromV10801':'ticketFilterFromV10801')?.value),
+      to:S($(sup?'supTicketFilterToV10801':'ticketFilterToV10801')?.value),
+      receive:S($(sup?'supTicketFilterReceiveV10801':'ticketFilterReceiveV10801')?.value)
+    };
+  }
+  function advancedFilter(rows){
+    const f=filterControls();
+    if(f.from&&f.to&&f.from>f.to){ notify('تاريخ البداية يجب أن يكون قبل تاريخ النهاية','err'); return []; }
+    return A(rows).filter(t=>{
+      if(isSupervisor()&&!ticketInSupervisorScope(t)) return false;
+      const d=ticketCreatedDate(t);
+      if(f.from&&(!d||d<f.from)) return false;
+      if(f.to&&(!d||d>f.to)) return false;
+      if(f.receive==='received'&&!isReceived(t)) return false;
+      if(f.receive==='unreceived'&&isReceived(t)) return false;
+      return true;
+    });
+  }
+  function emptyRender(){
+    const body=$('supTicketsBody')||$('ticketsBody');
+    const summary=$('supTicketsSmartSummary')||$('ticketsSmartSummary');
+    if(body){ body.classList.add('smart-ticket-grid'); body.innerHTML='<div class="muted" style="padding:16px">لا توجد تذاكر مطابقة للفلاتر الحالية</div>'; }
+    if(summary) summary.innerHTML='<div class="ticket-root-v10246-summary"><span class="ticket-root-v10246-kpi">الإجمالي: <b>0</b></span><span class="ticket-root-v10246-kpi">تم الاستلام: <b>0</b></span><span class="ticket-root-v10246-kpi">بدون استلام: <b>0</b></span></div>';
+  }
+  function appendReceiveSummary(rows){
+    const summary=$('supTicketsSmartSummary')||$('ticketsSmartSummary'); if(!summary) return;
+    summary.querySelectorAll('.ticket-receive-kpi-v10801').forEach(x=>x.remove());
+    const received=A(rows).filter(isReceived).length, unreceived=A(rows).length-received;
+    const wrap=summary.querySelector('.ticket-root-v10246-summary')||summary;
+    wrap.insertAdjacentHTML('beforeend',`<span class="ticket-root-v10246-kpi ticket-receive-kpi-v10801">تم الاستلام: <b>${received}</b></span><span class="ticket-root-v10246-kpi ticket-receive-kpi-v10801">بدون استلام: <b>${unreceived}</b></span>`);
+  }
+  const previousRender=window.renderTickets;
+  window.renderTickets=async function(){
+    const d=window.data=window.data||{}; const original=A(d.tickets); const filtered=advancedFilter(original);
+    if(!filtered.length){ emptyRender(); return; }
+    d.tickets=filtered;
+    try{
+      if(typeof previousRender==='function') await Promise.resolve(previousRender.apply(this,arguments));
+      else emptyRender();
+      appendReceiveSummary(filtered);
+    }catch(e){ console.error(BUILD,e); emptyRender(); }
+    finally{ d.tickets=original; }
+  };
+  window.resetTicketAdvancedFiltersV10801=function(){
+    ['ticketFilterFromV10801','ticketFilterToV10801','ticketFilterReceiveV10801','supTicketFilterFromV10801','supTicketFilterToV10801','supTicketFilterReceiveV10801'].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+    window.renderTickets();
+  };
+  function scopeSupervisorTickets(){
+    if(!isSupervisor()) return;
+    const d=window.data=window.data||{};
+    if(Array.isArray(d.tickets)) d.tickets=d.tickets.filter(ticketInSupervisorScope);
+  }
+  const previousLoadAll=window.loadAll;
+  if(typeof previousLoadAll==='function') window.loadAll=async function(){ const r=await previousLoadAll.apply(this,arguments); scopeSupervisorTickets(); return r; };
+  const previousRefreshAll=window.refreshAll;
+  if(typeof previousRefreshAll==='function') window.refreshAll=async function(){ const r=await previousRefreshAll.apply(this,arguments); scopeSupervisorTickets(); return r; };
+  function guardAction(name){
+    const fn=window[name]; if(typeof fn!=='function'||fn.__ticketScopeGuardV10801) return;
+    const wrapped=function(id){
+      if(isSupervisor()){
+        const t=A(window.data?.tickets).find(x=>S(x.id)===S(id));
+        if(!t||!ticketInSupervisorScope(t)){ notify('هذه التذكرة لا تخص أحد مشاريعك','err'); return; }
+      }
+      return fn.apply(this,arguments);
+    };
+    wrapped.__ticketScopeGuardV10801=true; window[name]=wrapped;
+  }
+  function ensureStyle(){
+    if($('ticketAdvancedFilterStyleV10801')) return;
+    const st=document.createElement('style'); st.id='ticketAdvancedFilterStyleV10801';
+    st.textContent='.filters input[type="date"]{min-width:145px}.ticket-receive-kpi-v10801 b{color:#075342}@media(max-width:760px){#tickets .filters,#supTickets .filters{grid-template-columns:1fr!important}}';
+    document.head.appendChild(st);
+  }
+  function boot(){
+    ensureStyle(); scopeSupervisorTickets();
+    ['editTicket','claimTicket','closeTicket','setTicketStatus','viewTicketSmartV147','sendTicketWhatsappV10246','sendTicketWhatsApp'].forEach(guardAction);
+    try{ window.renderTickets(); }catch(_){}
+  }
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,900));
+  window.addEventListener('load',()=>setTimeout(boot,1400));
+  setTimeout(boot,2200);
+  console.log('Tasneef '+BUILD+' loaded');
+})();
