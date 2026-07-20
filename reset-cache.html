@@ -23,7 +23,7 @@
     async function clean(){
       const out=document.getElementById('out');
       try{
-        try{localStorage.setItem('tasneef_version','10801-crm-customer-name-fix');localStorage.setItem('tasneef_build_version','V10801-CRM-CUSTOMER-NAME-FIX');}catch(_){ }
+        try{localStorage.setItem('tasneef_version','10801-crm-inspection-stage-fix');localStorage.setItem('tasneef_build_version','V10801-CRM-INSPECTION-STAGE-FIX');}catch(_){ }
         if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)await r.unregister();}
         if(window.caches&&location.protocol!=='file:'){const keys=await caches.keys();for(const k of keys)await caches.delete(k);}
         out.textContent='تم تحديث الملفات بنجاح دون حذف بياناتك. سيتم فتح تسجيل الدخول.';
@@ -31,5 +31,5 @@
       }catch(e){out.textContent='حدث خطأ: '+(e.message||e);}
     }
   </script>
-<script>try{localStorage.setItem("tasneef_build_marker","V10801-ticket-date-receive-scope");}catch(e){}</script></body>
+<script>try{localStorage.setItem("tasneef_build_marker","V10801-crm-inspection-stage-fix");}catch(e){}</script></body>
 </html>
