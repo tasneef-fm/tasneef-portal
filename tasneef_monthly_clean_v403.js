@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const BUILD='V10801-MONTHLY-TIMEZONE-HOTFIX';
+  const BUILD='V10801-PRINT-FULLTIME-HOTFIX';
   const $=id=>document.getElementById(id);
   const S=v=>(v==null?'':String(v)).trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0;};
@@ -328,8 +328,10 @@
         row.requiredMinutes=N(required.requiredMinutes);
         if(row.requiredMinutes<=0&&N(row.loggedRequiredMinutes)>0)row.requiredMinutes=N(row.loggedRequiredMinutes);
         const metrics=calculateFullTimeMetrics(row.totalMinutes,row.requiredMinutes);
-        Object.assign(row,metrics,{percentage:metrics.displayedPercentage});
-        row.calcNote='الفعلي لجميع العمال ÷ المطلوب لجميع العمال؛ النسبة المعروضة لا تتجاوز 100%';
+        // حسب اعتماد التشغيل: جميع المشاريع الدائمة/الدوام الكامل تظهر بنسبة ثابتة 100%.
+        // نحتفظ بالنسبة الخام والوقت الإضافي للتشخيص والتصدير دون تغيير السجلات الأصلية.
+        Object.assign(row,metrics,{percentage:100,displayedPercentage:100});
+        row.calcNote='مشروع دوام كامل — النسبة المعتمدة 100%';
       }else{
         row.calcNote='مدة المشروع ÷ إجمالي مدة مشاريع المشرف';
       }
@@ -482,11 +484,51 @@
   }
 
   function printReport(){
-    const rows=currentVisibleRows||[];const daily=rows.filter(r=>!isFull(r)),full=rows.filter(isFull),total=rows.reduce((s,r)=>s+N(r.totalMinutes),0);const groups=new Map();daily.forEach(r=>{const k=r.supervisorName||'-';if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
+    const rows=currentVisibleRows||[];
+    if(!rows.length){
+      const message=$('mc401Message');if(message)message.textContent='لا توجد بيانات جاهزة للطباعة.';
+      return;
+    }
+    const daily=rows.filter(r=>!isFull(r));
+    const full=rows.filter(isFull);
+    const total=rows.reduce((s,r)=>s+N(r.totalMinutes),0);
+    const groups=new Map();
+    daily.forEach(r=>{const k=r.supervisorName||'-';if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r);});
     const logo=document.querySelector('img[src*="tasneef_logo_print"]')?.src||'tasneef_logo_print.png';
-    const style=$('monthlyCleanV403Css')?.textContent||'';const extra=$('mc406Css')?.textContent||'';
-    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية ${esc(currentMonthLoaded||selectedMonth())}</title><style>${style}\n${extra}\nbody{font-family:Tahoma,Arial,sans-serif;direction:rtl;margin:14px;color:#061f18}.print-head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0A4033;padding-bottom:10px;margin-bottom:10px}.print-head img{width:64px}.print-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0}.print-kpi{border:1px solid #cfe2dc;border-radius:12px;padding:8px;text-align:center}.section-title{background:#eef8f5;border-right:6px solid #0A4033;border-radius:10px;padding:9px;color:#0A4033}</style></head><body><div class="print-head"><img src="${logo}"><div><h1>تقرير الأوقات الشهرية</h1><b>شهر ${esc(currentMonthLoaded||selectedMonth())}</b></div></div><div class="print-kpis"><div class="print-kpi">المشاريع<br><b>${rows.length}</b></div><div class="print-kpi">زيارة يومية<br><b>${daily.length}</b></div><div class="print-kpi">دوام كامل<br><b>${full.length}</b></div><div class="print-kpi">إجمالي الوقت<br><b>${esc(minsText(total))}</b></div><div class="print-kpi">المصدر<br><b>السيرفر</b></div></div><h2 class="section-title">مشاريع الزيارة اليومية</h2>${[...groups.entries()].map(([s,list])=>dailyBox(s,list)).join('')||'<p>لا توجد.</p>'}<h2 class="section-title">مشاريع الدوام الكامل</h2><div class="mc401-grid">${full.map(fullCard).join('')||'<p>لا توجد.</p>'}</div><script>setTimeout(()=>print(),400)<\/script></body></html>`;
-    const win=window.open('','_blank');if(win){win.document.open();win.document.write(html);win.document.close();}
+    const month=esc(currentMonthLoaded||selectedMonth());
+    const printCss=`
+      @page{size:A4 landscape;margin:8mm}
+      *{box-sizing:border-box}
+      html,body{margin:0;padding:0;background:#fff!important;color:#061f18!important;visibility:visible!important}
+      body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:8px;font-size:12px}
+      body *{visibility:visible!important}
+      .print-head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #0A4033;padding-bottom:10px;margin-bottom:10px}
+      .print-head img{width:70px;height:auto}.print-head h1{margin:0 0 6px;color:#0A4033}
+      .print-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0}
+      .print-kpi{border:1px solid #cfe2dc;border-radius:10px;padding:8px;text-align:center;background:#fff}
+      .section-title{background:#eef8f5;border-right:6px solid #0A4033;border-radius:8px;padding:8px;color:#0A4033;margin:14px 0 8px}
+      .mc406-daily-card{border:1.5px solid #0A4033;border-radius:12px;padding:10px;margin:8px 0;background:#fff;break-inside:avoid;page-break-inside:avoid}
+      .mc406-daily-head{display:flex;justify-content:space-between;gap:8px;align-items:center;border-bottom:1px solid #dce6e2;padding-bottom:6px;margin-bottom:6px}
+      .mc406-daily-head h3{margin:0;color:#0A4033}.mc406-mini{display:flex;gap:4px;flex-wrap:wrap}
+      .mc406-mini span{background:#eef8f5;border:1px solid #cfe2dc;border-radius:999px;padding:4px 7px;font-weight:700}
+      .mc406-table{width:100%;border-collapse:collapse}.mc406-table th{background:#f2f8f5;color:#0A4033}
+      .mc406-table th,.mc406-table td{padding:6px;border-bottom:1px solid #edf1ef;text-align:right;font-size:10px}
+      .mc406-progress,.mc401-bar{height:6px;background:#edf3f1;border-radius:999px;overflow:hidden}.mc406-progress i,.mc401-bar i{display:block;height:100%;background:#0A4033}
+      .mc406-workers,.mc401-workers{margin-top:6px}.mc406-pill,.mc401-pill{display:inline-block;background:#eef8f5;border:1px solid #d5e9e2;border-radius:999px;padding:3px 6px;margin:2px;font-size:9px;font-weight:700;color:#0A4033}
+      .mc401-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .mc401-card{background:#fff;border:1.5px solid #0A4033;border-radius:12px;padding:10px;break-inside:avoid;page-break-inside:avoid;min-height:0}
+      .mc401-card h3{margin:0 0 7px;text-align:center;color:#061f18;font-size:15px}
+      .mc401-row{display:grid;grid-template-columns:1fr 1.2fr;gap:6px;border-top:1px solid #e7efec;padding:5px 0;align-items:center;font-size:10px}
+      .mc401-row span{color:#65746f}.mc401-row b{color:#061f18}
+      @media print{html,body,body *{visibility:visible!important;display:revert!important}.mc401-grid{display:grid!important}.mc406-table{display:table!important}}
+    `;
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الأوقات الشهرية ${month}</title><style>${printCss}</style></head><body><div class="print-head"><img src="${logo}" alt="شركة تصنيف"><div><h1>تقرير الأوقات الشهرية</h1><b>شهر ${month}</b></div></div><div class="print-kpis"><div class="print-kpi">المشاريع<br><b>${rows.length}</b></div><div class="print-kpi">زيارة يومية<br><b>${daily.length}</b></div><div class="print-kpi">دوام كامل<br><b>${full.length}</b></div><div class="print-kpi">إجمالي الوقت<br><b>${esc(minsText(total))}</b></div><div class="print-kpi">المصدر<br><b>السيرفر</b></div></div><h2 class="section-title">مشاريع الزيارة اليومية</h2>${[...groups.entries()].map(([s,list])=>dailyBox(s,list)).join('')||'<p>لا توجد.</p>'}<h2 class="section-title">مشاريع الدوام الكامل</h2><div class="mc401-grid">${full.map(fullCard).join('')||'<p>لا توجد.</p>'}</div></body></html>`;
+    const win=window.open('','_blank');
+    if(!win){const message=$('mc401Message');if(message)message.textContent='اسمح بالنوافذ المنبثقة حتى تعمل الطباعة.';return;}
+    win.document.open();win.document.write(html);win.document.close();
+    const trigger=()=>{try{win.focus();win.print();}catch(e){console.error(BUILD,'print',e);}};
+    if(win.document.readyState==='complete')setTimeout(trigger,500);
+    else win.addEventListener('load',()=>setTimeout(trigger,250),{once:true});
   }
   function exportCsv(){
     const rows=currentVisibleRows||[];
