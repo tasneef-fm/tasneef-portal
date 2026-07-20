@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const BUILD='V10801-MONTHLY-TIMEZONE-HOTFIX';
+  const BUILD='V10801-MONTHLY-FIX';
   const $=id=>document.getElementById(id);
   const S=v=>(v==null?'':String(v)).trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0;};
@@ -25,33 +25,19 @@
   let currentMonthLoaded='';
   let debounceTimer=null;
   let staticCache={loadedAt:0,projects:[],employees:[],users:[]};
-  let staticLoadPromise=null;
   const STATIC_CACHE_MS=5*60*1000;
 
-  function currentMonthLocal(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
-  function selectedMonth(){return $('mc401Month')?.value||currentMonthLocal();}
+  function selectedMonth(){return $('mc401Month')?.value||new Date().toISOString().slice(0,7);}
   function selectedFilters(){return {supervisor:$('mc401Supervisor')?.value||'',type:$('mc401Type')?.value||''};}
-  function parseIsoDateParts(value){
-    const m=S(value).replace(/\//g,'-').match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if(!m)return null;
-    const y=Number(m[1]),mo=Number(m[2]),d=Number(m[3]);
-    if(!Number.isInteger(y)||mo<1||mo>12||d<1||d>31)return null;
-    return {y,mo,d};
-  }
-  function isoFromUtcDate(date){return date.toISOString().slice(0,10);}
-  function addDaysIso(value,days){
-    const p=parseIsoDateParts(value);if(!p)return '';
-    return isoFromUtcDate(new Date(Date.UTC(p.y,p.mo-1,p.d+Number(days||0))));
-  }
   function monthRange(m){
-    m=/^\d{4}-\d{2}$/.test(S(m))?S(m):currentMonthLocal();
-    const [y,mo]=m.split('-').map(Number);
     const from=m+'-01';
-    const to=isoFromUtcDate(new Date(Date.UTC(y,mo,1)));
+    const d=new Date(from+'T00:00:00');
+    d.setMonth(d.getMonth()+1);
+    const to=d.toISOString().slice(0,10);
     return {month:m,from,to,fromIso:from+'T00:00:00',toIso:to+'T00:00:00',lastDay:addDaysIso(to,-1)};
   }
-  function dateOnly(v){const p=parseIsoDateParts(v);return p?`${String(p.y).padStart(4,'0')}-${String(p.mo).padStart(2,'0')}-${String(p.d).padStart(2,'0')}`:'';}
-  function utcWeekday(day){const p=parseIsoDateParts(day);return p?new Date(Date.UTC(p.y,p.mo-1,p.d)).getUTCDay():-1;}
+  function addDaysIso(value,days){const d=new Date(value+'T00:00:00');d.setDate(d.getDate()+days);return d.toISOString().slice(0,10);}
+  function dateOnly(v){return S(v).slice(0,10);}
   function maxDate(...values){return values.filter(Boolean).sort().at(-1)||'';}
   function minDate(...values){return values.filter(Boolean).sort()[0]||'';}
   function minsText(m){m=Math.round(N(m));const h=Math.floor(m/60),mm=m%60;if(!h)return mm+' دقيقة';if(!mm)return h+' ساعة';return h+' ساعة و '+mm+' دقيقة';}
@@ -168,11 +154,11 @@
     return dates.includes(day);
   }
   function projectRequiredForDay(p,day){
-    const weekday=utcWeekday(day);
-    if(weekday<0||projectHoliday(p,day)||!configuredWorkingDay(p,weekday))return 0;
+    const d=new Date(day+'T00:00:00');
+    if(projectHoliday(p,day)||!configuredWorkingDay(p,d.getDay()))return 0;
     const daily=N(p?.required_daily_minutes||p?.daily_required_minutes||p?.required_minutes||p?.minutes_per_day||0);
     const friday=N(p?.friday_minutes||p?.friday_required_minutes||p?.required_friday_minutes||0);
-    if(weekday===5)return friday>0?friday:0;
+    if(d.getDay()===5)return friday>0?friday:0;
     const perShift=N(p?.required_minutes_per_shift||p?.minutes_per_shift||0);
     const shifts=Math.max(1,N(p?.shift_count||p?.shifts_count||p?.number_of_shifts||1));
     return perShift>0?perShift*shifts:daily;
@@ -195,17 +181,6 @@
     const from=maxDate(range.from,projectStart(project));
     const to=minDate(range.lastDay,projectEnd(project));
     if(!from||!to||from>to)return {requiredMinutes:0,workerCount:0,workerRequired:new Map()};
-
-    // نبني أيام الشهر مرة واحدة بتوقيت UTC. الحارس يمنع أي حلقة لا نهائية مهما كانت البيانات.
-    const projectDays=[];
-    let day=from;
-    for(let guard=0;guard<32&&day&&day<=to;guard++){
-      projectDays.push({day,required:projectRequiredForDay(project,day)});
-      const next=addDaysIso(day,1);
-      if(!next||next<=day){console.error(BUILD,'توقف أمان حساب الأيام', {day,next,project:projectId(project)});break;}
-      day=next;
-    }
-
     const workers=new Map();
     for(const item of workerAssignments||[]){
       const key=item.workerKey;if(!key)continue;
@@ -214,15 +189,9 @@
     }
     const workerRequired=new Map();
     for(const [key,item] of workers){
-      const intervals=item.assignments.map(a=>({
-        start:maxDate(dateOnly(a?.start_date||a?.assignment_start||a?.effective_from||''),employeeStart(item.employee)),
-        end:minDate(dateOnly(a?.end_date||a?.assignment_end||a?.effective_to||''),employeeEnd(item.employee))
-      }));
       let required=0;
-      for(const info of projectDays){
-        if(info.required<=0)continue;
-        const active=intervals.some(x=>(!x.start||info.day>=x.start)&&(!x.end||info.day<=x.end));
-        if(active)required+=info.required;
+      for(let day=from;day<=to;day=addDaysIso(day,1)){
+        if(item.assignments.some(a=>assignmentActiveForDate(a,item.employee,day)))required+=projectRequiredForDay(project,day);
       }
       workerRequired.set(key,required);
     }
@@ -245,19 +214,13 @@
   async function loadStaticData(client,signal,force,stats){
     const fresh=staticCache.loadedAt&&(Date.now()-staticCache.loadedAt)<STATIC_CACHE_MS;
     if(!force&&fresh)return staticCache;
-    // القوائم الأساسية ليست مرتبطة بالشهر؛ نحمّلها مرة واحدة ولا نلغيها عند التنقل السريع بين الشهور.
-    if(staticLoadPromise)return staticLoadPromise;
-    const task=(async()=>{
-      const [projects,employees,users]=await Promise.all([
-        runQuery(client.from('projects').select('*').eq('is_active',true).order('id').limit(5000),null,'projects',stats),
-        runQuery(client.from('employees_master_v386').select('*').limit(10000),null,'employees_master_v386',stats),
-        runQuery(client.from('app_users').select('*').limit(3000),null,'app_users',stats)
-      ]);
-      staticCache={loadedAt:Date.now(),projects,employees,users};
-      return staticCache;
-    })();
-    staticLoadPromise=task;
-    try{return await task;}finally{if(staticLoadPromise===task)staticLoadPromise=null;}
+    const [projects,employees,users]=await Promise.all([
+      runQuery(client.from('projects').select('*').eq('is_active',true).order('id').limit(5000),signal,'projects',stats),
+      runQuery(client.from('employees_master_v386').select('*').limit(10000),signal,'employees_master_v386',stats),
+      runQuery(client.from('app_users').select('*').limit(3000),signal,'app_users',stats)
+    ]);
+    staticCache={loadedAt:Date.now(),projects,employees,users};
+    return staticCache;
   }
   async function loadMonthData(client,m,signal,stats){
     const range=monthRange(m);
@@ -496,7 +459,7 @@
 
   function bind(){
     ensureCss();document.querySelectorAll('.mc401-badge').forEach(el=>el.textContent='V10801');
-    const monthInput=$('mc401Month');if(monthInput&&!monthInput.dataset.monthlyV10801){monthInput.dataset.monthlyV10801='1';monthInput.addEventListener('change',e=>{e.stopPropagation();scheduleMonthLoad(false);});}
+    const monthInput=$('mc401Month');if(monthInput&&!monthInput.dataset.monthlyV10801){monthInput.dataset.monthlyV10801='1';monthInput.addEventListener('change',()=>scheduleMonthLoad(false));}
     const show=$('mc401Show');if(show&&!show.dataset.monthlyV10801){show.dataset.monthlyV10801='1';show.addEventListener('click',()=>scheduleMonthLoad(true));}
     const sup=$('mc401Supervisor');if(sup&&!sup.dataset.monthlyV10801){sup.dataset.monthlyV10801='1';sup.addEventListener('change',applyFiltersOnly);}
     const type=$('mc401Type');if(type&&!type.dataset.monthlyV10801){type.dataset.monthlyV10801='1';type.addEventListener('change',applyFiltersOnly);}
@@ -512,7 +475,6 @@
     buildMonthlyTimesReport,
     calculateFullTimeMetrics,
     fullDisplayPercentage,
-    dateMath:{monthRange,addDaysIso,utcWeekday},
     cancel:()=>activeController?.abort()
   };
   window.tasneefMonthlyCleanV403=api;
