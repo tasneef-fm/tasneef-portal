@@ -1,0 +1,6 @@
+V10806 static verification
+PASS - JavaScript syntax: node --check tasneef_core_unified_v413.js
+PASS - Excel export reads current search, role, status and month filters
+PASS - Supervisor heading contains code, iqama, status, salary, dates and team totals
+PASS - Supervisor headings use rotating professional color palette
+PASS - Admin cache key updated to V10806
