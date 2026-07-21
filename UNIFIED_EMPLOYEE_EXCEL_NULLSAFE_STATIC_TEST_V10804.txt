@@ -1,0 +1,12 @@
+PASS - workerCode null-safe
+PASS - workerName null-safe
+PASS - workerRole null-safe
+PASS - salary helpers null-safe
+PASS - supervisor matching guards empty values
+PASS - unassigned fallback
+PASS - cache updated
+PASS - undefined worker helpers execute without exception
+PASS - unknown supervisor code exports without worker_name exception
+PASS - empty supervisor falls back to unassigned / بدون مشرف
+PASS - known supervisor code resolves supervisor name
+PASS - JavaScript syntax check (node --check)

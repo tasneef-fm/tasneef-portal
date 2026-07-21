@@ -22,15 +22,15 @@
   function client(){const c=sb(); if(!c) showMsg('لا يوجد اتصال Supabase في الصفحة.', true); return c;}
   async function safe(label, p){try{const r=await p; if(r?.error){console.warn(label,r.error); return {data:[],error:r.error};} return r;}catch(e){console.warn(label,e); return {data:[],error:e};}}
 
-  function workerCode(w){return S(w?.worker_code||w?.employee_code||w?.code||w?.emp_code||w?.id||'');}
-  function workerName(w){return S(w?.worker_name||w?.app_name||w?.name||w?.full_name||w?.iqama_name||workerCode(w));}
-  function workerRole(w){return S(w?.job_title||w?.role_type||w?.position||w?.job||w?.profession||'عامل');}
+  function workerCode(w){return S(w.worker_code||w.employee_code||w.code||w.emp_code||w.id||'');}
+  function workerName(w){return S(w.worker_name||w.app_name||w.name||w.full_name||w.iqama_name||workerCode(w));}
+  function workerRole(w){return S(w.job_title||w.role_type||w.position||w.job||w.profession||'عامل');}
   function workerDisplay(w){const c=workerCode(w), n=workerName(w); return c && !n.includes(c) ? `${c} - ${n}` : n;}
-  function workerStartDate(w){return S(w?.work_start_date||w?.hire_date||w?.employment_start_date||w?.start_work_date||w?.start_date||'');}
-  function workerEndDate(w){return S(w?.work_end_date||w?.employment_end_date||w?.termination_date||w?.end_work_date||w?.end_date||'');}
-  function workerBasicSalary(w){return N(w?.basic_salary||w?.base_salary||w?.salary||w?.main_salary||0);}
-  function workerAllowances(w){return N(w?.allowances||w?.allowance||w?.salary_allowance||w?.total_allowances||w?.benefits||w?.extra_allowance||0);}
-  function workerTotalSalary(w){const t=N(w?.total_salary||w?.salary_total||w?.total||w?.gross_salary||0); return t || (workerBasicSalary(w)+workerAllowances(w));}
+  function workerStartDate(w){return S(w.work_start_date||w.hire_date||w.employment_start_date||w.start_work_date||w.start_date||'');}
+  function workerEndDate(w){return S(w.work_end_date||w.employment_end_date||w.termination_date||w.end_work_date||w.end_date||'');}
+  function workerBasicSalary(w){return N(w.basic_salary||w.base_salary||w.salary||w.main_salary||0);}
+  function workerAllowances(w){return N(w.allowances||w.allowance||w.salary_allowance||w.total_allowances||w.benefits||w.extra_allowance||0);}
+  function workerTotalSalary(w){const t=N(w.total_salary||w.salary_total||w.total||w.gross_salary||0); return t || (workerBasicSalary(w)+workerAllowances(w));}
   function isSupervisor(w){return /مشرف|supervisor/i.test(workerRole(w));}
   function isWorker(w){return !/مشرف|supervisor/i.test(workerRole(w));}
   function projectId(p){return S(p.project_id||p.id||'');}
@@ -266,7 +266,7 @@
   function workerOverlapsMonth(w,m){const b=monthBounds(m), st=workerStartDate(w)||'1900-01-01', en=workerEndDate(w)||'9999-12-31'; return st<b.next && en>=b.start;}
   function employeeIdentityAliases(x){const out=[]; const add=(kind,v)=>{v=S(v); if(!v)return; const k=kind+':'+norm(v); if(!out.includes(k))out.push(k);}; const code=normalizeWorkerCode(S(x?.worker_employee_code||x?.worker_code||x?.employee_code||x?.code||'')); if(code)add('code',code); [x?.worker_name,x?.worker_display_name,x?.app_name,x?.name,x?.full_name,x?.employee_name,x?.worker_identity,x?.iqama_name].forEach(v=>add('name',v)); return out;}
   function employeeIdentityKey(x){return employeeIdentityAliases(x)[0]||'';}
-  function supervisorIdentity(r){const code=normalizeWorkerCode(S(r?.supervisor_employee_code||r?.supervisor_code||'')); const name=S(r?.supervisor_name||r?.supervisor_display_name||''); const sw=(state.allWorkers||state.workers||[]).find(w=>(code&&workerCode(w)===code)||(name&&norm(workerName(w))===norm(name))); const resolvedCode=code||workerCode(sw); const resolvedName=name||workerName(sw)||'بدون مشرف'; return {key:resolvedCode?('code:'+norm(resolvedCode)):(resolvedName!=='بدون مشرف'?'name:'+norm(resolvedName):'unassigned'),code:resolvedCode,name:resolvedName};}
+  function supervisorIdentity(r){const code=normalizeWorkerCode(S(r?.supervisor_employee_code||r?.supervisor_code||'')); const name=S(r?.supervisor_name||r?.supervisor_display_name||''); const sw=(state.allWorkers||state.workers||[]).find(w=>workerCode(w)===code||norm(workerName(w))===norm(name)); return {key:code?('code:'+norm(code)):(name?'name:'+norm(name):'unassigned'),code:code||workerCode(sw),name:name||workerName(sw)||'بدون مشرف'};}
   function attendanceStatus(v){const x=norm(v); if(['absent','غائب','غياب','غ','a'].includes(x))return'absent'; if(['present','حاضر','حضور','ح','p','late','متاخر','متأخر','early_leave','خروج مبكر'].includes(x))return'present'; if(['leave','اجازه','إجازه','اجازة','إجازة','sick','مرضي','مرضى','mission','ماموريه','مأمورية','weekly_off','راحه اسبوعيه','راحة أسبوعية'].includes(x))return'other'; return x||'';}
   function attendanceDateOf(a){return S(a?.attendance_date||a?.work_date||a?.record_date||a?.date||a?.check_in||a?.created_at||'').slice(0,10);}
   function timeText(v){const x=S(v); if(!x)return''; if(/^\d{2}:\d{2}/.test(x))return x.slice(0,5); const m=x.match(/T(\d{2}:\d{2})/); return m?m[1]:x.slice(0,16).replace('T',' ');}
