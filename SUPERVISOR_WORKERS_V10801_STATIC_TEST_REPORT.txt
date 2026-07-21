@@ -1,0 +1,41 @@
+TASNEEF V10801 — SUPERVISOR WORKERS UNIFIED STATIC TEST
+========================================================
+Passed: 36/36
+Failed: 0
+
+PASS | JavaScript uses one unified RPC
+PASS | Worker list is canonical-id deduped
+PASS | Foreign supervisor rows are rejected
+PASS | Strict active worker check
+PASS | Supervisor cache key includes supervisor and selected date
+PASS | Old request result is rejected
+PASS | Open presence only
+PASS | Presence is loaded in one batch by worker ids
+PASS | Presence request is lightweight
+PASS | Project change does not reload base workers
+PASS | Selected date triggers a new scoped load
+PASS | Same function is exposed to daily preparation
+PASS | Supervisor HTML loads final cache-busted build
+PASS | SQL filters selected month only
+PASS | SQL filters valid assignment dates
+PASS | SQL requires active workers
+PASS | SQL requires active projects
+PASS | SQL detects conflicting supervisors
+PASS | SQL excludes conflicts from operational list
+PASS | No worker-by-worker await loop
+PASS | Case: supervisor with 15 workers remains deduped | count=15
+PASS | Case: supervisor with two workers plus moved worker | count=3
+PASS | Case: supervisor with no workers
+PASS | Case: moved worker appears only with new supervisor
+PASS | Case: duplicate assignments are removed
+PASS | Case: conflicting worker is excluded
+PASS | Case: multi-project worker remains one worker
+PASS | Case: stopped worker is excluded
+PASS | Case: stopped project is excluded
+PASS | Case: worker inside selected project is classified inside
+PASS | Case: worker inside another project is not available
+PASS | Case: worker with no attendance is available
+PASS | Case: project change leaves base worker count unchanged
+PASS | Case: date change changes moved worker ownership
+PASS | Case: supervisor caches are isolated
+PASS | Case: presence failure does not clear base list
