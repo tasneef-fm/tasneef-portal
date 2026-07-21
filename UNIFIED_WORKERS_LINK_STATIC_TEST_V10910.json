@@ -1,0 +1,12 @@
+{
+  "version": "V10910",
+  "tests": 15,
+  "passed": 15,
+  "masterSource": "employees_master_v386",
+  "linkSource": "worker_project_links_v386",
+  "legacySourcesDisabled": [
+    "workers",
+    "monthly_distribution"
+  ],
+  "rpc": "tasneef_get_unified_supervisor_workers_v10910"
+}
