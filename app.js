@@ -95,7 +95,6 @@ const clearSession = () => {
   localStorage.removeItem(TASNEEF_PERMISSION_SESSION_KEY);
   localStorage.removeItem(TASNEEF_PERMISSION_CACHE_KEY);
   localStorage.removeItem(TASNEEF_PERMISSION_VERSION_KEY);
-  localStorage.removeItem('tasneef_permission_session_v10817');
 };
 const fmt = d => d ? new Date(d).toLocaleString('ar-SA') : '-';
 const timeOnly = d => d ? new Date(d).toLocaleTimeString('ar-SA-u-nu-latn',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Riyadh'}) : '-';
@@ -146,12 +145,7 @@ async function login(){
     user.permissions=payload.permissions||user.permissions||{};
     user.permission_sources=payload.sources||{};
     user.permissions_version=Number(payload.permissions_version||user.permissions_version||1);
-    if(token){
-      user.session_token=token;
-      user.permission_session_token=token;
-      localStorage.setItem(TASNEEF_PERMISSION_SESSION_KEY,token);
-      localStorage.setItem('tasneef_permission_session_v10817',token);
-    }
+    if(token) localStorage.setItem(TASNEEF_PERMISSION_SESSION_KEY,token);
     localStorage.setItem(TASNEEF_PERMISSION_CACHE_KEY,JSON.stringify(user.permissions||{}));
     localStorage.setItem(TASNEEF_PERMISSION_VERSION_KEY,String(user.permissions_version||1));
     setSession(user);
@@ -26054,14 +26048,8 @@ ${finalUrl}
   const byId=id=>document.getElementById(id), val=id=>byId(id)?.value||'';
   const safeJson=v=>{try{return typeof v==='string'?JSON.parse(v||'{}'):(v||{});}catch(_){return {};}};
   function currentUser(){try{return typeof session==='function'?session():safeJson(localStorage.getItem('tasneef_user'));}catch(_){return {};}}
-  function legacyRoleMap(role){
-    const r=String(role||'').trim().toLowerCase();
-    return ({super_admin:'system_admin',system_admin:'system_admin',admin:'system_admin',general_manager:'general_manager',financial_manager:'finance_manager',operations_manager:'operations_manager',warehouse_manager:'warehouse_officer',technician:'maintenance_manager',supervisor:'supervisor'}[r]||r||'custom');
-  }
+  function legacyRoleMap(role){return ({admin:'system_admin',general_manager:'general_manager',financial_manager:'finance_manager',operations_manager:'operations_manager',warehouse_manager:'warehouse_officer',technician:'maintenance_manager',supervisor:'supervisor'}[role]||role||'custom');}
   window.can=function(user,permissionKey,scopeCtx={},resource=null){
-    if(window.PermissionsService&&typeof window.PermissionsService.can==='function'){
-      return window.PermissionsService.can(permissionKey,{...(scopeCtx||{}),resource});
-    }
     user=user||currentUser(); if(!user||user.is_active===false||['suspended','locked','expired'].includes(user.status)) return false;
     const role=legacyRoleMap(user.role_key||user.role);
     if(role==='system_admin'||role==='general_manager') return true;
@@ -26082,16 +26070,7 @@ ${finalUrl}
     return allowed&&scopeAllowedV10700(user,scopeCtx,resource);
   };
   function scopeAllowedV10700(user,ctx,res){const t=user.scope_type||safeJson(user.access_scope).type||'all';if(t==='all')return true;if(!res&&!ctx)return true;if(t==='own')return String(res?.created_by||ctx?.created_by||'')===String(user.id);if(t==='assigned_projects'){const ids=(user.allowed_project_ids||safeJson(user.access_scope).project_ids||[]).map(String);return !ctx?.project_id&&!res?.project_id?true:ids.includes(String(ctx?.project_id||res?.project_id));}if(t==='department')return !ctx?.department_id||String(ctx.department_id)===String(user.department_id);return true;}
-  window.requirePermissionV10700=function(key,ctx,res){
-    if(window.PermissionsService&&typeof window.PermissionsService.require==='function'){
-      return window.PermissionsService.require(key,{...(ctx||{}),resource:res});
-    }
-    if(window.can(currentUser(),key,ctx,res))return true;
-    const labels={'view':'العرض','create':'الإضافة','update':'التعديل','edit':'التعديل','delete':'الحذف','approve':'الاعتماد','print':'الطباعة','export':'التصدير','manage':'الإدارة','manage_permissions':'إدارة الصلاحيات'};
-    const action=labels[String(key||'').split('.').pop()]||'هذا الإجراء';
-    if(typeof msg==='function')msg('ليس لديك صلاحية '+action+' في هذا القسم','err');
-    return false;
-  };
+  window.requirePermissionV10700=function(key,ctx,res){if(can(currentUser(),key,ctx,res))return true;const labels={'view':'العرض','create':'الإضافة','update':'التعديل','delete':'الحذف','approve':'الاعتماد','print':'الطباعة','export':'التصدير','manage':'الإدارة'};const action=labels[key.split('.').pop()]||'هذا الإجراء'; if(typeof msg==='function')msg('ليس لديك صلاحية '+action+' في هذا القسم','err');return false;};
   async function optionalSelect(table){try{const r=await sb.from(table).select('*');return r.error?[]:(r.data||[]);}catch(_){return [];}}
   window.loadSecurityCenterV10700=async function(force){
     const sd=window.securityDataV10700;
@@ -26767,5 +26746,3 @@ ${finalUrl}
   console.log(BUILD+' loaded');
 })();
 
-
-/* V10820: restored unified permissions runtime bridge on top of V10819. */
