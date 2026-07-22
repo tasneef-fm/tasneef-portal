@@ -17936,6 +17936,7 @@ function financePrintReport(kind){
 
 /* V299 - Contract smart window, annual services, client report table */
 (function(){
+  if(window.__tasneefContractsServicesEditorExclusiveV10807) return;
   const LS_KEY='tasneef_contract_smart_v299';
   const CORE_SERVICES=[
     {key:'elevators', name:'المصاعد'},
@@ -18877,6 +18878,7 @@ function financePrintReport(kind){
 /* ===== V339: Contracts role buttons + visit-number save workflow ===== */
 (function(){
   'use strict';
+  if(window.__tasneefContractsServicesEditorExclusiveV10807) return;
   if(window.__tasneefV339ContractsRoleVisits) return;
   window.__tasneefV339ContractsRoleVisits = true;
   const $ = id => document.getElementById(id);
@@ -24020,6 +24022,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 /* ===================== V457 Contracts stopped projects counted fix ===================== */
 (function(){
   'use strict';
+  if(window.__tasneefContractsServicesEditorExclusiveV10807) return;
   const VERSION='V457';
   const $v=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
@@ -24137,6 +24140,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 /* ===================== V458 Contracts stopped badge stronger + not counted ===================== */
 (function(){
   'use strict';
+  if(window.__tasneefContractsServicesEditorExclusiveV10807) return;
   const VERSION='V458';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();

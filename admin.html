@@ -717,62 +717,8 @@ body .tasneef-version-badge, body .version-badge, body .build-badge, body #versi
 <section class="page hidden" id="crm"><div id="crmRootV10600"></div></section>
 </main>
 </div>
-<!-- V299 Contract Smart Modal -->
-<div class="contract-smart-modal hidden" id="contractSmartModal" onclick="contractSmartBackdrop(event)">
-<div class="contract-smart-panel" onclick="event.stopPropagation()">
-<div class="contract-smart-head">
-<div>
-<h2 id="contractSmartTitle">تفاصيل العقد</h2>
-<small id="contractSmartSub">متابعة الخدمات والعقود والزيارات</small>
-</div>
-<div class="contract-smart-actions">
-<button class="light" onclick="printContractClientTable()">طباعة تقرير العميل</button>
-<button class="light" onclick="copyContractClientTable()">نسخ جدول العميل</button>
-<button id="contractSmartSaveBtn" onclick="saveContractSmartModal()">حفظ</button>
-<button class="danger" onclick="closeContractSmartModal()">إغلاق</button>
-</div>
-</div>
-<input id="contractSmartProjectId" type="hidden"/>
-<div class="contract-smart-tabs">
-<button class="active" onclick="contractSmartTab('main',this)">الخدمات والعقود</button>
-<button onclick="contractSmartTab('annual',this)">الخدمات السنوية</button>
-<button onclick="contractSmartTab('report',this)">تقرير العميل</button>
-</div>
-<div class="contract-smart-tab-body" id="contractSmartMainTab">
-<div class="smart-grid three" id="contractCoreServices"></div>
-</div>
-<div class="contract-smart-tab-body hidden" id="contractSmartAnnualTab">
-<div class="smart-box">
-<h3>بيانات الجمعية</h3>
-<div class="smart-grid three">
-<div><label>اسم الجمعية</label><input id="csAssocName" placeholder="مثال: جمعية مشروع ..."/></div>
-<div><label>اسم مدير الجمعية</label><input id="csAssocManager" placeholder="اسم المدير"/></div>
-<div><label>رقم هاتف المدير</label><input id="csAssocPhone" placeholder="05xxxxxxxx"/></div>
-</div>
-</div>
-<div class="smart-box">
-<h3>إضافة خدمة سنوية</h3>
-<div class="smart-grid four">
-<div><label>الخدمة</label><select id="csAnnualSelect" onchange="onAnnualServiceSelect()"></select></div>
-<div><label>خدمة أخرى</label><input id="csAnnualCustom" placeholder="اكتب اسم الخدمة"/></div>
-<div><label>عدد الزيارات السنوية</label><input id="csAnnualVisits" min="1" type="number" value="1"/></div>
-<div class="smart-end"><button onclick="addContractAnnualService()">إضافة الخدمة</button></div>
-</div>
-</div>
-<div class="smart-box">
-<div class="table-head"><h3>جدول الخدمات السنوية</h3><small>اضغط على مربعات الزيارة لتسجيل التنفيذ</small></div>
-<div class="table-wrap"><table><thead><tr><th>الخدمة</th><th>عدد الزيارات</th><th>الزيارات</th><th>المنفذ</th><th>المتبقي</th><th>إجراء</th></tr></thead><tbody id="csAnnualBody"></tbody></table></div>
-</div>
-</div>
-<div class="contract-smart-tab-body hidden" id="contractSmartReportTab">
-<div class="smart-box">
-<h3>جدول تقرير العميل</h3>
-<p class="muted">هذا الجدول يوضح للعميل اسم الخدمة، عدد الزيارات السنوية، وكم نفذ منها.</p>
-<div id="csClientReportBox"></div>
-</div>
-</div>
-</div>
-</div>
+<!-- V10807: legacy contract modal removed; one ContractsServicesEditor is created lazily by the dedicated module. -->
+<link rel="stylesheet" href="tasneef_contracts_services_editor_v10807.css?v=10807">
 <link rel="stylesheet" href="tasneef_crm_unified_v10600.css?v=10607">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -795,9 +741,10 @@ window.__tasneefOrdersFinalStabilityV10023=true;
 window.__tasneefOrdersUnifiedOnlyV10713=true;
 window.__tasneefOrdersUnifiedOnlyV10800=true;
 window.__tasneefOrdersUnifiedOnlyV10801=true;
-window.__TASNEEF_BUILD__="V10808-CONTRACTS-PROJECTS-UNIFIED";
+window.__tasneefContractsServicesEditorExclusiveV10807=true;
+window.__TASNEEF_BUILD__="V10807-CONTRACTS-SERVICES-EDITOR-RESTORE";
 </script>
-<script defer="" src="app.js?v=10801-ticket-date-receive-scope"></script>
+<script defer="" src="app.js?v=10807-contracts-services-editor-restore"></script>
 <script defer="" src="tasneef_orders_v10801.js?v=10801-inclusive-price-status-cards"></script>
 
 
@@ -833,6 +780,6 @@ window.__TASNEEF_BUILD__="V10808-CONTRACTS-PROJECTS-UNIFIED";
 <script defer="" src="tasneef_core_salaries_tab_v440.js?v=470"></script>
 <script defer src="tasneef_logs_tickets_canonical_v10519.js?v=10519-canonical-only"></script>
 <script defer src="tasneef_crm_unified_v10600.js?v=10612-inspection-stage-fix"></script>
-<script defer src="tasneef_contracts_projects_unified_v10808.js?v=10808-provider-type-fix"></script>
+<script defer src="tasneef_contracts_services_editor_v10807.js?v=10807-contracts-services-editor-restore"></script>
 </body>
 </html>
