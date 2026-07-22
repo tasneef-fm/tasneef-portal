@@ -1,0 +1,10 @@
+TASNEEF V10813 DYNAMIC TEST
+
+PASS: direct project assigned through projects.supervisor_id
+PASS: project assigned through monthly_distribution.supervisor_id
+PASS: project assigned through monthly_distribution.supervisor_name
+PASS: unrelated supervisor project excluded
+PASS: inactive project excluded
+PASS: in-memory compatibility with old V371 scope
+
+Result: 6/6 passed

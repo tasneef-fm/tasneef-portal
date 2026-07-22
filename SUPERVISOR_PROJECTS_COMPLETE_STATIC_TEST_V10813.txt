@@ -1,0 +1,15 @@
+TASNEEF V10813 STATIC TEST
+
+PASS: supervisor.html
+PASS: tasneef_supervisor_projects_complete_v10813.js
+PASS: build updated
+PASS: script included once
+PASS: monthly distribution source
+PASS: direct projects supported
+PASS: worker assignments supported
+PASS: current month source
+PASS: old scope compatibility
+PASS: all supervisor selects
+PASS: does not write database
+
+Result: 11/11 passed

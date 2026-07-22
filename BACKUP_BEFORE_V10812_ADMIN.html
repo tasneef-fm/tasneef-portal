@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<meta content="no-store, no-cache, must-revalidate, max-age=0" http-equiv="Cache-Control"/>
+<meta content="no-cache" http-equiv="Pragma"/>
+<meta content="0" http-equiv="Expires"/>
+<title>لوحة الإدارة - تصنيف</title>
+<style>
+:root{--brand:#0A4033;--brand2:#0f5a47;--bg:#f3f6f5;--card:#fff;--line:#dce6e2;--text:#10231d;--muted:#60706a;--red:#b83232;--green:#137a4b;--amber:#9a6b00}*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}button{font-family:inherit;border:0;background:var(--brand);color:#fff;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer}button.light{background:#eef6f3;color:var(--brand);border:1px solid var(--line)}button.danger,.danger{background:var(--red)!important}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px;background:#fff;font-family:inherit;font-size:14px}textarea{min-height:82px;resize:vertical}label{display:block;margin:10px 0 6px;color:var(--brand);font-weight:700;font-size:13px}.hidden{display:none!important}.login-body{min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 15% 15%,#e8f3ef,transparent 35%),linear-gradient(180deg,#eef6f3,#f8fbfa)}.login-card{width:min(440px,92vw);background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 18px 44px rgba(10,64,51,.12);text-align:center}.login-card h1{margin:10px 0;color:#071b33}.login-card p{color:var(--muted)}.logo-mark,.brand span{width:64px;height:64px;border-radius:20px;background:var(--brand);display:grid;place-items:center;color:#fff;font-size:28px;font-weight:900;margin:auto}.login-card button{width:100%;margin-top:14px}.login-card small{display:block;margin-top:18px;color:var(--muted)}.app-shell{display:grid;grid-template-columns:240px 1fr;min-height:100vh}.side{background:#101b2f;color:#fff;padding:18px;position:sticky;top:0;height:100vh;overflow:auto}.brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}.brand span{width:46px;height:46px;border-radius:14px;margin:0}.brand small{display:block;color:#b7c2d6;margin-top:4px}.nav{display:block;width:100%;text-align:right;background:transparent;color:#fff;margin:6px 0;border:1px solid transparent}.nav:hover,.nav.active{background:#1d2b46;border-color:#354560}.content{padding:22px;overflow:auto}.hero{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-radius:24px;padding:24px;display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px;box-shadow:0 12px 34px rgba(10,64,51,.12)}.hero h1{margin:0 0 8px}.hero p{margin:0;color:#e9f5f1;line-height:1.7}.compact{border-radius:0 0 22px 22px}.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 8px 24px rgba(10,64,51,.05);margin-bottom:16px}.card h2{margin:0 0 14px;color:var(--brand)}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}.kpis.small{grid-template-columns:repeat(3,1fr)}.kpi{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px}.kpi small{color:var(--muted)}.kpi b{display:block;font-size:32px;color:var(--brand);margin-top:8px}.grid.two{display:grid;grid-template-columns:390px 1fr;gap:16px}.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions,.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin:12px 0}.filters>*{min-width:160px;flex:1}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;max-height:66vh;background:#fff}table{width:100%;border-collapse:collapse;font-size:13px}th,td{padding:10px;border-bottom:1px solid #edf1ef;text-align:right;white-space:nowrap;vertical-align:top}th{position:sticky;top:0;background:#f8fbfa;color:#4c635c;z-index:1}.badge{display:inline-block;padding:5px 9px;border-radius:999px;background:#eef6f3;color:var(--brand);font-size:12px;font-weight:700}.badge.red{background:#fde8e8;color:#9d2222}.badge.green{background:#e8f4ee;color:#137a4b}.badge.amber{background:#fff5da;color:#8a6700}.row-actions{display:flex;gap:6px}.row-actions button{padding:7px 9px;border-radius:9px;font-size:12px}.msg{padding:11px 13px;border-radius:12px;margin:10px 0;background:#eef6f3;color:var(--brand);border:1px solid var(--line)}.msg.err{background:#fde8e8;color:#9d2222}.summary-grid,.alerts{display:grid;gap:10px}.summary-grid{grid-template-columns:repeat(3,1fr)}.summary-item,.alert-item{background:#fbfdfc;border:1px solid var(--line);border-radius:14px;padding:12px;line-height:1.7}.alert-item.warn{background:#fff8e8;border-color:#f0d48d}.alert-item.danger{background:#fde8e8;border-color:#efc3c3}.quick-list{display:grid;gap:8px;margin:12px 0}.quick-item{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbfdfc;border:1px solid var(--line);border-radius:12px;padding:10px}.quick-item select{max-width:140px}.mobile-shell{max-width:760px;margin:0 auto;padding-bottom:24px}.mobile-shell .card{margin:14px}.mobile-shell .hero{margin-bottom:14px}@media(max-width:1000px){.app-shell{grid-template-columns:1fr}.side{position:static;height:auto;display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.brand{grid-column:1/-1}.content{padding:12px}.grid.two,.kpis,.summary-grid{grid-template-columns:1fr}.hero{border-radius:0 0 22px 22px;margin:-12px -12px 14px}.split{grid-template-columns:1fr}.side .nav{text-align:center}}
+
+
+.attendance-matrix-wrap{max-height:72vh}.attendance-matrix th,.attendance-matrix td{text-align:center;min-width:42px}.attendance-matrix th:first-child,.attendance-matrix td:first-child{position:sticky;right:0;background:#fff;z-index:2;text-align:right;min-width:160px}.att-cell{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:10px;font-weight:900;font-size:12px}.att-present{background:#e8f4ee;color:#137a4b;border:1px solid #b9dfcb}.att-absent{background:#fde8e8;color:#9d2222;border:1px solid #efb4b4}.att-empty{background:#f3f6f5;color:#87938f;border:1px solid #dce6e2}.att-summary{font-size:12px;color:#60706a;line-height:1.7}
+
+
+/* V95 Premium Client Reports */
+.report-premium-wrap{display:grid;grid-template-columns:430px 1fr;gap:16px;align-items:start}.report-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.report-kpis .kpi b{font-size:24px}.report-form-card{position:sticky;top:14px}.add-service-panel{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;background:#f1faf6;border:1px solid #b9dfcb;border-radius:18px;padding:12px;margin:10px 0}.quick-service-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}.service-builder{display:grid;gap:14px}.service-editor-card{border:1px solid var(--line);background:linear-gradient(180deg,#ffffff,#fbfdfc);border-radius:20px;padding:14px;box-shadow:0 8px 22px rgba(10,64,51,.06)}.service-editor-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px;border-bottom:1px solid #e7efec;padding-bottom:10px}.service-title-line{display:flex;align-items:center;gap:10px}.service-number{display:grid;place-items:center;min-width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;font-weight:800}.service-counts{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}.stage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stage-box{border:1px dashed #b9d4cb;border-radius:18px;padding:12px;background:#fff}.stage-box h4{margin:0 0 4px;color:var(--brand)}.stage-box small{color:#667;display:block;margin-top:6px}.stage-upload{display:block;border:1px solid #dbe8e3;border-radius:14px;padding:10px;background:#f8fbfa;cursor:pointer;text-align:center;font-weight:700;color:var(--brand)}.stage-upload input{display:none}.img-previews{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}.preview-img{position:relative;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}.preview-img img{width:100%;height:110px;object-fit:contain;background:#f6f9f8;display:block}.preview-img button{position:absolute;top:5px;left:5px;padding:4px 7px;border-radius:8px;background:#b83232}.report-filters-panel{display:grid;grid-template-columns:2fr repeat(5,1fr);gap:8px;align-items:end}.service-chip{display:inline-flex;align-items:center;gap:6px;background:#e8f4ee;color:#0A4033;border:1px solid #b9dfcb;border-radius:999px;padding:5px 9px;margin:2px;font-weight:700;font-size:12px}.rating-face{font-size:18px}.no-reports-box{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.no-report-item{background:#fff8e8;border:1px solid #f0d48d;border-radius:14px;padding:10px}.mini-link{color:var(--brand);font-weight:700;cursor:pointer;text-decoration:underline}.client-copy{direction:ltr;text-align:left;font-size:12px;color:#60706a;white-space:normal;max-width:260px}.low-rating{background:#fde8e8!important;border-color:#efc3c3!important}.full-width{grid-column:1/-1}@media(max-width:1100px){.report-premium-wrap,.report-filters-panel,.stage-grid,.report-kpis,.no-reports-box{grid-template-columns:1fr}.report-form-card{position:static}}
+
+
+.finance-tabs{display:flex;gap:8px;flex-wrap:wrap}.finance-tab.active{background:var(--brand);color:#fff}.finance-kpis .kpi b{font-size:22px}.money-pos{color:#137a4b;font-weight:900}.money-neg{color:#b83232;font-weight:900}.finance-status-paid{background:#dff7ea;color:#137a4b}.finance-status-due{background:#fff1cc;color:#8a5b00}.finance-status-bad{background:#fde8e8;color:#b83232}.finance-status-neutral{background:#edf2f7;color:#334155}@media(max-width:1100px){.finance-tabs{display:grid;grid-template-columns:1fr 1fr}.finance-tabs button{width:100%}}
+
+
+/* V117: ضبط حجم صور المنتجات داخل جدول المخزون */
+#inventoryItemsBody td:first-child{width:86px!important;min-width:86px!important;max-width:86px!important;text-align:center!important;overflow:hidden!important;vertical-align:middle!important;}
+#inventoryItemsBody .inventory-img-box{width:64px!important;height:64px!important;max-width:64px!important;max-height:64px!important;margin:auto!important;display:flex!important;align-items:center!important;justify-content:center!important;border:1px solid var(--line)!important;border-radius:12px!important;background:#fff!important;overflow:hidden!important;padding:3px!important;}
+#inventoryItemsBody img.inventory-thumb,#inventoryItemsBody img.inventory-product-img{width:58px!important;height:58px!important;min-width:58px!important;min-height:58px!important;max-width:58px!important;max-height:58px!important;object-fit:contain!important;display:block!important;border:0!important;border-radius:9px!important;background:#fff!important;padding:0!important;margin:0!important;cursor:pointer!important;}
+.inventory-image-empty{font-size:11px;color:var(--muted);display:inline-block;width:64px;text-align:center}
+
+
+/* V119 inventory layout fix */
+.inventory-filter-bar{display:flex;gap:10px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin:8px 0 12px}
+.inventory-filter-bar input,.inventory-filter-bar select{max-width:230px}
+.inventory-main-table{table-layout:fixed;width:100%}
+.inventory-main-table th,.inventory-main-table td{vertical-align:middle;white-space:normal;word-break:break-word}
+.inventory-main-table th:nth-child(1),.inventory-main-table td:nth-child(1){width:82px;text-align:center}
+.inventory-main-table th:nth-child(2),.inventory-main-table td:nth-child(2){width:105px;text-align:center}
+.inventory-main-table th:nth-child(4),.inventory-main-table td:nth-child(4){width:90px;text-align:center}
+.inventory-main-table th:nth-child(5),.inventory-main-table td:nth-child(5){width:85px;text-align:center}
+.inventory-main-table th:nth-child(6),.inventory-main-table td:nth-child(6){width:110px;text-align:center}
+.inventory-main-table th:nth-child(7),.inventory-main-table td:nth-child(7){width:135px;text-align:center}
+.inventory-main-table th:nth-child(8),.inventory-main-table td:nth-child(8){width:120px;text-align:center}
+.product-meta{display:block;color:#5f6f69;font-size:11px;margin-top:4px;line-height:1.5}
+.inventory-thumb-v119{width:56px!important;height:56px!important;object-fit:contain!important;border:1px solid #dce6e2!important;border-radius:10px!important;background:#fff!important;padding:2px!important}
+.vat-readonly{background:#f7faf8!important;color:#064b38!important;font-weight:800!important}
+
+
+/* V126 Smart report slides + compact action buttons */
+.smart-reports-deck{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin:14px 0 18px}
+.smart-report-card{border:1px solid #cfe2dc;background:linear-gradient(135deg,#ffffff,#f2fbf7);border-radius:20px;padding:18px;text-align:right;min-height:125px;box-shadow:0 10px 28px rgba(0,60,40,.06);cursor:pointer;transition:.22s ease;color:#003d2f;display:flex;flex-direction:column;gap:8px;align-items:flex-start;justify-content:center}
+.smart-report-card span{font-size:13px;color:#59766f;font-weight:800}.smart-report-card b{font-size:20px;color:#004535}.smart-report-card small{line-height:1.7;color:#6b7774}.smart-report-card:hover{transform:translateY(-3px);box-shadow:0 16px 32px rgba(0,60,40,.13)}.smart-report-card.active{background:linear-gradient(135deg,#006b4d,#003d2f);border-color:#006b4d;color:#fff;box-shadow:0 18px 36px rgba(0,80,55,.22)}.smart-report-card.active span,.smart-report-card.active b,.smart-report-card.active small{color:#fff}.smart-report-stage{position:relative;min-height:220px}.smart-report-panel{display:none!important;animation:smartPanelIn .28s ease both;margin-bottom:16px}.smart-report-panel.active{display:block!important}@keyframes smartPanelIn{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
+.row-actions{display:flex!important;flex-direction:row!important;align-items:center;justify-content:center;gap:6px;min-width:160px;white-space:nowrap;flex-wrap:nowrap}.row-actions button{writing-mode:horizontal-tb!important;min-width:54px;width:auto!important;padding:7px 12px!important;line-height:1.2!important;white-space:nowrap!important}td.row-actions{width:180px!important;max-width:none!important}#inventoryItemsBody td:last-child{min-width:180px!important;white-space:nowrap!important}
+
+/* V155 branded admin header */
+.hero-brand-v155{display:flex;align-items:center;gap:14px}
+.hero-logo-card-v155{width:142px;height:66px;border-radius:20px;background:rgba(255,255,255,.96);display:grid;place-items:center;padding:9px;box-shadow:0 14px 34px rgba(0,0,0,.14);border:1px solid rgba(255,255,255,.42)}
+.hero-logo-card-v155 img{max-width:100%;max-height:100%;object-fit:contain}
+.hero-title-v155 h1{margin:0 0 8px!important}.hero-title-v155 p{margin:0;color:#e9f5f1;line-height:1.7}.hero-app-name-v155{display:block;font-weight:900;color:#fff;font-size:15px;margin-top:6px;letter-spacing:.2px}
+.hero-action-v155{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.hero-action-v155 .status-pill-v155{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;color:#fff;font-size:12px;font-weight:800}
+@media(max-width:760px){.hero{align-items:flex-start;flex-direction:column}.hero-brand-v155{flex-direction:column;align-items:flex-start}.hero-logo-card-v155{width:132px;height:62px}.hero-action-v155{width:100%;justify-content:space-between}}
+
+
+/* V223: شرائح ذكية حقيقية لقسم التصدير والاستيراد */
+.export-smart-v222{max-width:1280px;margin:0 auto;}
+.export-hero-v222{display:flex;align-items:center;justify-content:space-between;gap:18px;background:linear-gradient(135deg,#0a4033,#11624d);color:#fff;border-radius:28px;padding:24px;margin-bottom:18px;box-shadow:0 18px 44px rgba(10,64,51,.16)}
+.export-hero-v222 h2{color:#fff;margin:6px 0;font-size:30px}.export-hero-v222 p{color:#e9f5f1;margin:0;line-height:1.8}.export-kicker-v222{display:inline-flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);padding:6px 12px;border-radius:999px;font-weight:800}.export-hero-badge-v222{min-width:76px;height:76px;border-radius:24px;background:#fff;color:#0a4033;display:grid;place-items:center;font-weight:900;font-size:20px;box-shadow:0 14px 34px rgba(0,0,0,.14)}
+.export-nav-v223{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 16px}.export-nav-v223 button{background:#edf7f3;color:#0a4033;border:1px solid #cfe2da;border-radius:18px;padding:14px;font-weight:900}.export-nav-v223 button.active{background:#0a4033;color:#fff;box-shadow:0 10px 24px rgba(10,64,51,.18)}
+.export-slides-v222{display:block!important}.export-slide-v222{display:none;min-height:360px;background:#fff;border:1px solid #d9e9e2;border-radius:28px;padding:28px;box-shadow:0 18px 42px rgba(16,77,59,.08);position:relative;overflow:hidden}.export-slide-v222.active{display:block!important;border:2px solid #0a4033}.export-slide-v222:before{content:"";position:absolute;left:-90px;bottom:-90px;width:240px;height:240px;border-radius:50%;background:rgba(10,64,51,.07)}.export-slide-v222 h3{font-size:26px;margin:6px 0 12px;color:#0a4033}.export-slide-v222 p{font-size:15px;color:#597069;line-height:1.9;max-width:900px}.slide-no-v222{width:58px;height:58px;border-radius:20px;background:#0a4033;color:#fff;font-size:20px;font-weight:900;display:grid;place-items:center;box-shadow:0 10px 24px rgba(10,64,51,.18)}.export-filter-grid-v222{position:relative;z-index:2;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}.export-filter-grid-v222 label{font-weight:900;color:#0a4033}.export-actions-v222{position:relative;z-index:2}.mini-note-v222{position:relative;z-index:2;margin-top:14px;background:#fff8df;border:1px solid #ead698;color:#66531f;padding:13px;border-radius:16px}.export-preview-v222{background:#fff;border:1px dashed #b9d8ca;border-radius:20px;margin-top:16px;padding:16px;line-height:1.9}
+@media(max-width:900px){.export-hero-v222{flex-direction:column;align-items:flex-start}.export-nav-v223,.export-filter-grid-v222{grid-template-columns:1fr}.export-slide-v222{min-height:auto}}
+
+
+/* V10055 hide old build/version floating badge */
+body .tasneef-version-badge, body .version-badge, body .build-badge, body #versionBadge, body #buildBadge{display:none!important}
+
+.orders-receipt-base-v10138{grid-column:1/-1;border:1px dashed #b9d4cb;border-radius:16px;background:#fbfdfc;padding:12px;margin-top:10px}
+.orders-receipt-row-v10138{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.orders-receipt-name-v10138{display:block;margin-top:7px;color:#60706a;line-height:1.5}
+.orders-card-receipt-v10138{background:#eef6f3!important;color:#0A4033!important;border:1px solid #dce6e2!important;padding:7px 9px!important;border-radius:9px!important;font-size:12px!important}
+.orders-card-receipt-v10138[disabled]{opacity:.45!important;cursor:not-allowed!important}
+@media(max-width:760px){.orders-receipt-row-v10138{grid-template-columns:1fr}}
+.orders-card-receipt-main-v10144{display:block;width:100%;margin-top:10px;background:#0A4B3C;color:#fff;border:0;border-radius:10px;padding:10px 12px;font-weight:900;cursor:pointer}
+</style>
+<style id="smart-ui-framework-v129">
+/* V130 Smart UI Framework Fix */
+.smart-shell-v129{display:grid;gap:16px}
+.smart-list-table thead{display:none!important}
+.smart-list-table,.smart-list-table tbody,.smart-list-table tr,.smart-list-table td{display:block!important;width:100%!important;border:0!important;background:transparent!important}
+.smart-list-table td{padding:8px 0!important}
+.smart-row-cell{padding:0!important}
+.smart-grid-v129{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;width:100%}
+.smart-card-v129{position:relative;background:linear-gradient(180deg,#fff,#f8fbfa);border:1px solid #d7e6e0;border-radius:22px;padding:16px;box-shadow:0 14px 34px rgba(4,65,48,.08);transition:.18s ease;overflow:hidden}
+.smart-card-v129:hover{transform:translateY(-2px);box-shadow:0 18px 40px rgba(4,65,48,.14)}
+.smart-card-v129:before{content:"";position:absolute;inset-inline-start:0;top:0;bottom:0;width:5px;background:linear-gradient(#006b4e,#0ca66b)}
+.smart-card-head-v129{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.smart-title-v129{font-size:18px;font-weight:900;color:#063d31;margin:0;line-height:1.4}.smart-sub-v129{font-size:12px;color:#678078;margin-top:3px}.smart-meta-v129{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.smart-meta-v129 .m{background:#f0f7f4;border:1px solid #dcebe5;border-radius:14px;padding:9px}.smart-meta-v129 small{display:block;color:#667c75;font-size:11px;margin-bottom:3px}.smart-meta-v129 b{font-size:14px;color:#0b3f33}.smart-card-actions-v129{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.smart-card-actions-v129 button{border-radius:12px!important;padding:8px 12px!important;min-width:auto!important;writing-mode:horizontal-tb!important;line-height:1.2!important}.smart-img-v129{width:68px;height:68px;border-radius:16px;border:1px solid #d8e8e2;background:#fff;object-fit:contain;padding:3px;box-shadow:0 8px 18px rgba(0,0,0,.06)}
+.smart-status-v129{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:800;background:#eaf7ef;color:#087047}.smart-status-v129.warn{background:#fff4df;color:#a36300}.smart-status-v129.danger{background:#ffe8e5;color:#b42318}.smart-status-v129.neutral{background:#eef2f4;color:#52615d}.smart-lines-v129{display:grid;gap:8px;margin-top:10px}.smart-line-v129{border:1px dashed #d7e6e0;border-radius:14px;background:#fff;padding:10px}.smart-line-v129 b{color:#073e31}.smart-line-v129 small{color:#667c75}.smart-hero-v129{background:linear-gradient(135deg,#063d31,#0a6b50);color:white;border-radius:24px;padding:18px 22px;margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;box-shadow:0 18px 44px rgba(6,61,49,.18)}.smart-hero-v129 h2{margin:0;color:white}.smart-hero-v129 p{margin:4px 0 0;color:#d9fff0}.smart-quick-v129{display:flex;gap:8px;flex-wrap:wrap}.smart-quick-v129 .pill{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:7px 11px;color:#fff;font-size:12px}.smart-modal-v129{position:fixed;inset:0;background:rgba(0,35,28,.55);z-index:99999;display:grid;place-items:center;padding:18px;backdrop-filter:blur(5px)}.smart-modal-box-v129{width:min(1000px,96vw);max-height:92vh;overflow:auto;background:#fff;border:1px solid #d7e6e0;border-radius:24px;box-shadow:0 30px 80px rgba(0,0,0,.28);direction:rtl}.smart-modal-top-v129{position:sticky;top:0;background:linear-gradient(135deg,#063d31,#0a6b50);color:white;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;gap:10px}.smart-modal-top-v129 h2{margin:0;color:white}.smart-modal-body-v129{padding:20px}.smart-modal-body-v129 table{width:100%;border-collapse:collapse;margin-top:10px}.smart-modal-body-v129 th{background:#d7d7d7;color:#111;border:1px solid #333;padding:8px}.smart-modal-body-v129 td{border:1px solid #333;padding:8px;text-align:center}.finance-tab{border-radius:999px!important}.finance-tab.active{background:#063d31!important;color:#fff!important}.smart-report-card{transition:.18s ease}.smart-report-card:hover{transform:translateY(-2px)}
+@media (max-width:760px){.smart-meta-v129{grid-template-columns:1fr}.smart-card-head-v129{flex-direction:column}.smart-img-v129{width:84px;height:84px}.smart-hero-v129{flex-direction:column;align-items:flex-start}.smart-grid-v129{grid-template-columns:1fr}.smart-card-actions-v129 button{flex:1}}
+
+/* V10055 hide old build/version floating badge */
+body .tasneef-version-badge, body .version-badge, body .build-badge, body #versionBadge, body #buildBadge{display:none!important}
+</style>
+<style id="smart-ui-framework-v130-fix">
+/* V130: إصلاح عرض الكروت وحذف شريط الواجهة الذكية */
+.smart-hero-v129{display:none!important;}
+.smart-list-table{display:block!important;width:100%!important;table-layout:auto!important;}
+.smart-list-table tbody{display:block!important;width:100%!important;}
+.smart-list-table tr{display:block!important;width:100%!important;}
+.smart-list-table td.smart-row-cell{display:block!important;width:100%!important;min-width:0!important;max-width:none!important;padding:0!important;border:0!important;}
+#inventoryItemsBody td.smart-row-cell,#inventoryMovementsBody td.smart-row-cell,#inventoryRequestsBody td.smart-row-cell,#financeExpensesBody td.smart-row-cell{width:100%!important;min-width:0!important;max-width:none!important;text-align:initial!important;overflow:visible!important;}
+#inventoryItemsBody .smart-grid-v129,#inventoryMovementsBody .smart-grid-v129,#inventoryRequestsBody .smart-grid-v129,#financeExpensesBody .smart-grid-v129{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))!important;gap:14px!important;width:100%!important;align-items:stretch!important;}
+.smart-card-v129{min-width:0!important;width:100%!important;}
+.smart-card-actions-v129{display:flex!important;flex-direction:row!important;gap:8px!important;align-items:center!important;justify-content:flex-start!important;flex-wrap:wrap!important;}
+.smart-card-actions-v129 button,.smart-card-actions-v129 .smart-status-v129{writing-mode:horizontal-tb!important;min-width:auto!important;width:auto!important;white-space:nowrap!important;}
+.card .table-wrap:has(.smart-list-table){max-height:none!important;overflow:visible!important;padding:12px!important;}
+@supports not selector(:has(*)){.smart-list-table{overflow:visible!important;}}
+@media(max-width:700px){#inventoryItemsBody .smart-grid-v129,#inventoryMovementsBody .smart-grid-v129,#inventoryRequestsBody .smart-grid-v129,#financeExpensesBody .smart-grid-v129{grid-template-columns:1fr!important}.card .table-wrap:has(.smart-list-table){padding:8px!important}}
+
+/* V10055 hide old build/version floating badge */
+body .tasneef-version-badge, body .version-badge, body .build-badge, body #versionBadge, body #buildBadge{display:none!important}
+</style>
+<style>
+/* V156 professional application header */
+.hero{position:relative;overflow:hidden;min-height:118px;padding:22px 26px!important}
+.hero:before{content:"";position:absolute;inset:auto -80px -120px auto;width:300px;height:300px;border-radius:50%;background:rgba(255,255,255,.07);pointer-events:none}
+.hero-brand-v155{display:flex;align-items:center;gap:16px;position:relative;z-index:1;min-width:0}
+.hero-logo-card-v155{width:150px;height:72px;border-radius:22px;background:rgba(255,255,255,.98);display:grid;place-items:center;padding:9px 12px;box-shadow:0 18px 42px rgba(0,0,0,.20);border:1px solid rgba(255,255,255,.58);flex:0 0 auto}
+.hero-logo-card-v155 img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.hero-title-v155{display:flex;flex-direction:column;align-items:flex-start;min-width:0}
+.hero-title-v155 h1{margin:0 0 8px!important;font-size:32px!important;line-height:1.2;color:#fff}.hero-title-v155 p{margin:0;color:#e9f5f1;line-height:1.7}.hero-app-name-v155{display:inline-flex;align-items:center;gap:8px;font-weight:900;color:#fff;font-size:16px;margin-top:9px;letter-spacing:.2px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.20);border-radius:999px;padding:7px 12px}
+.hero-app-name-v155:before{content:"✓";width:22px;height:22px;border-radius:50%;background:#fff;color:#0A4033;display:inline-grid;place-items:center;font-size:13px}
+.hero-action-v155{display:flex;gap:8px;align-items:center;flex-wrap:wrap;position:relative;z-index:1}.hero-action-v155 .status-pill-v155{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;color:#fff;font-size:12px;font-weight:800}
+@media(max-width:760px){.hero{align-items:flex-start;flex-direction:column}.hero-brand-v155{flex-direction:column;align-items:flex-start}.hero-title-v155 h1{font-size:24px!important}.hero-logo-card-v155{width:140px;height:68px}.hero-action-v155{width:100%;justify-content:space-between}}
+
+/* V10055 hide old build/version floating badge */
+body .tasneef-version-badge, body .version-badge, body .build-badge, body #versionBadge, body #buildBadge{display:none!important}
+</style>
+<style id="permissionsPreHideV43">
+#userPermissionsBoxV72:not(:has(.perm-u-grid)) > *{display:none!important}
+#userPermissionsBoxV72:not(:has(.perm-u-grid)){min-height:140px}
+#v201PermMatrix,.perm-grid-v72{display:none!important}
+
+/* V10055 hide old build/version floating badge */
+body .tasneef-version-badge, body .version-badge, body .build-badge, body #versionBadge, body #buildBadge{display:none!important}
+</style>
+<style id="monthlyCleanV403Css">
+.monthly-clean-v401{direction:rtl}.mc401-hero{background:linear-gradient(135deg,#0A4033,#0f5a47);color:#fff;border-radius:24px;padding:22px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:12px}.mc401-hero h1{margin:0 0 8px}.mc401-hero p{margin:0;color:#eaf7f2}.mc401-badge{background:#fff;color:#0A4033;border-radius:999px;padding:10px 16px;font-weight:900}.mc401-toolbar{display:grid;grid-template-columns:1fr 1fr 1fr auto auto auto;gap:10px;align-items:end}.mc401-summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:14px 0}.mc401-kpi{background:#fff;border:1px solid var(--line);border-radius:18px;padding:14px;text-align:center}.mc401-kpi small{color:var(--muted);display:block;margin-bottom:6px}.mc401-kpi b{display:block;font-size:28px;color:#0A4033}.mc401-title{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}.mc401-title h2{margin:0;color:#0A4033}.mc401-title small{color:var(--muted)}.mc401-supervisor-title{font-size:18px;font-weight:900;color:#0A4033;margin:12px 0 8px;padding:8px 12px;border-right:6px solid #0A4033;background:#eef8f5;border-radius:12px}.mc401-grid{display:grid;grid-template-columns:repeat(3,minmax(270px,1fr));gap:12px;margin:12px 0}.mc401-card{background:#fff;border:2px solid #111;border-radius:16px;padding:14px;min-height:245px;break-inside:avoid;page-break-inside:avoid}.mc401-card.full{border-color:#0A4033;background:linear-gradient(180deg,#fff,#fbfffd)}.mc401-card h3{margin:0 0 10px;text-align:center;color:#061f18;font-size:20px}.mc401-row{display:grid;grid-template-columns:1fr 1.2fr;gap:8px;border-top:1px solid #e7efec;padding:7px 0;align-items:center}.mc401-row span{color:#65746f}.mc401-row b{color:#061f18}.mc401-workers{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:10px}.mc401-pill{background:#eef8f5;border:1px solid #d5e9e2;border-radius:999px;padding:5px 9px;font-weight:800;color:#0A4033}.mc401-bar{height:10px;background:#edf3f1;border-radius:999px;overflow:hidden;margin:8px 0}.mc401-bar i{display:block;height:100%;background:#0A4033}.mc401-empty{padding:22px;border:1px dashed #b9dfcb;border-radius:16px;text-align:center;color:#60706a;background:#fbfffd}.mc401-section{overflow:visible}
+.mc402-daily-card{background:#fff;border:2px solid #0A4033;border-radius:18px;padding:14px;margin:14px 0;break-inside:avoid;page-break-inside:avoid}.mc402-daily-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;border-bottom:1px solid #dce6e2;padding-bottom:10px;margin-bottom:10px}.mc402-daily-head h3{margin:0;color:#0A4033;font-size:21px}.mc402-mini-kpis{display:flex;gap:8px;flex-wrap:wrap}.mc402-mini-kpi{background:#eef8f5;border:1px solid #cfe2dc;border-radius:12px;padding:7px 10px;font-weight:900;color:#0A4033}.mc402-project-table{width:100%;border-collapse:separate;border-spacing:0 7px}.mc402-project-table th{background:#f5faf8;color:#0A4033}.mc402-project-table td,.mc402-project-table th{padding:9px;border-bottom:1px solid #edf1ef;text-align:right;white-space:normal}.mc402-workers-line{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.mc402-progress{height:8px;background:#edf3f1;border-radius:999px;overflow:hidden;min-width:90px}.mc402-progress i{display:block;height:100%;background:#0A4033}
+@media(max-width:1200px){.mc401-toolbar,.mc401-summary,.mc401-grid{grid-template-columns:1fr 1fr}}@media(max-width:760px){.mc401-toolbar,.mc401-summary,.mc401-grid{grid-template-columns:1fr}.mc401-hero{display:block}}@media print{body *{visibility:hidden!important}#monthly,#monthly *{visibility:visible!important}#monthly{position:absolute!important;inset:0!important;background:#fff!important}.side,.nav,.mc401-toolbar,.content>.hero{display:none!important}.card{box-shadow:none!important}.mc401-card{break-inside:avoid!important;page-break-inside:avoid!important}.mc401-grid{grid-template-columns:repeat(2,1fr)!important}}
+</style>
+<style id="ticket-sla-permanent-root-fix-v10373">
+/* V10373: شريط SLA ثابت من جذر بطاقة التكت ولا يتأثر بإعادة الرسم */
+.smart-ticket-card.ticket-sla-card{
+  position:relative!important;
+  overflow:hidden!important;
+  border-top-width:10px!important;
+  border-top-style:solid!important;
+}
+.smart-ticket-card.ticket-sla-card.sla-green{border-top-color:#168a43!important}
+.smart-ticket-card.ticket-sla-card.sla-yellow{border-top-color:#f0b429!important}
+.smart-ticket-card.ticket-sla-card.sla-red{border-top-color:#d92d20!important}
+.smart-ticket-card.ticket-sla-card .ticket-sla-strip{
+  display:none!important;
+}
+/* دعم أي نسخة قديمة تستخدم أسماء الحالة المباشرة */
+.smart-ticket-card.ticket-sla-card.standard{border-top-color:#168a43!important}
+.smart-ticket-card.ticket-sla-card.near{border-top-color:#f0b429!important}
+.smart-ticket-card.ticket-sla-card.late{border-top-color:#d92d20!important}
+</style>
+<meta content="client-portal-root-v481-integrated" name="tasneef-clean-build"/><style id="permissionsProV10700">
+.permissions-pro-v10700{direction:rtl}.perm-head{display:flex;justify-content:space-between;gap:16px;align-items:center}.perm-head p{margin:4px 0;color:#64748b}.perm-filters{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin:14px 0}.perm-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}.perm-kpis>div{background:#f8fafc;border:1px solid #dbe5e1;border-radius:14px;padding:12px;text-align:center}.perm-kpis b{display:block;font-size:24px;color:#075846}.perm-kpis span{font-size:12px;color:#64748b}.perm-drawer-v10700{position:fixed;inset:0;background:#0f172a66;z-index:99999;display:flex;justify-content:flex-start}.perm-drawer-v10700.hidden{display:none}.perm-drawer-panel{width:min(980px,96vw);height:100%;overflow:auto;background:#fff;padding:20px;box-shadow:0 0 35px #0003}.perm-drawer-title{display:flex;justify-content:space-between;align-items:center}.perm-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid #e2e8f0;margin:12px 0}.perm-tabs button{background:transparent;color:#334155;border-radius:10px 10px 0 0}.perm-tabs button.active{background:#075846;color:#fff}.perm-form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.perm-form-grid label{display:flex;flex-direction:column;gap:5px;font-weight:700}.perm-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.perm-toolbar input{flex:1;min-width:220px}.permission-matrix-v10700{border:1px solid #dbe5e1;border-radius:14px;overflow:auto;max-height:58vh}.perm-module{border-bottom:1px solid #e2e8f0}.perm-module-head{display:flex;justify-content:space-between;align-items:center;background:#f8fafc;padding:10px;position:sticky;top:0}.perm-actions-grid{display:grid;grid-template-columns:repeat(5,minmax(125px,1fr));gap:8px;padding:10px}.perm-toggle{border:1px solid #e2e8f0;border-radius:10px;padding:8px;display:flex;align-items:center;gap:7px;font-size:12px}.perm-toggle.sensitive{border-color:#f1c27d;background:#fffaf0}.perm-scope-badge{font-size:11px;padding:3px 7px;border-radius:999px;background:#e8f5f1;color:#075846}.perm-save{position:sticky;bottom:-20px;background:#fff;padding:12px 0;border-top:1px solid #e2e8f0;margin-top:12px}.user-card-name{display:flex;flex-direction:column}.user-card-name small{color:#64748b}.status-pill{padding:4px 9px;border-radius:999px;font-size:11px;font-weight:700}.status-active{background:#dcfce7;color:#166534}.status-suspended,.status-locked,.status-expired{background:#fee2e2;color:#991b1b}.status-pending{background:#fef3c7;color:#92400e}@media(max-width:800px){.perm-filters,.perm-form-grid{grid-template-columns:1fr}.perm-kpis{grid-template-columns:repeat(2,1fr)}.perm-actions-grid{grid-template-columns:repeat(2,minmax(130px,1fr))}.perm-drawer-panel{width:100%}}
+</style>
+</head>
+<body onload="initAdmin()">
+<div class="app-shell">
+<aside class="side">
+<div class="brand"><span>ت</span><div><b>شركة تصنيف</b><small>إدارة المرافق</small></div></div>
+<button class="nav active" onclick="showPage('dashboard',this)">لوحة التحكم</button>
+<button class="nav" onclick="showPage('daily',this)">التسجيلات اليومية</button>
+<button class="nav" onclick="showPage('users',this)">إدارة المستخدمين</button>
+<button class="nav" onclick="showPage('projects',this)">المشاريع</button>
+<button class="nav" onclick="showPage('crm',this)">CRM المبيعات</button>
+<button class="nav" data-page="distribution" onclick="showPage('distribution',this); setTimeout(function(){window.tasneefDistributionV404&amp;&amp;tasneefDistributionV404.init&amp;&amp;tasneefDistributionV404.init();},120);">التوزيع</button>
+<button class="nav" onclick="showPage('contracts',this)">العقود والخدمات</button>
+<button class="nav" onclick="showPage('workers',this)">العمال</button>
+<button class="nav" onclick="showPage('attendance',this)">الحضور والغياب</button>
+<button class="nav" onclick="showPage('monthly',this)">الأوقات الشهرية</button>
+<button class="nav" onclick="showPage('tickets',this)">تذاكر</button>
+<button class="nav" onclick="showPage('orders',this)">الأوردرات</button>
+<button class="nav" data-page="inventoryAudit" onclick="showPage('inventoryAudit',this); setTimeout(function(){ window.tasneefInventoryAuditV10059 &amp;&amp; tasneefInventoryAuditV10059.load &amp;&amp; tasneefInventoryAuditV10059.load(); },80);">الجرد</button>
+<button class="nav" onclick="showPage('alerts',this)">التنبيهات</button>
+<button class="nav" onclick="showPage('assistant',this)">مساعد تصنيف</button>
+<button class="nav" onclick="showPage('export',this)">التصدير والاستيراد</button>
+<button class="nav" data-page="adminTasks" data-section="adminTasks" id="at10124StaticNav" onclick="if(window.tasneefAdminTasksV10121&amp;&amp;window.tasneefAdminTasksV10121.openPage){window.tasneefAdminTasksV10121.openPage();}else if(window.showPage){showPage('adminTasks',this);} return false;">مهام إدارية</button>
+<button class="nav danger" onclick="logout()">تسجيل خروج</button>
+</aside>
+<main class="content">
+<header class="hero">
+<div class="hero-brand-v155">
+<div class="hero-logo-card-v155"><img alt="شركة تصنيف لإدارة المرافق" src="tasneef_logo_print.png"/></div>
+<div class="hero-title-v155"><h1>لوحة تشغيل يومية احترافية</h1><p>إدارة المستخدمين، المشاريع، العمال، الحضور، التسجيلات اليومية والتقارير.</p><span class="hero-app-name-v155">شركة تصنيف لإدارة المرافق</span></div>
+</div>
+<div class="hero-action-v155"><span class="status-pill-v155">النظام محدث</span><button onclick="refreshAll()">تحديث البيانات</button></div>
+</header>
+<div class="msg hidden" id="globalMsg"></div>
+<section class="page" id="dashboard">
+<div class="kpis">
+<div class="kpi"><small>المستخدمون</small><b id="kpiUsers">0</b></div>
+<div class="kpi"><small>المشاريع</small><b id="kpiProjects">0</b></div>
+<div class="kpi"><small>العمال</small><b id="kpiWorkers">0</b></div>
+<div class="kpi"><small>تسجيلات اليوم</small><b id="kpiTodayLogs">0</b></div>
+</div>
+<div class="card"><h2>ملخص اليوم</h2><div class="summary-grid" id="todaySummary"></div></div>
+<div class="card"><h2>تنبيهات العقود</h2><div class="alerts" id="contractDashboardAlerts"></div></div>
+</section>
+<section class="page hidden" id="daily">
+<div class="grid two">
+<div class="card">
+<h2 id="logFormTitle">تسجيل دخول / خروج</h2>
+<input id="logId" type="hidden"/>
+<label>التاريخ</label><input id="logDate" type="date"/>
+<label>المشرف</label><select id="logSupervisor"></select>
+<label>المشروع</label><select id="logProject" onchange="onLogProjectChange()"></select>
+<label>نوع الزيارة</label><select id="logVisitType"><option value="surface">نظافة سطحية</option><option value="deep">نظافة عميقة</option></select>
+<div class="split"><div><label>وقت الدخول</label><input id="logIn" type="time"/></div><div><label>وقت الخروج</label><input id="logOut" type="time"/></div></div>
+<label>وقت الانتقال / الضائع بالدقائق</label><input id="logTravel" min="0" type="number" value="0"/>
+<label>ملاحظات</label><textarea id="logNotes"></textarea>
+<div class="actions"><button onclick="setNow('logIn')">الدخول الآن</button><button onclick="setNow('logOut')">الخروج الآن</button><button onclick="saveTimeLog()">حفظ</button><button class="light" onclick="clearLogForm()">جديد</button></div>
+</div>
+<div class="card">
+<h2>التسجيلات اليومية</h2>
+<div class="filters"><input id="dailyDate" onchange="renderTimeLogs()" type="date"/><select id="dailySupervisor" onchange="renderTimeLogs()"></select><select id="dailyProject" onchange="renderTimeLogs()"></select><input id="dailySearch" oninput="renderTimeLogs()" placeholder="بحث"/><button class="light" onclick="exportDailyManagerPDF()" type="button">طباعة التقرير / PDF</button><button class="light" onclick="sendDailyManagerWhatsapp()" type="button">إرسال واتساب</button></div>
+<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>المشرف</th><th>المشروع</th><th>نوع الزيارة</th><th>الدخول</th><th>الخروج</th><th>الوقت المطلوب</th><th>المدة الفعلية</th><th>الفرق</th><th>حالة الوقت</th><th>انتقال</th><th>ملاحظات</th><th>واتساب</th><th>إجراء</th></tr></thead><tbody id="logsBody"></tbody></table></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="users">
+<div class="card permissions-pro-v10700">
+  <div class="perm-head"><div><h2>إدارة المستخدمين والصلاحيات</h2><p>إدارة الأدوار، الصلاحيات الدقيقة، نطاق الوصول والجلسات وسجل الرقابة.</p></div><div class="actions"><button onclick="openAdvancedUserForm()">+ إضافة مستخدم</button><button class="light" onclick="loadSecurityCenterV10700(true)">تحديث</button></div></div>
+  <div class="perm-filters"><input id="userSearchV10700" placeholder="بحث بالاسم أو المستخدم أو البريد أو الجوال" oninput="renderUsers()"><select id="userRoleFilterV10700" onchange="renderUsers()"><option value="">كل الأدوار</option></select><select id="userStatusFilterV10700" onchange="renderUsers()"><option value="">كل الحالات</option><option value="active">نشط</option><option value="suspended">موقوف</option><option value="pending">بانتظار التفعيل</option><option value="locked">مقفل مؤقتًا</option><option value="expired">منتهي الصلاحية</option></select></div>
+  <div class="perm-kpis"><div><b id="permKpiUsers">0</b><span>المستخدمون</span></div><div><b id="permKpiActive">0</b><span>نشط</span></div><div><b id="permKpiSuspended">0</b><span>موقوف</span></div><div><b id="permKpiSessions">0</b><span>الجلسات المفتوحة</span></div><div><b id="permKpiSensitive">0</b><span>صلاحيات حساسة</span></div></div>
+  <div class="table-wrap"><table><thead><tr><th>المستخدم</th><th>القسم / المسمى</th><th>الدور</th><th>الحالة</th><th>آخر دخول</th><th>نطاق الوصول</th><th>الإجراءات</th></tr></thead><tbody id="usersBody"></tbody></table></div>
+</div>
+<div id="advancedUserDrawerV10700" class="perm-drawer-v10700 hidden"><div class="perm-drawer-panel"><div class="perm-drawer-title"><h3 id="userFormTitle">إضافة مستخدم</h3><button class="light" onclick="closeAdvancedUserForm()">✕</button></div>
+<input id="userId" type="hidden"><div class="perm-tabs"><button class="active" data-perm-tab="identity">البيانات</button><button data-perm-tab="permissions">الصلاحيات</button><button data-perm-tab="scope">نطاق الوصول</button><button data-perm-tab="security">الأمان</button></div>
+<div class="perm-tab-content" data-perm-pane="identity"><div class="perm-form-grid"><label>الاسم الكامل<input id="userFullName"></label><label>اسم المستخدم<input id="userUsername"></label><label>البريد الإلكتروني<input id="userEmail" type="email"></label><label>رقم الجوال<input id="userPhone"></label><label>المسمى الوظيفي<input id="userJobTitle"></label><label>القسم<select id="userDepartment"></select></label><label>الدور<select id="userRole"></select></label><label>المدير المباشر<select id="userManager"></select></label><label>الحالة<select id="userStatus"><option value="active">نشط</option><option value="suspended">موقوف</option><option value="pending">بانتظار التفعيل</option><option value="locked">مقفل مؤقتًا</option><option value="expired">منتهي الصلاحية</option></select></label><label>بداية الصلاحية<input id="userValidFrom" type="date"></label><label>نهاية الصلاحية<input id="userValidUntil" type="date"></label><label>كلمة المرور المؤقتة<input id="userPassword" type="password" placeholder="تترك فارغة عند عدم التغيير"></label></div><label>ملاحظات<textarea id="userNotes"></textarea></label></div>
+<div class="perm-tab-content hidden" data-perm-pane="permissions"><div class="perm-toolbar"><input id="permissionSearchV10700" placeholder="ابحث عن قسم أو صلاحية" oninput="renderPermissionMatrixV10700()"><button class="light" onclick="setAllPermissionsV10700(true)">تحديد الكل</button><button class="light" onclick="setAllPermissionsV10700(false)">إلغاء الكل</button><button class="light" onclick="previewEffectivePermissionsV10700()">معاينة الصلاحيات النهائية</button></div><div id="permissionMatrixV10700" class="permission-matrix-v10700"></div></div>
+<div class="perm-tab-content hidden" data-perm-pane="scope"><div class="perm-form-grid"><label>نطاق البيانات<select id="userScopeType"><option value="all">جميع البيانات</option><option value="department">بيانات القسم</option><option value="team">بيانات الفريق</option><option value="assigned_projects">المشاريع المسندة فقط</option><option value="own">السجلات التي أنشأها فقط</option><option value="custom">نطاق مخصص</option></select></label><label>المشاريع المسموح بها<select id="userProjectsScope" multiple size="8"></select></label></div><p class="footer-note">المنع الصريح أقوى من السماح، والصلاحية المخصصة أقوى من الدور.</p></div>
+<div class="perm-tab-content hidden" data-perm-pane="security"><div class="perm-form-grid"><label><input id="userForcePasswordChange" type="checkbox"> إجبار تغيير كلمة المرور</label><label><input id="userMfaRequired" type="checkbox"> طلب تحقق بخطوتين</label><label>حد محاولات الدخول<input id="userLoginLimit" type="number" min="3" value="5"></label><label>انتهاء الجلسة بالدقائق<input id="userSessionTimeout" type="number" min="15" value="480"></label></div></div>
+<div class="actions perm-save"><button onclick="saveUser()">حفظ المستخدم والصلاحيات</button><button class="light" onclick="closeAdvancedUserForm()">إلغاء</button></div></div></div>
+</section>
+<section class="page hidden" id="projects">
+<div class="card section-head">
+<div><h2>إدارة المشاريع</h2><p>إضافة وتعديل المشاريع، تحديد الوقت المطلوب، وربط المشرف والعمال من داخل المشروع.</p></div>
+<button class="light" onclick="clearProjectForm()">مشروع جديد</button>
+</div>
+<div class="grid two">
+<div class="card">
+<h2 id="projectFormTitle">إضافة مشروع</h2>
+<input id="projectId" type="hidden"/>
+<label>اسم المشروع</label><input id="projectName" placeholder="مثال: تعمير 17"/>
+<label>الموقع</label><input id="projectLocation" placeholder="اختياري"/>
+<div class="split"><div><label>عدد العمائر</label><input id="projectBuildingsCount" min="0" type="number" value="0"/></div><div><label>عدد الشقق</label><input id="projectUnitsCount" min="0" type="number" value="0"/></div></div>
+<div class="split"><div><label>تاريخ بداية العقد</label><input id="projectContractStart" type="date"/></div><div><label>تاريخ نهاية العقد</label><input id="projectContractEnd" type="date"/></div></div>
+<label>المشرف المرتبط</label><select id="projectSupervisor"></select>
+<div class="split">
+<div><label>الوقت المطلوب يوميًا (بالدقائق)</label><input id="projectRequiredDaily" min="0" type="number" value="180"/></div>
+<div><label>وقت الجمعة (بالدقائق)</label><input id="projectFridayMinutes" min="0" type="number" value="90"/></div>
+</div>
+<div class="split">
+<div><label>نوع التشغيل</label><select id="projectOperationType"><option value="daily_visit">زيارة يومية</option><option value="full_time">دوام كامل</option><option value="as_needed">حسب الحاجة</option></select></div>
+<div><label>نوع الزيارة الافتراضي</label><select id="projectVisitDefault"><option value="surface">نظافة سطحية</option><option value="deep">نظافة عميقة</option></select></div>
+</div>
+<label>الحالة</label><select id="projectStatus"><option value="active">نشط</option><option value="inactive">متوقف</option></select>
+<label>ملاحظات</label><textarea id="projectNotes"></textarea>
+<div class="actions"><button id="projectSaveBtn" onclick="saveProject()">حفظ المشروع</button><button class="light" onclick="clearProjectForm()">إلغاء / جديد</button></div>
+</div>
+<div class="card">
+<div class="table-head"><h2>المشاريع</h2><button class="light" onclick="exportTable('projects')">تصدير CSV</button></div>
+<div class="filters"><input id="projectSearch" oninput="renderProjects()" placeholder="بحث باسم المشروع أو المشرف"/><select id="projectFilterSupervisor" onchange="renderProjects()"></select><select id="projectFilterStatus" onchange="renderProjects()"><option value="">كل الحالات</option><option value="active">نشط</option><option value="inactive">متوقف</option></select></div>
+<div class="table-wrap"><table><thead><tr><th>المشروع</th><th>المشرف</th><th>العمائر</th><th>الشقق</th><th>نهاية العقد</th><th>المتبقي</th><th>حالة العقد</th><th>الوقت اليومي</th><th>الحالة</th><th data-user-phone-col="1">رقم المشرف</th><th>إجراء</th></tr></thead><tbody id="projectsBody"></tbody></table></div>
+</div>
+</div>
+<div class="card hidden" id="projectManagerCard">
+<div class="table-head"><h2 id="projectManagerTitle">إدارة المشروع</h2><button class="light" onclick="closeProjectManager()">إغلاق</button></div>
+<input id="manageProjectId" type="hidden"/>
+<div class="grid two">
+<div>
+<h3>ربط المشرف</h3><label>المشرف المسؤول</label><select id="projectManageSupervisor"></select><div class="actions"><button onclick="saveProjectManagerSupervisor()">حفظ المشرف</button></div><hr/>
+<h3>إضافة عامل موجود للمشروع</h3><label>العامل</label><select id="manageWorkerSelect"></select><label>نوع العامل داخل المشروع</label><select id="manageWorkerType"><option value="primary">أساسي</option><option value="support">بديل / مساند</option></select><div class="actions"><button onclick="addExistingWorkerToProject()">ربط العامل</button></div><hr/>
+<h3>إضافة عامل جديد وربطه بالمشروع</h3><label>اسم العامل</label><input id="manageNewWorkerName"/><label>الجوال</label><input id="manageNewWorkerPhone"/><label>الراتب</label><input id="manageNewWorkerSalary" type="number" value="1500"/><label>نوع العامل</label><select id="manageNewWorkerType"><option value="primary">أساسي</option><option value="support">بديل / مساند</option></select><div class="actions"><button onclick="addWorkerInsideProject()">إضافة وربط</button></div>
+</div>
+<div><h3>العمال المرتبطون بالمشروع</h3><div class="table-wrap"><table><thead><tr><th>العامل</th><th>المشرف</th><th>النوع</th><th>الحالة</th><th data-user-phone-col="1">رقم المشرف</th><th>إجراء</th></tr></thead><tbody id="projectWorkersBody"></tbody></table></div></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="contracts">
+<div class="card section-head">
+<div><h2>العقود والخدمات السنوية</h2><p>متابعة تواريخ العقود، الأيام المتبقية، والتنبيه قبل شهر من نهاية العقد.</p></div>
+<button class="light" onclick="showPage('projects', document.querySelector(`[onclick*=projects]`))">تعديل بيانات مشروع</button>
+</div>
+<div class="kpis">
+<div class="kpi"><small>عقود نشطة</small><b id="contractsActiveCount">0</b></div>
+<div class="kpi"><small>قريبة الانتهاء</small><b id="contractsSoonCount">0</b></div>
+<div class="kpi"><small>منتهية</small><b id="contractsExpiredCount">0</b></div>
+<div class="kpi"><small>بيانات ناقصة</small><b id="contractsMissingCount">0</b></div>
+</div>
+<div class="card"><h2>العقود القريبة والمنتهية</h2><div class="alerts" id="contractsAlertsList"></div></div>
+<div class="card">
+<div class="table-head"><h2>كل العقود</h2><button class="light" onclick="exportTable('projects')">تصدير CSV</button></div>
+<div class="filters"><input id="contractSearch" oninput="renderContracts()" placeholder="بحث باسم المشروع"/><select id="contractFilterStatus" onchange="renderContracts()"><option value="">كل الحالات</option><option value="active">نشط</option><option value="soon">قريب الانتهاء</option><option value="expired">منتهي</option><option value="missing">بيانات ناقصة</option></select></div>
+<div class="table-wrap"><table><thead><tr><th>المشروع</th><th>العمائر</th><th>الشقق</th><th>بداية العقد</th><th>نهاية العقد</th><th>الأيام المتبقية</th><th>حالة العقد</th><th>إجراء</th></tr></thead><tbody id="contractsBody"></tbody></table></div>
+</div>
+<div class="card" id="servicesSubTab">
+<div class="table-head">
+<h2>الخدمات التعاقدية</h2>
+<div class="row-actions">
+<button class="light" onclick="openNewContractService()">إضافة خدمة</button>
+<button class="light" onclick="exportContractServicesCSV()">تصدير CSV</button>
+<button class="light" onclick="tasneefPrintContractsServicesV10097()">طباعة</button>
+</div>
+</div>
+<div class="kpis small">
+<div class="kpi"><small>إجمالي الخدمات</small><b id="servicesTotalCount">0</b></div>
+<div class="kpi"><small>مستحقة</small><b id="servicesDueCount">0</b></div>
+<div class="kpi"><small>قريبة</small><b id="servicesSoonCount">0</b></div>
+<div class="kpi"><small>متأخرة</small><b id="servicesLateCount">0</b></div>
+<div class="kpi"><small>منجزة</small><b id="servicesDoneCount">0</b></div>
+<div class="kpi"><small>مراجعة</small><b id="servicesReviewCount">0</b></div>
+</div>
+<div class="filters">
+<input id="serviceSearch" oninput="renderContractServices()" placeholder="بحث بالخدمة أو المشروع"/>
+<select id="serviceFilterProject" onchange="renderContractServices()"></select>
+<select id="serviceFilterSupervisor" onchange="renderContractServices()"></select>
+<select id="serviceFilterStatus" onchange="renderContractServices()"><option value="">كل الحالات</option><option value="due">مستحقة</option><option value="soon">قريبة</option><option value="late">متأخرة</option><option value="done">منجزة</option><option value="review">مراجعة</option></select>
+<select id="serviceFilterType" onchange="renderContractServices()"></select>
+<input id="serviceFilterDate" onchange="renderContractServices()" type="date"/>
+<button class="light" onclick="resetServiceFilters()">مسح الفلاتر</button>
+</div>
+<div class="table-wrap"><table><thead><tr><th>المشروع</th><th>المشرف</th><th>الخدمة</th><th>النوع</th><th>التكرار</th><th>عدد الزيارات</th><th>المنفذ</th><th>تم</th><th>المتبقي</th><th>آخر تنفيذ</th><th>الاستحقاق</th><th>الحالة</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody id="contractServicesBody"></tbody></table></div>
+<div class="quick-list" id="supervisorServicesPreview"></div>
+<div class="quick-list" id="smartServicesList"></div>
+</div>
+</section>
+<section class="page hidden" id="workers">
+<div class="card section-head">
+<div>
+<h2>إدارة العمال</h2>
+<p>إضافة وتعديل وربط العمال بالمشرفين والمشاريع، مع تمييز العامل الأساسي والبديل.</p>
+</div>
+<button class="light" onclick="clearWorkerForm()">عامل جديد</button>
+</div>
+<div class="grid two">
+<div class="card">
+<h2 id="workerFormTitle">إضافة عامل</h2>
+<input id="workerId" type="hidden"/>
+<label>اسم العامل</label><input id="workerName" placeholder="مثال: ياسر"/>
+<label>الجوال</label><input id="workerPhone" placeholder="اختياري"/>
+<label>الراتب</label><input id="workerSalary" type="number" value="1500"/>
+<label>المشرف</label><select id="workerSupervisor" onchange="onWorkerSupervisorChange()"></select>
+<label>المشروع المرتبط</label><select id="workerProject"></select>
+<label>نوع العامل</label><select id="workerType"><option value="primary">أساسي</option><option value="support">بديل / مساند</option></select>
+<label>الحالة</label><select id="workerStatus"><option value="active">نشط</option><option value="inactive">موقوف</option></select>
+<label>ملاحظات</label><textarea id="workerNotes" placeholder="أي ملاحظة تخص العامل أو توزيعه"></textarea>
+<div class="actions">
+<button id="workerSaveBtn" onclick="saveWorker()">حفظ العامل</button>
+<button class="light hidden" id="workerCancelBtn" onclick="clearWorkerForm()">إلغاء التعديل</button>
+</div>
+</div>
+<div class="card">
+<div class="table-head">
+<h2>قائمة العمال</h2>
+<button class="light" onclick="exportTable('workers')">تصدير CSV</button>
+</div>
+<div class="filters">
+<input id="workerSearch" oninput="renderWorkers()" placeholder="بحث باسم العامل أو المشرف أو المشروع"/>
+<select id="workerFilterSupervisor" onchange="renderWorkers()"></select>
+<select id="workerFilterProject" onchange="renderWorkers()"></select>
+<select id="workerFilterStatus" onchange="renderWorkers()"><option value="">كل الحالات</option><option value="active">نشط</option><option value="inactive">موقوف</option></select>
+<select id="workerFilterType" onchange="renderWorkers()"><option value="">كل الأنواع</option><option value="primary">أساسي</option><option value="support">بديل / مساند</option></select>
+</div>
+<div class="table-wrap"><table><thead><tr><th>العامل</th><th>المشرف</th><th>المشروع</th><th>النوع</th><th>الجوال</th><th>الراتب</th><th>الحالة</th><th>ملاحظات</th><th>واتساب</th><th>إجراء</th></tr></thead><tbody id="workersBody"></tbody></table></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="distribution">
+<div class="card section-head">
+<div>
+<h2>التوزيع الشهري</h2>
+<p>ربط المشرف + المشروع + العمال حسب الشهر. هذا القسم يقرأ البيانات من السيرفر بشكل منظم وبدون ضغط.</p>
+</div>
+<div class="actions">
+<button class="light" onclick="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.reload(true)" type="button">تحديث من السيرفر</button>
+<button onclick="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.copyPreviousMonth()" type="button">نسخ الشهر السابق</button>
+</div>
+</div>
+<div class="msg hidden" id="td404Msg"></div>
+<div class="grid two">
+<div class="card">
+<h2>إضافة توزيع مشروع</h2>
+<div class="split">
+<div><label>الشهر</label><input id="td404Month" type="month"/></div>
+<div><label>الحالة</label><select id="td404Status"><option value="active">نشط</option><option value="inactive">موقوف</option></select></div>
+</div>
+<label>المشرف</label><select id="td404Supervisor"></select>
+<label>المشروع</label><select id="td404Project"></select>
+<label>بحث عن عامل</label><input id="td404WorkerSearch" oninput="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.renderWorkers()" placeholder="ابحث باسم العامل أو الكود"/>
+<div class="td404-worker-box" id="td404WorkersBox"></div>
+<label>العمال المختارون</label>
+<div class="td404-selected" id="td404SelectedWorkers">لا يوجد عمال مختارون</div>
+<label>ملاحظات</label><textarea id="td404Notes" placeholder="اختياري"></textarea>
+<div class="actions"><button onclick="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.saveProjectDistribution()" type="button">حفظ توزيع المشروع</button><button class="light" onclick="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.clearSelection()" type="button">مسح الاختيار</button></div>
+</div>
+<div class="card">
+<div class="table-head"><h2>توزيع الشهر</h2><button class="light" onclick="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.print()" type="button">طباعة التوزيع</button></div>
+<div class="filters"><input id="td404Search" oninput="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.renderDistribution()" placeholder="بحث في التوزيع"/><select id="td404FilterSupervisor" onchange="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.renderDistribution()"><option value="">كل المشرفين</option></select><select id="td404FilterProject" onchange="tasneefDistributionV404&amp;&amp;tasneefDistributionV404.renderDistribution()"><option value="">كل المشاريع</option></select></div>
+<div class="td404-distribution-box" id="td404DistributionBox"></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="attendance">
+<div class="grid two">
+<div class="card">
+<h2 id="attendanceFormTitle">تسجيل حضور / غياب</h2>
+<input id="attendanceId" type="hidden"/>
+<label>التاريخ</label><input id="attendanceDate" type="date"/>
+<label>المشرف</label><select id="attendanceSupervisor" onchange="renderAttendanceWorkersQuick()"></select>
+<input id="attendanceProject" type="hidden" value=""/>
+<label>العامل</label><select id="attendanceWorker"></select>
+<label>الحالة</label><select id="attendanceStatus"><option value="present">حاضر</option><option value="absent">غائب</option></select>
+<label>ملاحظات</label><textarea id="attendanceNotes"></textarea>
+<div class="actions"><button onclick="saveAttendance()">حفظ</button><button class="light" onclick="clearAttendanceForm()">جديد</button></div>
+<div class="quick-list" id="attendanceQuick"></div>
+</div>
+<div class="card">
+<h2>سجلات الحضور</h2>
+<div class="filters"><input id="attendanceFilterDate" onchange="renderAttendance()" type="date"/><select id="attendanceFilterSupervisor" onchange="renderAttendance()"></select><input id="attendanceSearch" oninput="renderAttendance()" placeholder="بحث"/></div>
+<div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>العامل</th><th>المشرف</th><th>الحالة</th><th>ملاحظات</th><th>إجراء</th></tr></thead><tbody id="attendanceBody"></tbody></table></div>
+</div>
+</div>
+<div class="card">
+<h2>جدول الحضور والغياب الشهري</h2>
+<div class="filters">
+<div><label>الشهر</label><input id="attendanceMatrixMonth" onchange="renderAttendanceMonthly()" type="month"/></div>
+<div><label>المشرف</label><select id="attendanceMatrixSupervisor" onchange="renderAttendanceMonthly()"></select></div>
+<input id="attendanceMatrixProject" type="hidden" value=""/>
+<div><label>بحث العامل</label><input id="attendanceMatrixSearch" oninput="renderAttendanceMonthly()" placeholder="اسم العامل"/></div>
+</div>
+<div class="kpis small" id="attendanceMatrixSummary"></div>
+<div class="actions"><button class="light" onclick="exportAttendanceMatrixCSV()">تصدير جدول الحضور CSV</button></div>
+<div class="table-wrap attendance-matrix-wrap"><table class="attendance-matrix"><thead id="attendanceMatrixHead"></thead><tbody id="attendanceMatrixBody"></tbody></table></div>
+<div class="footer-note">الرموز: <span class="badge green">حاضر</span> <span class="badge red">غائب</span> <span class="badge">لم يسجل</span></div>
+</div>
+</section>
+<section class="page hidden" id="monthly">
+<div class="monthly-clean-v401" id="monthlyCleanV403">
+<div class="mc401-hero">
+<div>
+<h1>الأوقات الشهرية - نسخة نظيفة V403</h1>
+<p>تحميل مباشر وآمن للشهر المحدد من السيرفر، مع إلغاء الطلب السابق وحساب نسب الدوام الكامل دون تجاوز 100%.</p>
+</div>
+<span class="mc401-badge">V406</span>
+</div>
+<div class="card mc401-toolbar">
+<div>
+<label>الشهر</label>
+<input id="mc401Month" type="month" value="2026-06"/>
+</div>
+<div>
+<label>المشرف</label>
+<select id="mc401Supervisor"><option value="">كل المشرفين</option></select>
+</div>
+<div>
+<label>نوع المشروع</label>
+<select id="mc401Type"><option value="">كل الأنواع</option><option value="daily">زيارة يومية</option><option value="full">دوام كامل</option></select>
+</div>
+<button id="mc401Show" type="button">عرض الشهر</button>
+<button class="light" id="mc401Print" type="button">طباعة التقرير</button>
+<button class="light" id="mc401Export" type="button">تصدير CSV</button>
+</div>
+<div class="msg" id="mc401Message">جاهز لعرض بيانات شهر 2026-06.</div>
+<div class="mc401-summary" id="mc401Summary"></div>
+<div class="card mc401-section">
+<div class="mc401-title"><h2>مشاريع الزيارة اليومية</h2><small>مشاريع الزيارة اليومية تظهر في مربع واحد لكل مشرف، وداخل المربع كل مشاريعه مع الوقت والنسبة.</small></div>
+<div id="mc401Daily"></div>
+</div>
+<div class="card mc401-section">
+<div class="mc401-title"><h2>مشاريع الدوام الكامل</h2><small>كل مشروع دوام كامل مربع مستقل وحسابه لحاله حسب المدة المستغرقة.</small></div>
+<div class="mc401-grid" id="mc401Full"></div>
+</div>
+<div class="card mc401-section">
+<div class="mc401-title"><h2>جدول التفاصيل</h2><small>نفس البيانات التي تظهر في المربعات.</small></div>
+<div class="table-wrap"><table><thead><tr><th>الشهر</th><th>المشرف</th><th>المشروع</th><th>النوع</th><th>العمال</th><th>الدقائق</th><th>المدة</th><th>النسبة</th><th>المعادلة</th></tr></thead><tbody id="mc401Body"></tbody></table></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="tickets">
+<div class="grid two">
+<div class="card">
+<h2 id="ticketFormTitle">إضافة تذكرة</h2>
+<input id="ticketId" type="hidden"/>
+<label>المشروع</label><select id="ticketProject"></select>
+<label>المشرف</label><select id="ticketSupervisor"></select>
+<label>العنوان</label><select id="ticketTitle"><option value="">اختر نوع المشكلة</option><option value="صيانة">صيانة</option><option value="سباكة">سباكة</option><option value="تعطير">تعطير</option><option value="تشجير">تشجير</option><option value="كهرباء">كهرباء</option><option value="نظافة">نظافة</option><option value="دفاع مدني">دفاع مدني</option><option value="مصاعد">مصاعد</option><option value="مشكلة نظافة">مشكلة نظافة</option><option value="صهاريج">صهاريج</option></select>
+<label>الأولوية</label>
+<select id="ticketPriority"><option value="normal">عادي</option><option value="high">مهم</option><option value="urgent">عاجل</option><option value="low">منخفض</option></select>
+<label>الحالة</label>
+<select id="ticketStatus" onchange="toggleTicketClosureBox()"><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select>
+<label>الوصف</label><textarea id="ticketDescription" placeholder="اكتب وصف التذكرة بشكل واضح"></textarea>
+<div class="closure-box hidden" id="ticketClosureBox">
+<label>أغلق بواسطة / الفني أو المشرف</label>
+<input id="ticketClosedByName" list="ticketTechniciansList" placeholder="اختر أو اكتب اسم من أغلق التذكرة"/>
+<datalist id="ticketTechniciansList">
+<option value="مازن الخطيب"><option value="جمال"><option value="شريف"><option value="أسعد"><option value="حسين">
+</option></option></option></option></option></datalist>
+<label>كيف تم الإغلاق؟</label>
+<textarea id="ticketClosureNote" placeholder="اكتب طريقة الحل أو الإجراء المنفذ"></textarea>
+<div class="footer-note">لن يتم إغلاق التذكرة إلا بعد كتابة طريقة الإغلاق واسم من أغلقه.</div>
+</div>
+<div class="actions"><button onclick="saveTicket()">حفظ التذكرة</button><button class="light" onclick="clearTicketForm()">جديد</button></div>
+</div>
+<div class="card">
+<h2>تذاكر</h2>
+<div class="filters">
+<select id="ticketFilterStatus" onchange="renderTickets()"><option value="">كل الحالات</option><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select>
+<select id="ticketFilterReceiveV10801" onchange="renderTickets()" title="حالة الاستلام"><option value="">المستلمين وبدون استلام</option><option value="received">تم الاستلام</option><option value="unreceived">بدون استلام</option></select>
+<input id="ticketFilterFromV10801" type="date" onchange="renderTickets()" title="من تاريخ" aria-label="من تاريخ"/>
+<input id="ticketFilterToV10801" type="date" onchange="renderTickets()" title="إلى تاريخ" aria-label="إلى تاريخ"/>
+<select id="ticketSortOrder" onchange="renderTickets()"><option value="newest">الأحدث أولاً</option><option value="oldest">الأقدم أولاً</option></select>
+<button type="button" class="light" onclick="resetTicketAdvancedFiltersV10801()">إعادة تعيين</button>
+<input id="ticketSearch" oninput="renderTickets()" placeholder="بحث برقم التذكرة، المشروع، العنوان أو الوصف"/>
+</div>
+<div class="smart-ticket-summary" id="ticketsSmartSummary"></div><div class="smart-ticket-grid" id="ticketsBody"></div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="orders">
+<div class="card section-head">
+<div>
+<h2>قسم الأوردرات</h2>
+<p>إدارة أوردرات الصيانة الخارجية بنفس آلية ملف الإكسل، مع رقم نظام تلقائي ورقم مستقل للأوردر في القروب.</p>
+</div>
+<div class="actions orders-section-actions-v10408">
+<button onclick="clearOrderFormV233()">+ أوردر جديد</button>
+<button class="light" onclick="tasneefOrders10400.exportExcel()">تصدير Excel</button>
+<button class="light" onclick="tasneefOrders10400.openQuoteBuilder()">عروض الأسعار</button>
+<button class="light" onclick="tasneefOrders10400.printFiltered()">طباعة حسب الفلتر</button>
+</div>
+</div>
+<div class="kpis orders-kpis-v233">
+<div class="kpi"><small>إجمالي الأوردرات</small><b id="ordersTotalKpiV233">0</b></div>
+<div class="kpi"><small>تم التنفيذ</small><b id="ordersDoneKpiV233">0</b></div>
+<div class="kpi"><small>آجل / غير مسدد</small><b id="ordersDueKpiV233">0</b></div>
+<div class="kpi"><small>صافي الربح</small><b id="ordersProfitKpiV233">0</b></div>
+</div>
+<div class="card orders-summary-v233">
+<h2>ملخص مالي وتنفيذي</h2>
+<div class="summary-grid" id="ordersSummaryV233"></div>
+</div>
+<div class="grid two orders-layout-v233">
+<div class="card orders-form-card-v233">
+<h2 id="orderFormTitleV233">إضافة أوردر</h2>
+<input id="orderEditIndexV233" type="hidden"/>
+<div class="split"><div><label>رقم الطلب / النظام</label><input id="orderNoV233" placeholder="تلقائي عند الحفظ" readonly=""/></div><div><label>رقم الطلب بالجروب</label><input id="orderGroupNoV233"/></div></div>
+<div class="orders-form-grid-v233" id="orderFormFieldsV233"></div>
+<div class="orders-receipt-base-v10138" id="ordersReceiptBoxV10138">
+<label>الإيصال</label>
+<div class="orders-receipt-row-v10138">
+<input accept="image/*,application/pdf" id="orderReceiptFileV233" type="file"/>
+<button class="light" id="orderReceiptViewV233" type="button">عرض الإيصال</button>
+</div>
+<small class="orders-receipt-name-v10138" id="orderReceiptNameV233">اختياري</small>
+</div>
+<div class="actions">
+<button onclick="saveOrderV233()">حفظ الأوردر</button>
+<button class="light" onclick="clearOrderFormV233()">جديد</button>
+<button class="danger" onclick="deleteCurrentOrderV233()">حذف المحدد</button>
+</div>
+<div class="footer-note">رقم النظام يتم توليده تلقائيًا ولا يتكرر. رقم القروب يكتب يدويًا من قروب الأوردرات.</div>
+</div>
+<div class="card orders-list-card-v233">
+<div class="table-head"><h2>سجل الأوردرات من الإكسل</h2><button class="light" onclick="renderOrdersV233()">تحديث</button></div>
+<div class="filters orders-filters-v233">
+<input id="orderSearchV233" oninput="renderOrdersV233()" placeholder="بحث برقم النظام، رقم القروب، المشروع، العميل، الجوال، التفاصيل"/>
+<select id="orderProjectFilterV233" onchange="renderOrdersV233()"><option value="">كل المشاريع</option></select>
+<select id="orderExecutorFilterV233" onchange="renderOrdersV233()"><option value="">كل المنفذين</option></select>
+<select id="orderSenderFilterV233" onchange="renderOrdersV233()"><option value="">كل مرسلي الطلب</option></select>
+<select id="orderStatusFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات التنفيذ</option></select>
+<select id="orderPaymentFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات السداد</option></select>
+<select id="orderBillingFilterV233" onchange="renderOrdersV233()"><option value="">كل حالات الفوترة</option></select>
+<input id="orderFromDateV233" onchange="renderOrdersV233()" title="من تاريخ الطلب" type="date"/>
+<input id="orderToDateV233" onchange="renderOrdersV233()" title="إلى تاريخ الطلب" type="date"/>
+<button class="light" onclick="resetOrdersFiltersV233()">إعادة تعيين</button>
+</div>
+<div class="orders-cards-v360" id="ordersCardsV360"></div>
+<div class="orders-pager-v360" id="ordersPagerV360"></div>
+</div>
+</div>
+</section>
+<section class="page hidden inventory-audit-page-v10046" id="inventoryAudit">
+<div class="card section-head audit-head-v10046">
+<div>
+<h2>قسم الجرد</h2>
+<p>جرد مستقل مرتبط بالمالية والمخزون. عند فتح عملية جرد يتم قفل المالية والمخزون حتى إغلاق العملية.</p>
+</div>
+<div class="actions">
+<button onclick="tasneefInventoryAuditV10059.newAudit()">+ عملية جرد جديدة</button>
+<button class="light" onclick="tasneefInventoryAuditV10059.load()">تحديث</button>
+</div>
+</div>
+<div class="msg hidden" id="auditLockMsgV10054"></div>
+<div class="card">
+<div class="table-head">
+<h2>عمليات الجرد</h2>
+<div class="row-actions">
+<button class="light" onclick="tasneefInventoryAuditV10059.load()">تحديث</button>
+<button class="light" onclick="tasneefInventoryAuditV10059.print()">طباعة</button>
+<button class="light" onclick="tasneefInventoryAuditV10059.exportCsv()">تصدير CSV</button>
+</div>
+</div>
+<div class="quick-list" id="auditSessionsV10054"></div>
+</div>
+<div class="card">
+<div class="table-head">
+<h2 id="auditTitleV10054">تفاصيل الجرد</h2>
+<div class="row-actions"><button class="light" onclick="tasneefInventoryAuditV10059.closeAudit(false)">إغلاق بدون تعديل المخزون</button></div>
+</div>
+<div class="table-wrap">
+<table>
+<thead><tr><th>المنتج</th><th>كود المنتج</th><th>كود الموزع</th><th>الوحدة</th><th>كمية النظام</th><th>الكمية الفعلية</th><th>الفرق</th><th>الحالة</th><th>ملاحظات</th></tr></thead>
+<tbody id="auditItemsBodyV10054"></tbody>
+</table>
+</div>
+</div>
+</section>
+<section class="page hidden" id="alerts"><div class="card"><h2>التنبيهات وأخطاء التوزيع</h2><div class="alerts" id="alertsList"></div></div></section>
+<section class="page hidden" id="assistant">
+<div class="card tasneef-assistant-card">
+<h2>مساعد تصنيف</h2>
+<p style="color:var(--muted);line-height:1.8;margin-top:-6px">مساعد داخلي مجاني للتقارير والرسائل والتحليل السريع. يعمل بالقوالب وبيانات التطبيق بدون API.</p>
+<div class="actions">
+<button class="light" onclick="assistantQuick('اكتب تقرير مكافحة حشرات لمشروع صفاء 50')">تقرير مكافحة حشرات</button>
+<button class="light" onclick="assistantQuick('اكتب تقرير تنظيف خزانات لمشروع صفاء 65')">تقرير خزانات</button>
+<button class="light" onclick="assistantQuick('اكتب رسالة واتساب لرئيس الجمعية عن غسيل الخزانات غداً الساعة 8 صباحاً')">رسالة واتساب</button>
+<button class="light" onclick="assistantQuick('ما السجلات المفتوحة اليوم؟')">السجلات المفتوحة</button>
+<button class="light" onclick="assistantQuick('ما المشاريع الناقصة وقت هذا الشهر؟')">ناقص وقت</button>
+</div>
+<div class="assistant-chat" id="assistantChat"></div>
+<div class="split" style="align-items:end;margin-top:12px">
+<div>
+<label>اكتب طلبك</label>
+<textarea id="assistantInput" placeholder="مثال: اكتب تقرير تنظيف بيسمنت لمشروع اتحاد العاصمة"></textarea>
+</div>
+<div class="actions" style="margin:0">
+<button onclick="assistantSend()">إرسال</button>
+<button class="light" onclick="assistantCopyLast()">نسخ آخر رد</button>
+<button class="light" onclick="assistantWhatsappLast()">واتساب</button>
+<button class="light" onclick="assistantPrintLast()">طباعة</button>
+<button class="danger" onclick="assistantClear()">مسح</button>
+</div>
+</div>
+</div>
+</section>
+<section class="page hidden" id="export">
+<div class="export-smart-v222">
+<div class="export-hero-v222">
+<div>
+<span class="export-kicker-v222">مركز ذكي</span>
+<h2>التصدير والاستيراد</h2>
+<p>ملف اجتماع Excel واحد، منظم على شكل تبويبات واضحة وجاهز للعرض على الإدارة، مع نموذج استيراد منظم للبيانات.</p>
+</div>
+<div class="export-hero-badge-v222">V224</div>
+</div>
+<div class="export-nav-v223">
+<button class="active" onclick="showExportSlideV223(0,this)">01 الفلتر</button>
+<button onclick="showExportSlideV223(1,this)">02 ملف الاجتماع</button>
+<button onclick="showExportSlideV223(2,this)">03 نموذج الاستيراد</button>
+</div>
+<div class="export-slides-v222">
+<article class="export-slide-v222 active">
+<div class="slide-no-v222">01</div>
+<h3>فلتر ملف الاجتماع</h3>
+<p>اختر الشهر أو المشرف أو المشروع قبل التصدير. إذا تركت الفلاتر فارغة يتم تصدير البيانات حسب الشهر الحالي.</p>
+<div class="export-filter-grid-v222">
+<div><label>الشهر</label><input id="meetingExportMonth" type="month"/></div>
+<div><label>المشرف</label><select id="meetingExportSupervisor"></select></div>
+<div><label>المشروع</label><select id="meetingExportProject"></select></div>
+</div>
+</article>
+<article class="export-slide-v222">
+<div class="slide-no-v222">02</div>
+<h3>تصدير ملف اجتماع شامل</h3>
+<p>ينزل ملف Excel واحد يحتوي على الملخص التنفيذي، المشاريع، المشرفين، العمال، السجلات اليومية، الحضور والغياب، الأوقات الشهرية، تذاكر والتنبيهات.</p>
+<div class="actions export-actions-v222">
+<button onclick="exportMeetingExcelV229(this)">تنزيل ملف الاجتماع Excel</button>
+<button class="light" onclick="previewMeetingExportV223()">معاينة قبل التنزيل</button>
+</div>
+</article>
+<article class="export-slide-v222 import-slide-v222">
+<div class="slide-no-v222">03</div>
+<h3>نموذج استيراد شامل</h3>
+<p>ملف Excel واحد فارغ بتبويبات منظمة لتجهيز بيانات المشاريع، المشرفين، العمال، المستخدمين، تذاكر، السجلات اليومية.</p>
+<div class="actions export-actions-v222">
+<button class="light" onclick="downloadImportTemplateV223()">تنزيل نموذج الاستيراد</button>
+</div>
+<div class="mini-note-v222">الاستيراد الفعلي لا يعتمد إلا بعد المعاينة وفحص الأخطاء في مرحلة لاحقة.</div>
+</article>
+</div>
+<div class="export-preview-v222" id="meetingExportPreview"></div>
+</div>
+<div class="card export-quick-v222">
+<h3>تصدير CSV سريع</h3>
+<p class="muted">للاستخدام السريع فقط. ملف الاجتماع Excel هو الأفضل للعرض الرسمي.</p>
+<div class="actions"><button onclick="exportTable('app_users')">المستخدمين</button><button onclick="exportTable('projects')">المشاريع</button><button onclick="exportTable('workers')">العمال</button><button onclick="exportTable('attendance')">الحضور</button><button onclick="exportTable('time_logs')">التسجيلات اليومية</button><button onclick="exportTable('tickets')">تذاكر</button></div>
+</div>
+</section>
+<section class="page hidden" id="crm"><div id="crmRootV10600"></div></section>
+</main>
+</div>
+<!-- V10807: legacy contract modal removed; one ContractsServicesEditor is created lazily by the dedicated module. -->
+<link rel="stylesheet" href="tasneef_contracts_services_editor_v10807.css?v=10807">
+<link rel="stylesheet" href="tasneef_crm_unified_v10600.css?v=10607">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+window.__tasneefFinanceProExclusive=true;
+window.__tasneefUnifiedPermissionsOnly=true;
+window.__tasneefV201Loaded=true;
+</script>
+<script>
+// تعطيل كامل لكل سكربتات الأوردرات القديمة قبل تحميل app.js، بدون لمس البيانات.
+window.__tasneefOrdersV233=true;
+window.__tasneefOrdersSharedSyncDisabled=true;
+window.__tasneefOrdersRootCleanV10189=true;
+window.__tasneefSupervisorOrdersV10061=true;
+window.__tasneefOrdersRootMasterV10031=true;
+window.__tasneefOrdersRootLockV10033=true;
+window.__tasneefOrdersMasterLockV10024=true;
+window.__tasneefOrdersStabilityPatchV10022=true;
+window.__tasneefOrdersFinalStabilityV10023=true;
+window.__tasneefOrdersUnifiedOnlyV10713=true;
+window.__tasneefOrdersUnifiedOnlyV10800=true;
+window.__tasneefOrdersUnifiedOnlyV10801=true;
+window.__tasneefContractsServicesEditorExclusiveV10807=true;
+window.__TASNEEF_BUILD__="V10811-UNIFIED-EXCEL-EXACT-FILTER-STYLED";
+</script>
+<script defer="" src="app.js?v=10811-unified-excel-exact-filter-styled"></script>
+<script defer="" src="tasneef_orders_v10801.js?v=10801-inclusive-price-status-cards"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<script defer="" src="tasneef_projects_clean_v390.js?v=475-fulltime-percent"></script>
+<script defer="" src="tasneef_workers_clean_v386.js?v=417-status-sync-root"></script>
+
+
+<script defer="" src="tasneef_monthly_clean_v403.js?v=10801-professional-print"></script>
+<script defer="" src="tasneef_core_unified_v413.js?v=10809-iqama-name-ui"></script>
+<script defer="" src="tasneef_core_attendance_unified_source_v430.js?v=444"></script>
+<script defer="" src="tasneef_salaries_unified_source_v440.js?v=482-performance"></script>
+<script defer="" src="tasneef_core_salaries_tab_v440.js?v=470"></script>
+<script defer src="tasneef_logs_tickets_canonical_v10519.js?v=10519-canonical-only"></script>
+<script defer src="tasneef_crm_unified_v10600.js?v=10612-inspection-stage-fix"></script>
+<script defer src="tasneef_contracts_services_editor_v10807.js?v=10807-contracts-services-editor-restore"></script>
+<script defer src="tasneef_ticket_receive_visibility_v10808.js?v=10808-ticket-receive-open-visible"></script>
+<script defer src="tasneef_unified_employee_excel_v10811.js?v=10811-exact-filter-styled"></script>
+</body>
+</html>
