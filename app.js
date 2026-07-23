@@ -27105,12 +27105,12 @@ ${finalUrl}
   'use strict';
   if(window.__tasneefAttendanceTimePolicyV10830)return;
   window.__tasneefAttendanceTimePolicyV10830=true;
-  const BUILD='V10830-project-time-policy';
+  const BUILD='V10831-project-time-policy-review-pages';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const N=v=>Number(v)||0;
   const esc=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const state={status:null,lastServerAt:0,timer:null,reviewTimer:null,reasonShownFor:null};
+  const state={status:null,lastServerAt:0,timer:null,reviewTimer:null,reasonShownFor:null,review:{page:1,pageSize:5,status:'all',projectId:'',supervisorId:'',search:'',total:0,filters:{projects:[],supervisors:[]},loading:false}};
   const delayReasons=[
     ['emergency_fault','عطل طارئ بالمشروع'],['urgent_client_complaint','شكوى عاجلة من العميل'],
     ['client_extra_work','أعمال إضافية بطلب العميل'],['worker_shortage','نقص في عدد العمال'],
@@ -27259,17 +27259,77 @@ ${finalUrl}
     const dash=$('dashboard');if(!dash)return null;const card=document.createElement('div');card.id='attendanceReviewCardV10830';card.className='card attendance-review-card-v10830';
     const contract=$('contractDashboardAlerts')?.closest('.card');if(contract)contract.after(card);else dash.appendChild(card);return card;
   }
-  async function loadReviewQueue(){
+  function reviewStatusLabelV10831(value){return ({all:'كل الحالات',open:'مفتوحة الآن',overtime_today:'تجاوزات اليوم',auto_closed:'أغلقت تلقائيًا',pending_review:'تنتظر المراجعة',approved:'وقت زائد معتمد',rejected:'مرفوض'})[S(value)]||'كل الحالات'}
+  function reviewPageButtonsV10831(page,totalPages){
+    if(totalPages<=1)return '';
+    let start=Math.max(1,page-2),end=Math.min(totalPages,start+4);start=Math.max(1,end-4);
+    let html='';
+    if(start>1)html+=`<button type="button" data-review-page="1">1</button>${start>2?'<span>…</span>':''}`;
+    for(let n=start;n<=end;n++)html+=`<button type="button" data-review-page="${n}" class="${n===page?'active':''}">${n}</button>`;
+    if(end<totalPages)html+=`${end<totalPages-1?'<span>…</span>':''}<button type="button" data-review-page="${totalPages}">${totalPages}</button>`;
+    return html;
+  }
+  function reviewOptionsV10831(rows,current,allLabel){return `<option value="">${esc(allLabel)}</option>`+(Array.isArray(rows)?rows:[]).map(r=>`<option value="${esc(r.id)}" ${S(r.id)===S(current)?'selected':''}>${esc(r.name||r.id)}</option>`).join('')}
+  async function loadReviewQueue(options={}){
     const card=dashboardCard();if(!card||!can('attendance.view_open_records'))return;
-    card.innerHTML='<h2>مراجعة التأخير والتسجيلات المفتوحة</h2><div class="attendance-loading-v10830">جارٍ تحميل التسجيلات...</div>';
+    const rv=state.review;
+    if(options.resetPage)rv.page=1;
+    if(rv.loading)return;
+    rv.loading=true;
+    card.classList.add('is-loading-v10831');
+    if(!card.querySelector('.attendance-review-list-v10830'))card.innerHTML='<h2>مراجعة التأخير والتسجيلات المفتوحة</h2><div class="attendance-loading-v10830">جارٍ تحميل التسجيلات...</div>';
     try{
-      const data=await rpc('tasneef_attendance_review_queue_v10830',{p_limit:100});const rows=Array.isArray(data?.rows)?data.rows:[];const k=data?.counts||{};
-      card.innerHTML=`<div class="table-head"><div><h2>مراجعة التأخير والتسجيلات المفتوحة</h2><p class="muted">الوقت الزائد لا يدخل في الوقت المعتمد إلا بعد قرار الإدارة.</p></div><button class="light" onclick="tasneefLoadAttendanceReviewV10830()">تحديث</button></div>
-      <div class="attendance-review-kpis-v10830"><div><small>مفتوحة الآن</small><b>${N(k.open)}</b></div><div><small>تجاوزات اليوم</small><b>${N(k.overtime_today)}</b></div><div><small>أغلقت تلقائيًا</small><b>${N(k.auto_closed)}</b></div><div><small>تنتظر المراجعة</small><b>${N(k.pending_review)}</b></div><div><small>وقت زائد معتمد</small><b>${N(k.approved)}</b></div><div><small>مرفوض</small><b>${N(k.rejected)}</b></div></div>
-      <div class="attendance-review-list-v10830">${rows.map(r=>`<article class="attendance-review-item-v10830 status-${esc(r.extra_time_status||'open')}"><div><b>${esc(r.supervisor_name||'-')} — ${esc(r.project_name||'-')}</b><small>${dateTimeText(r.check_in)} → ${r.check_out?dateTimeText(r.check_out):'مفتوح الآن'}</small><p>المطلوب: ${minsText(r.required_minutes)} | الخام: ${minsText(r.raw_actual_minutes||r.actual_minutes)} | الزائد: ${minsText(r.extra_minutes)}</p><p>السبب: ${esc(r.delay_reason_text||'لم يقدم بعد')}</p></div><div class="attendance-review-actions-v10830">${can('attendance.approve_extra_time')?`<button onclick="tasneefReviewAttendanceV10830(${N(r.id)},'approve',${N(r.raw_actual_minutes||r.actual_minutes)})">اعتماد</button>`:''}${can('attendance.reject_extra_time')?`<button class="danger" onclick="tasneefReviewAttendanceV10830(${N(r.id)},'reject',${N(r.required_minutes)})">رفض</button>`:''}${can('attendance.edit_approved_minutes')?`<button class="light" onclick="tasneefEditApprovedMinutesV10830(${N(r.id)},${N(r.approved_actual_minutes||r.required_minutes)})">تعديل المعتمد</button>`:''}</div></article>`).join('')||'<div class="attendance-empty-v10830">لا توجد تسجيلات تحتاج مراجعة.</div>'}</div>
+      const offset=(Math.max(1,N(rv.page))-1)*N(rv.pageSize||5);
+      const data=await rpc('tasneef_attendance_review_queue_v10830',{
+        p_limit:N(rv.pageSize||5),p_offset:offset,p_status:S(rv.status||'all'),
+        p_project_id:rv.projectId?N(rv.projectId):null,p_supervisor_id:rv.supervisorId?N(rv.supervisorId):null,
+        p_search:S(rv.search)||null
+      });
+      const rows=Array.isArray(data?.rows)?data.rows:[],k=data?.counts||{},filters=data?.filters||{};
+      rv.total=N(data?.total);rv.filters={projects:Array.isArray(filters.projects)?filters.projects:[],supervisors:Array.isArray(filters.supervisors)?filters.supervisors:[]};
+      const totalPages=Math.max(1,Math.ceil(rv.total/N(rv.pageSize||5)));
+      if(rv.page>totalPages&&rv.total>0){rv.page=totalPages;rv.loading=false;return loadReviewQueue()}
+      const from=rv.total?offset+1:0,to=Math.min(offset+rows.length,rv.total);
+      const statusOptions=['all','open','overtime_today','auto_closed','pending_review','approved','rejected'].map(v=>`<option value="${v}" ${S(rv.status)===v?'selected':''}>${reviewStatusLabelV10831(v)}</option>`).join('');
+      const projectOptions=reviewOptionsV10831(rv.filters.projects,rv.projectId,'كل المشاريع');
+      const supervisorOptions=reviewOptionsV10831(rv.filters.supervisors,rv.supervisorId,'كل المشرفين');
+      const pageSizeOptions=[5,10,20,50].map(v=>`<option value="${v}" ${N(rv.pageSize)===v?'selected':''}>${v} سجلات</option>`).join('');
+      const itemHtml=rows.map(r=>`<article class="attendance-review-item-v10830 status-${esc(r.extra_time_status||'open')}"><div class="attendance-review-item-main-v10831"><b>${esc(r.supervisor_name||'-')} — ${esc(r.project_name||'-')}</b><small>${dateTimeText(r.check_in)} → ${r.check_out?dateTimeText(r.check_out):'مفتوح الآن'}</small><p>المطلوب: ${minsText(r.required_minutes)} | الخام: ${minsText(r.raw_actual_minutes||r.actual_minutes)} | الزائد: ${minsText(r.extra_minutes)}</p><p class="attendance-review-reason-v10831">السبب: ${esc(r.delay_reason_text||'لم يقدم بعد')}</p></div><div class="attendance-review-actions-v10830">${can('attendance.approve_extra_time')?`<button onclick="tasneefReviewAttendanceV10830(${N(r.id)},'approve',${N(r.raw_actual_minutes||r.actual_minutes)})">اعتماد</button>`:''}${can('attendance.reject_extra_time')?`<button class="danger" onclick="tasneefReviewAttendanceV10830(${N(r.id)},'reject',${N(r.required_minutes)})">رفض</button>`:''}${can('attendance.edit_approved_minutes')?`<button class="light" onclick="tasneefEditApprovedMinutesV10830(${N(r.id)},${N(r.approved_actual_minutes||r.required_minutes)})">تعديل المعتمد</button>`:''}</div></article>`).join('')||'<div class="attendance-empty-v10830">لا توجد تسجيلات مطابقة للفلاتر.</div>';
+      card.innerHTML=`<div class="table-head attendance-review-head-v10831"><div><h2>مراجعة التأخير والتسجيلات المفتوحة</h2><p class="muted">الوقت الزائد لا يدخل في الوقت المعتمد إلا بعد قرار الإدارة.</p></div><button class="light" id="attendanceReviewRefreshV10831">تحديث</button></div>
+      <div class="attendance-review-kpis-v10830">
+        <button type="button" data-review-status="open" class="${rv.status==='open'?'active':''}"><small>مفتوحة الآن</small><b>${N(k.open)}</b></button>
+        <button type="button" data-review-status="overtime_today" class="${rv.status==='overtime_today'?'active':''}"><small>تجاوزات اليوم</small><b>${N(k.overtime_today)}</b></button>
+        <button type="button" data-review-status="auto_closed" class="${rv.status==='auto_closed'?'active':''}"><small>أغلقت تلقائيًا</small><b>${N(k.auto_closed)}</b></button>
+        <button type="button" data-review-status="pending_review" class="${rv.status==='pending_review'?'active':''}"><small>تنتظر المراجعة</small><b>${N(k.pending_review)}</b></button>
+        <button type="button" data-review-status="approved" class="${rv.status==='approved'?'active':''}"><small>وقت زائد معتمد</small><b>${N(k.approved)}</b></button>
+        <button type="button" data-review-status="rejected" class="${rv.status==='rejected'?'active':''}"><small>مرفوض</small><b>${N(k.rejected)}</b></button>
+      </div>
+      <div class="attendance-review-filters-v10831">
+        <input id="attendanceReviewSearchV10831" value="${esc(rv.search)}" placeholder="بحث بالمشرف أو المشروع أو السبب أو رقم السجل">
+        <select id="attendanceReviewStatusV10831">${statusOptions}</select>
+        <select id="attendanceReviewProjectV10831">${projectOptions}</select>
+        <select id="attendanceReviewSupervisorV10831">${supervisorOptions}</select>
+        <select id="attendanceReviewPageSizeV10831">${pageSizeOptions}</select>
+        <button type="button" id="attendanceReviewApplyV10831">تطبيق الفلاتر</button>
+        <button type="button" class="light" id="attendanceReviewResetV10831">إعادة ضبط</button>
+      </div>
+      <div class="attendance-review-result-head-v10831"><b>${reviewStatusLabelV10831(rv.status)}</b><span>عرض ${from}–${to} من ${rv.total}</span></div>
+      <div class="attendance-review-list-v10830">${itemHtml}</div>
+      <div class="attendance-review-pagination-v10831"><button type="button" id="attendanceReviewPrevV10831" ${rv.page<=1?'disabled':''}>السابق</button><div>${reviewPageButtonsV10831(rv.page,totalPages)}</div><button type="button" id="attendanceReviewNextV10831" ${rv.page>=totalPages?'disabled':''}>التالي</button><span>صفحة ${rv.page} من ${totalPages}</span></div>
       <details class="attendance-project-audit-v10830"><summary>أوقات مشاريع تحتاج مراجعة</summary><div id="projectTimeAuditRowsV10830">اضغط لعرض التقرير.</div></details>`;
+      card.querySelector('#attendanceReviewRefreshV10831')?.addEventListener('click',()=>loadReviewQueue());
+      card.querySelector('#attendanceReviewApplyV10831')?.addEventListener('click',()=>{
+        rv.search=S(card.querySelector('#attendanceReviewSearchV10831')?.value);rv.status=S(card.querySelector('#attendanceReviewStatusV10831')?.value||'all');rv.projectId=S(card.querySelector('#attendanceReviewProjectV10831')?.value);rv.supervisorId=S(card.querySelector('#attendanceReviewSupervisorV10831')?.value);rv.pageSize=N(card.querySelector('#attendanceReviewPageSizeV10831')?.value)||5;rv.page=1;loadReviewQueue();
+      });
+      card.querySelector('#attendanceReviewSearchV10831')?.addEventListener('keydown',e=>{if(e.key==='Enter')card.querySelector('#attendanceReviewApplyV10831')?.click()});
+      card.querySelector('#attendanceReviewResetV10831')?.addEventListener('click',()=>{Object.assign(rv,{page:1,pageSize:5,status:'all',projectId:'',supervisorId:'',search:''});loadReviewQueue()});
+      card.querySelector('#attendanceReviewPrevV10831')?.addEventListener('click',()=>{if(rv.page>1){rv.page--;loadReviewQueue()}});
+      card.querySelector('#attendanceReviewNextV10831')?.addEventListener('click',()=>{if(rv.page<totalPages){rv.page++;loadReviewQueue()}});
+      card.querySelectorAll('[data-review-page]').forEach(b=>b.addEventListener('click',()=>{rv.page=N(b.dataset.reviewPage)||1;loadReviewQueue()}));
+      card.querySelectorAll('[data-review-status]').forEach(b=>b.addEventListener('click',()=>{const value=S(b.dataset.reviewStatus);rv.status=rv.status===value?'all':value;rv.page=1;loadReviewQueue()}));
       card.querySelector('details')?.addEventListener('toggle',e=>{if(e.target.open)loadProjectAudit()},{once:true});
     }catch(e){card.innerHTML=`<h2>مراجعة التأخير والتسجيلات المفتوحة</h2><div class="attendance-error-v10830">${esc(e.message||e)}</div>`}
+    finally{rv.loading=false;card.classList.remove('is-loading-v10831')}
   }
   async function loadProjectAudit(){const el=$('projectTimeAuditRowsV10830');if(!el)return;try{const d=await rpc('tasneef_project_time_audit_v10830',{});const rows=Array.isArray(d?.rows)?d.rows:[];el.innerHTML=rows.map(r=>`<div class="project-audit-row-v10830"><b>${esc(r.project_name)}</b><span>${esc(r.issue)}</span><small>الحالي: ${N(r.required_daily_minutes)} / الجمعة ${N(r.friday_minutes)} — المتوقع: ${r.expected_daily_minutes??'-'} / ${r.expected_friday_minutes??'-'}</small></div>`).join('')||'<div class="attendance-empty-v10830">لا توجد ملاحظات على أوقات المشاريع.</div>'}catch(e){el.textContent=e.message||String(e)}}
   window.tasneefLoadAttendanceReviewV10830=loadReviewQueue;
@@ -27279,8 +27339,9 @@ ${finalUrl}
     .project-shift-toggle-v10830{display:flex!important;align-items:center;gap:8px;min-height:44px}.project-shift-toggle-v10830 input{width:auto!important}
     .attendance-time-panel-v10830{border:1px solid #cfe2dc;background:#f5faf8;border-radius:16px;padding:12px;margin:10px 0}.attendance-time-head-v10830{display:flex;justify-content:space-between;align-items:center;gap:8px}.attendance-time-type-v10830{background:#e0f1eb;color:#07533e;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:800}.attendance-time-grid-v10830{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}.attendance-time-grid-v10830>div{background:#fff;border:1px solid #dceae5;border-radius:11px;padding:8px}.attendance-time-grid-v10830 small{display:block;color:#64766e}.attendance-time-grid-v10830 b{display:block;color:#073f34;margin-top:4px}.attendance-time-alert-v10830{padding:9px 11px;border-radius:10px;font-weight:800}.attendance-time-alert-v10830.ok{background:#e5f7ec;color:#166b3b}.attendance-time-alert-v10830.near{background:#edf4ff;color:#315f9a}.attendance-time-alert-v10830.warn{background:#fff1d6;color:#885600}.attendance-time-alert-v10830.danger{background:#ffe7e7;color:#a31b1b}.attendance-time-alert-v10830.done{background:#e8f1ff;color:#24588c}.attendance-time-alert-v10830.neutral{background:#eef5f2;color:#476158}
     .attendance-modal-v10830{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:14px}.attendance-modal-card-v10830{width:min(650px,100%);max-height:94vh;overflow:auto;background:#fff;border-radius:20px;padding:18px;box-shadow:0 30px 80px rgba(0,0,0,.35)}.attendance-modal-head-v10830 h3{margin:0 0 14px;color:#07533e}.attendance-delay-summary-v10830{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}.attendance-delay-summary-v10830>div{background:#f4f8f6;border:1px solid #dce8e3;border-radius:11px;padding:9px}.attendance-delay-summary-v10830 small{display:block;color:#6c7d75}.attendance-modal-actions-v10830{display:flex;gap:8px;justify-content:flex-start;margin-top:14px}.attendance-error-v10830{color:#a31b1b;font-weight:800;margin-top:8px}
-    .attendance-review-kpis-v10830{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin:12px 0}.attendance-review-kpis-v10830>div{background:#f5faf8;border:1px solid #dbe8e3;border-radius:12px;padding:10px;text-align:center}.attendance-review-kpis-v10830 small{display:block}.attendance-review-kpis-v10830 b{font-size:22px;color:#07533e}.attendance-review-list-v10830{display:grid;gap:9px}.attendance-review-item-v10830{display:flex;justify-content:space-between;gap:12px;border:1px solid #dce8e3;border-right:5px solid #7b8790;border-radius:14px;padding:12px;background:#fff}.attendance-review-item-v10830.status-pending_review{border-right-color:#7b2cbf}.attendance-review-item-v10830.status-approved{border-right-color:#168a4a}.attendance-review-item-v10830.status-rejected{border-right-color:#c83232}.attendance-review-item-v10830 small{display:block;color:#64766e;margin-top:4px}.attendance-review-item-v10830 p{margin:5px 0;color:#4d6259}.attendance-review-actions-v10830{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.attendance-project-audit-v10830{margin-top:12px;border:1px solid #dce8e3;border-radius:12px;padding:10px}.project-audit-row-v10830{display:grid;grid-template-columns:1fr 2fr;gap:6px;padding:8px;border-bottom:1px solid #edf2ef}.project-audit-row-v10830 small{grid-column:1/-1;color:#687970}
-    @media(max-width:760px){.attendance-time-grid-v10830{grid-template-columns:repeat(2,1fr)}.attendance-delay-summary-v10830{grid-template-columns:1fr 1fr}.attendance-review-kpis-v10830{grid-template-columns:repeat(2,1fr)}.attendance-review-item-v10830{display:block}.attendance-review-actions-v10830{margin-top:8px}}
+    .attendance-review-kpis-v10830{display:grid;grid-template-columns:repeat(6,1fr);gap:9px;margin:12px 0}.attendance-review-kpis-v10830>button{appearance:none;background:#f5faf8;border:1px solid #dbe8e3;border-radius:12px;padding:10px;text-align:center;color:inherit;cursor:pointer}.attendance-review-kpis-v10830>button:hover,.attendance-review-kpis-v10830>button.active{border-color:#0b6b50;background:#e4f3ee;box-shadow:0 0 0 2px rgba(11,107,80,.08)}.attendance-review-kpis-v10830 small{display:block}.attendance-review-kpis-v10830 b{font-size:22px;color:#07533e}.attendance-review-filters-v10831{display:grid;grid-template-columns:minmax(220px,2fr) repeat(4,minmax(130px,1fr)) auto auto;gap:8px;align-items:center;background:#f7faf9;border:1px solid #dce8e3;border-radius:14px;padding:10px;margin:10px 0}.attendance-review-filters-v10831 input,.attendance-review-filters-v10831 select{min-height:42px;margin:0}.attendance-review-result-head-v10831{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 2px 9px;color:#53665e}.attendance-review-list-v10830{display:grid;gap:8px}.attendance-review-item-v10830{display:flex;justify-content:space-between;gap:12px;border:1px solid #dce8e3;border-right:5px solid #7b8790;border-radius:13px;padding:10px 12px;background:#fff}.attendance-review-item-v10830.status-pending_review{border-right-color:#7b2cbf}.attendance-review-item-v10830.status-approved{border-right-color:#168a4a}.attendance-review-item-v10830.status-rejected{border-right-color:#c83232}.attendance-review-item-v10830 small{display:block;color:#64766e;margin-top:3px}.attendance-review-item-v10830 p{margin:4px 0;color:#4d6259}.attendance-review-item-main-v10831{min-width:0}.attendance-review-reason-v10831{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:850px}.attendance-review-actions-v10830{display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex-shrink:0}.attendance-review-pagination-v10831{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0 4px}.attendance-review-pagination-v10831>div{display:flex;gap:4px;align-items:center}.attendance-review-pagination-v10831 button{min-width:38px}.attendance-review-pagination-v10831 button.active{background:#07533e;color:#fff}.attendance-review-pagination-v10831 button:disabled{opacity:.45;cursor:not-allowed}.attendance-review-pagination-v10831 span{color:#62746c}.attendance-review-card-v10830.is-loading-v10831{opacity:.72;pointer-events:none}.attendance-project-audit-v10830{margin-top:12px;border:1px solid #dce8e3;border-radius:12px;padding:10px}.project-audit-row-v10830{display:grid;grid-template-columns:1fr 2fr;gap:6px;padding:8px;border-bottom:1px solid #edf2ef}.project-audit-row-v10830 small{grid-column:1/-1;color:#687970}
+    @media(max-width:1100px){.attendance-review-filters-v10831{grid-template-columns:repeat(3,1fr)}.attendance-review-filters-v10831 input{grid-column:1/-1}}
+    @media(max-width:760px){.attendance-time-grid-v10830{grid-template-columns:repeat(2,1fr)}.attendance-delay-summary-v10830{grid-template-columns:1fr 1fr}.attendance-review-kpis-v10830{grid-template-columns:repeat(2,1fr)}.attendance-review-filters-v10831{grid-template-columns:1fr 1fr}.attendance-review-filters-v10831 input{grid-column:1/-1}.attendance-review-item-v10830{display:block}.attendance-review-actions-v10830{margin-top:8px}.attendance-review-reason-v10831{white-space:normal}.attendance-review-pagination-v10831>span{width:100%;text-align:center}}
   `;document.head.appendChild(st)}
   function boot(){style();if($('logProject')){refreshTiming(true);state.timer=setInterval(()=>refreshTiming(Date.now()-state.lastServerAt>240000),60000)}if($('dashboard')){setTimeout(loadReviewQueue,1500);state.reviewTimer=setInterval(()=>{const d=$('dashboard');if(d&&getComputedStyle(d).display!=='none')loadReviewQueue()},300000)}}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,800));window.addEventListener('load',()=>setTimeout(boot,1300));setTimeout(boot,2500);
