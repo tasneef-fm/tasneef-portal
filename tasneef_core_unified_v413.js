@@ -7,7 +7,7 @@
   if(window.__tasneefCoreUnifiedV413) return;
   window.__tasneefCoreUnifiedV413 = true;
 
-  const VERSION='464'; // V10832 payroll Excel filters
+  const VERSION='465'; // V10833 exact payroll distribution
   const S=v=>String(v??'').trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0};
   const $=id=>document.getElementById(id);
@@ -19,6 +19,7 @@
   const monthEnd=m=>{const d=new Date((m||todayMonth())+'-01T00:00:00'); d.setMonth(d.getMonth()+1); d.setDate(0); return d.toISOString().slice(0,10);};
 
   const state={workers:[],projects:[],dist:{},borrow:{},att:{},loaded:false,tab:'distribution',selected:new Map(),selectedProjects:new Set(),borrowSelected:new Set()};
+  window.__tasneef_core_state=state; // V10833: نفس الحالة المستخدمة في الواجهة والتصدير
 
   function client(){const c=sb(); if(!c) showMsg('لا يوجد اتصال Supabase في الصفحة.', true); return c;}
   async function safe(label, p){try{const r=await p; if(r?.error){console.warn(label,r.error); return {data:[],error:r.error};} return r;}catch(e){console.warn(label,e); return {data:[],error:e};}}
