@@ -130,6 +130,7 @@
 <select id="supTicketViewModeV10829" onchange="changeTicketViewModeV10829(this.value)" title="طريقة عرض التذاكر"><option value="table">عرض جدولي</option><option value="cards" selected>بطاقات</option><option value="kanban">Kanban</option><option value="tasks">المهام</option></select>
 <input id="supTicketSearch" oninput="renderTickets()" placeholder="بحث برقم التذكرة أو العنوان"/>
 <button type="button" class="light" onclick="resetTicketAdvancedFiltersV10801()">إعادة تعيين</button>
+<button type="button" class="light ticket-print-filtered-v10842" id="supTicketPrintFilteredV10842" onclick="printFilteredTicketsV10842()">طباعة حسب الفلتر</button>
 </div><div class="smart-ticket-summary" id="supTicketsSmartSummary"></div><div class="smart-ticket-grid" id="supTicketsBody"></div></section>
 </section>
 <section class="sup-page" id="supAdminTasks">
@@ -196,7 +197,7 @@ window.__tasneefOrdersUnifiedOnlyV10713=true;
 window.__tasneefOrdersUnifiedOnlyV10800=true;
 window.__TASNEEF_BUILD__="V10841-MULTIPLE-OPEN-PROJECTS";
 </script>
-<script defer="" src="app.js?v=10841-multiple-open-projects"></script>
+<script defer="" src="app.js?v=10842-ticket-project-date-print-filter"></script>
 <script defer src="tasneef_permissions_v10817.js?v=10841-multiple-open-projects"></script>
 
 

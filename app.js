@@ -27610,3 +27610,158 @@ ${finalUrl}
   console.info(BUILD,'loaded');
 })();
 /* ===== END V10839 ===== */
+
+/* ===== V10842: Ticket project/date filters + exact filtered printing ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefTicketProjectDatePrintV10842) return;
+  window.__tasneefTicketProjectDatePrintV10842=true;
+  const BUILD='V10842_TICKET_PROJECT_DATE_PRINT_FILTER';
+  const $=id=>document.getElementById(id);
+  const A=v=>Array.isArray(v)?v:[];
+  const S=v=>String(v??'').trim();
+  const E=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const D=()=>{window.data=window.data||{};return window.data;};
+  const isSup=()=>!!$('supTicketsBody')&&!$('ticketsBody');
+
+  function notify(text,type){try{if(typeof window.msg==='function')return window.msg(text,type||'err');}catch(_){} console[type==='err'?'error':'log'](text);}
+  function ticketDate(t){
+    const raw=t?.created_at||t?.opened_at||t?.createdAt||t?.date||t?.updated_at||'';
+    if(!raw) return '';
+    try{
+      const d=new Date(raw); if(isNaN(d)) return S(raw).slice(0,10);
+      const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+      const m={};parts.forEach(x=>m[x.type]=x.value);
+      return `${m.year}-${m.month}-${m.day}`;
+    }catch(_){return S(raw).slice(0,10);}
+  }
+  function projectName(id,t){
+    const direct=S(t?.project_name||t?.projectName||t?.project);
+    if(direct) return direct;
+    try{const n=window.projectName?.(id);if(S(n)&&S(n)!=='-')return S(n);}catch(_){}
+    const p=A(D().projects).find(x=>S(x.id)===S(id));return S(p?.name||p?.project_name||'-');
+  }
+  function supervisorName(id,t){
+    const direct=S(t?.supervisor_name||t?.supervisorName||t?.supervisor);if(direct)return direct;
+    try{const n=window.supervisorName?.(id);if(S(n)&&S(n)!=='-')return S(n);}catch(_){}
+    const u=A(D().users||D().app_users).find(x=>S(x.id)===S(id));return S(u?.full_name||u?.name||u?.username||'-');
+  }
+  function ticketNo(t){return S(t?.ticket_number||t?.ticket_no||t?.no)||('T-'+S(t?.id||0).padStart(4,'0'));}
+  function isReceived(t){return !!S(t?.claimed_by||t?.claimed_by_name||t?.claimed_at||t?.received_by||t?.received_by_name||t?.received_at||t?.assigned_to||t?.assignee_id||t?.assignee_name||t?.technician_id||t?.technician_name);}
+  function statusText(v,t){if(v&&typeof v==='object'){t=v;v=t.status;}v=S(v).toLowerCase();return v==='closed'?'مغلقة':v==='processing'||v==='in_progress'?'تحت المعالجة':(t&&isReceived(t)?'مستلمة':'مفتوحة');}
+  function priorityText(v){v=S(v).toLowerCase();return v==='urgent'?'عاجل':v==='high'?'مهم':v==='low'?'منخفض':'عادي';}
+  function dateTime(v){if(!v)return '-';try{const d=new Date(v);if(!isNaN(d))return d.toLocaleString('ar-SA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(_){}return S(v).replace('T',' ').slice(0,16);}
+
+  function controls(){
+    const sup=isSup();
+    return {
+      project:S($(sup?'supTicketFilterProject':'ticketFilterProjectV10842')?.value||$('ticketRootProjectV10246')?.value||''),
+      from:S($(sup?'supTicketFilterFromV10801':'ticketFilterFromV10801')?.value||''),
+      to:S($(sup?'supTicketFilterToV10801':'ticketFilterToV10801')?.value||''),
+      receive:S($(sup?'supTicketFilterReceiveV10801':'ticketFilterReceiveV10801')?.value||''),
+      status:S($(sup?'supTicketFilterStatus':'ticketFilterStatus')?.value||$('ticketRootStatusV10246')?.value||''),
+      search:S($(sup?'supTicketSearch':'ticketSearch')?.value||$('ticketRootSearchV10246')?.value||'').toLowerCase(),
+      sort:S($(sup?'supTicketSortOrder':'ticketSortOrder')?.value||$('ticketRootSortV10246')?.value||'newest')
+    };
+  }
+  function matchProject(t,project){
+    if(!project) return true;
+    return S(t?.project_id||t?.projectId)===project || projectName(t?.project_id,t)===project;
+  }
+  function filteredRows(source){
+    const f=controls();
+    if(f.from&&f.to&&f.from>f.to){notify('تاريخ البداية يجب أن يكون قبل تاريخ النهاية','err');return [];}
+    const rows=A(source).filter(t=>{
+      if(!matchProject(t,f.project))return false;
+      const d=ticketDate(t);
+      if(f.from&&(!d||d<f.from))return false;
+      if(f.to&&(!d||d>f.to))return false;
+      if(f.status&&S(t?.status||'open')!==f.status)return false;
+      if(f.receive==='received'&&!isReceived(t))return false;
+      if(f.receive==='unreceived'&&isReceived(t))return false;
+      if(f.search&&![
+        ticketNo(t),t?.title,t?.description,projectName(t?.project_id,t),supervisorName(t?.supervisor_id,t),
+        t?.claimed_by_name,t?.closed_by_name,t?.closure_note,priorityText(t?.priority),statusText(t)
+      ].join(' ').toLowerCase().includes(f.search))return false;
+      return true;
+    });
+    rows.sort((a,b)=>{
+      const x=Date.parse(a?.created_at||a?.opened_at||a?.updated_at||0)||Number(a?.id)||0;
+      const y=Date.parse(b?.created_at||b?.opened_at||b?.updated_at||0)||Number(b?.id)||0;
+      return f.sort==='oldest'?x-y:y-x;
+    });
+    return rows;
+  }
+  window.getFilteredTicketsV10842=()=>filteredRows(A(D().tickets));
+
+  function projectOptions(){
+    const map=new Map();
+    A(D().projects).forEach(p=>{const id=S(p?.id);if(id)map.set(id,S(p?.name||p?.project_name)||('مشروع '+id));});
+    A(D().tickets).forEach(t=>{const id=S(t?.project_id||t?.projectId);if(id&&!map.has(id))map.set(id,projectName(id,t));});
+    return [...map.entries()].sort((a,b)=>a[1].localeCompare(b[1],'ar'));
+  }
+  function fillProjectSelect(el){
+    if(!el)return;const current=S(el.value);const opts=projectOptions();
+    el.innerHTML='<option value="">كل المشاريع</option>'+opts.map(([id,name])=>`<option value="${E(id)}">${E(name)}</option>`).join('');
+    if(current&&opts.some(([id])=>id===current))el.value=current;
+  }
+  function ensureUi(){
+    let admin=$('ticketFilterProjectV10842');
+    if(!admin&&$('ticketsBody')){
+      const filters=$('ticketsBody')?.closest('.card')?.querySelector('.filters');
+      if(filters){admin=document.createElement('select');admin.id='ticketFilterProjectV10842';admin.title='فلتر المشروع';admin.innerHTML='<option value="">كل المشاريع</option>';filters.prepend(admin);}
+    }
+    fillProjectSelect(admin);
+    const sup=$('supTicketFilterProject');if(sup&&sup.options.length<=1)fillProjectSelect(sup);
+    [admin,sup].forEach(el=>{if(el&&!el.dataset.ticketFilterV10842){el.dataset.ticketFilterV10842='1';el.addEventListener('change',()=>window.renderTickets?.());}});
+    const configs=[['ticketPrintFilteredV10842','ticketsBody'],['supTicketPrintFilteredV10842','supTicketsBody']];
+    configs.forEach(([id,bodyId])=>{
+      if($(id)||!$(bodyId))return;
+      const filters=$(bodyId)?.closest('.card')?.querySelector('.filters');if(!filters)return;
+      const b=document.createElement('button');b.id=id;b.type='button';b.className='light ticket-print-filtered-v10842';b.textContent='طباعة حسب الفلتر';b.onclick=printFiltered;filters.appendChild(b);
+    });
+  }
+
+  const previousRender=window.renderTickets;
+  window.renderTickets=async function(){
+    ensureUi();
+    const d=D(),all=A(d.tickets),rows=filteredRows(all);
+    d.tickets=rows;
+    try{return typeof previousRender==='function'?await Promise.resolve(previousRender.apply(this,arguments)):undefined;}
+    catch(e){console.error(BUILD,e);notify('تعذر تطبيق فلاتر التذاكر: '+S(e?.message||e),'err');}
+    finally{d.tickets=all;}
+  };
+
+  function selectedProjectLabel(){const f=controls();if(!f.project)return 'كل المشاريع';const el=$(isSup()?'supTicketFilterProject':'ticketFilterProjectV10842');return S(el?.selectedOptions?.[0]?.textContent)||f.project;}
+  function filterCaption(){const f=controls();const parts=['المشروع: '+selectedProjectLabel()];if(f.from)parts.push('من: '+f.from);if(f.to)parts.push('إلى: '+f.to);if(f.status)parts.push('الحالة: '+statusText(f.status));if(f.receive)parts.push(f.receive==='received'?'تم الاستلام':'بدون استلام');if(f.search)parts.push('البحث: '+f.search);return parts.join(' | ');}
+  function printFiltered(){
+    ensureUi();const rows=filteredRows(A(D().tickets));
+    if(!rows.length){notify('لا توجد تذاكر مطابقة للفلاتر المحددة للطباعة','err');return;}
+    const body=rows.map((t,i)=>`<tr><td>${i+1}</td><td><b>${E(ticketNo(t))}</b></td><td>${E(dateTime(t?.created_at||t?.opened_at||t?.updated_at))}</td><td>${E(projectName(t?.project_id,t))}</td><td>${E(supervisorName(t?.supervisor_id,t))}</td><td>${E(t?.title||'-')}</td><td>${E(priorityText(t?.priority))}</td><td>${E(statusText(t))}</td><td>${E(t?.claimed_by_name||'-')}</td><td class="desc">${E(t?.description||'-')}${S(t?.closure_note)?'<br><b>الإجراء:</b> '+E(t.closure_note):''}</td></tr>`).join('');
+    const html=`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير التذاكر حسب الفلتر</title><style>@page{size:A4 landscape;margin:7mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#113d33;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.sheet{border:2px solid #075342;padding:13px;min-height:100vh}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #075342;padding-bottom:10px}.brand h2,.title h1{margin:0;color:#075342}.brand p,.title p{margin:4px 0;color:#65766f}.filters{margin:10px 0;padding:9px;border:1px solid #d8e6e1;background:#f5faf8;border-radius:10px;font-weight:800}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:9px 0}.kpi{border:1px solid #d8e6e1;border-radius:10px;padding:8px;text-align:center}.kpi b{display:block;font-size:20px;color:#075342}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px}th{background:#075342;color:white;padding:7px;border:1px solid #075342}td{padding:6px;border:1px solid #d8e6e1;text-align:center;vertical-align:top;word-break:break-word}tbody tr:nth-child(even)td{background:#f7fbfa}.desc{text-align:right;width:24%}.footer{margin-top:9px;border-top:1px solid #d8e6e1;padding-top:8px;text-align:center;color:#075342;font-weight:800}@media print{tr,.kpi{break-inside:avoid}}</style></head><body><div class="sheet"><div class="head"><div class="brand"><h2>شركة تصنيف لإدارة المرافق</h2><p>TASNEEF FACILITIES MANAGEMENT</p></div><div class="title"><h1>تقرير التذاكر حسب الفلتر</h1><p>${E(new Date().toLocaleString('ar-SA',{timeZone:'Asia/Riyadh'}))}</p></div></div><div class="filters">${E(filterCaption())}</div><div class="kpis"><div class="kpi"><b>${rows.length}</b><span>المعروض</span></div><div class="kpi"><b>${rows.filter(t=>S(t.status)==='open').length}</b><span>مفتوحة</span></div><div class="kpi"><b>${rows.filter(t=>S(t.status)==='processing').length}</b><span>تحت المعالجة</span></div><div class="kpi"><b>${rows.filter(t=>S(t.status)==='closed').length}</b><span>مغلقة</span></div></div><table><thead><tr><th>م</th><th>رقم التذكرة</th><th>التاريخ</th><th>المشروع</th><th>المشرف</th><th>المشكلة</th><th>الأولوية</th><th>الحالة</th><th>المستلم</th><th>الوصف / الإجراء</th></tr></thead><tbody>${body}</tbody></table><div class="footer">تم إنشاء هذا التقرير من نظام شركة تصنيف لإدارة المرافق ويعتبر معتمدًا ما لم يبرر العميل خلاف ذلك.</div></div><script>window.onload=function(){setTimeout(function(){window.print()},350)}<\/script></body></html>`;
+    const w=window.open('','_blank');if(!w){notify('المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة.','err');return;}w.document.open();w.document.write(html);w.document.close();
+  }
+  window.printFilteredTicketsV10842=printFiltered;
+  ['ticketsDownloadPdfV10365','ticketsDownloadPdfV206','ticketsDownloadPdfV207','ticketsDownloadPdfV208','ticketsDownloadPdfV209','ticketsDownloadPdfV210','ticketsDownloadPdfV211','ticketsDownloadPdfV217','printSupervisorTicketsV10310'].forEach(name=>window[name]=printFiltered);
+
+  const oldReset=window.resetTicketAdvancedFiltersV10801;
+  window.resetTicketAdvancedFiltersV10801=function(){
+    ['ticketFilterProjectV10842','ticketFilterStatus','ticketFilterReceiveV10801','ticketFilterFromV10801','ticketFilterToV10801','ticketSearch','supTicketFilterProject','supTicketFilterStatus','supTicketFilterReceiveV10801','supTicketFilterFromV10801','supTicketFilterToV10801','supTicketSearch'].forEach(id=>{const el=$(id);if(el)el.value='';});
+    try{if(typeof oldReset==='function')oldReset();}catch(_){}
+    window.renderTickets?.();
+  };
+  function bindPrintButtons(){
+    ensureUi();
+    document.querySelectorAll('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207,.ticket-pdf-v208,[data-ticket-pdf],.ticket-print-filtered-v10842').forEach(b=>{b.textContent='طباعة حسب الفلتر';b.onclick=printFiltered;});
+  }
+  document.addEventListener('click',e=>{
+    const b=e.target?.closest?.('#ticketPdfBtnV206,#supTicketPdfBtnV206,.ticket-pdf-v206,.ticket-pdf-v207,.ticket-pdf-v208,[data-ticket-pdf],.ticket-print-filtered-v10842');
+    if(!b)return;e.preventDefault();e.stopImmediatePropagation();printFiltered();
+  },true);
+  function boot(){ensureUi();bindPrintButtons();try{window.renderTickets?.();}catch(e){console.warn(BUILD,e);}}
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,1100));
+  window.addEventListener('load',()=>setTimeout(boot,1700));
+  setTimeout(boot,2800);setTimeout(bindPrintButtons,4500);
+  console.info(BUILD,'loaded');
+})();
+/* ===== END V10842 ===== */
