@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10847 - Supervisor projects from Unified System 4 only ===== */
+/* ===== TASNEEF V10848 - Unified System 4 single authoritative supervisor project load ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsUnified4V10847) return;
-  window.__tasneefSupervisorProjectsUnified4V10847=true;
+  if(window.__tasneefSupervisorProjectsUnified4V10848) return;
+  window.__tasneefSupervisorProjectsUnified4V10848=true;
 
-  const BUILD='V10847_UNIFIED4_MONTHLY_DISTRIBUTION_ONLY';
+  const BUILD='V10848_UNIFIED4_SINGLE_AUTHORITATIVE_LOAD';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -60,7 +60,7 @@
     return projects;
   }
 
-  let applying=false,cache=null,cacheAt=0;
+  let applying=false,cache=null,cacheAt=0,requestSeq=0,lastAppliedSeq=0;
   async function buildContext(force=false){
     if(!isSupervisor()||!window.sb)return null;
     if(!force&&cache&&Date.now()-cacheAt<20000)return cache;
@@ -113,14 +113,22 @@
     return cache;
   }
 
-  async function apply(force=false){
-    if(applying)return cache;
+  async function apply(force=true){
+    const seq=++requestSeq;
+    if(applying){
+      // لا نعرض نتيجة موازية أو قديمة؛ آخر طلب فقط هو المسموح له بتحديث الواجهة.
+      while(applying) await new Promise(r=>setTimeout(r,25));
+      if(seq<requestSeq) return cache;
+    }
     applying=true;
     try{
-      const ctx=await buildContext(force); if(!ctx)return null;
+      const ctx=await buildContext(force); if(!ctx||seq<requestSeq)return cache;
+      lastAppliedSeq=seq;
       // يعلن النطاق قبل تشغيل أي حارس قديم، حتى لا يقوم بحذف البيانات الصحيحة من الذاكرة.
       window.__tasneefUnified4SupervisorProjectIdsV10847=new Set(ctx.projectIds);
+      window.__tasneefUnified4SupervisorProjectIdsV10848=new Set(ctx.projectIds);
       window.__tasneefUnified4SupervisorScopeReadyV10847=true;
+      window.__tasneefUnified4SupervisorScopeReadyV10848=true;
       window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
       window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
 
@@ -137,38 +145,60 @@
       try{if(typeof renderSupervisorAttendanceList==='function')await renderSupervisorAttendanceList();}catch(e){console.warn(BUILD,'attendance render',e);}
       try{if(typeof renderTimeLogs==='function')renderTimeLogs();}catch(e){console.warn(BUILD,'logs render',e);}
       try{if(typeof renderTickets==='function')renderTickets();}catch(e){console.warn(BUILD,'tickets render',e);}
-      window.__tasneefUnified4SupervisorScopeV10847={
+      window.__tasneefUnified4SupervisorScopeV10848={
         source:'monthly_distribution',month:ctx.month,projectCount:ctx.projects.length,workerCount:ctx.workers.length,
         projectIds:[...ctx.projectIds],supervisorId:S(ctx.identity?.sid||ctx.u.id),supervisorCode:S(ctx.identity?.code),
         supervisorName:S(ctx.identity?.name||ctx.u.full_name),matchStrategy:S(ctx.identity?.matchStrategy),at:new Date().toISOString()
       };
-      console.table(window.__tasneefUnified4SupervisorScopeV10847);
+      window.__tasneefUnified4SupervisorScopeV10847=window.__tasneefUnified4SupervisorScopeV10848;
+      console.table(window.__tasneefUnified4SupervisorScopeV10848);
       return ctx;
     }finally{applying=false;}
   }
 
+  const projectSelectIds=['logProject','attendanceProject','ticketProject','supTicketFilterProject','supOrderProjectV10061','supOrderFilterProjectV10061','supInventoryRequestProject','supClientReportProject'];
+  function lockProjectSelects(){
+    projectSelectIds.forEach(id=>{const el=$(id);if(!el)return;el.disabled=true;el.style.visibility='hidden';el.setAttribute('aria-busy','true');});
+  }
+  function unlockProjectSelects(){
+    projectSelectIds.forEach(id=>{const el=$(id);if(!el)return;el.disabled=false;el.style.visibility='';el.removeAttribute('aria-busy');});
+  }
+  function loadingPlaceholder(){
+    projectSelectIds.forEach(id=>{const el=$(id);if(!el)return;el.innerHTML='<option value="">جاري تحميل مشاريع النظام الموحد 4…</option>';});
+  }
+
   const previousInit=window.initSupervisor;
   window.initSupervisor=async function(){
-    // يمنع الحارس القديم من التصفية قبل إعادة تحميل البيانات الكاملة.
+    lockProjectSelects();
+    loadingPlaceholder();
     delete window.__tasneefUnified4SupervisorProjectIdsV10847;
+    delete window.__tasneefUnified4SupervisorProjectIdsV10848;
     window.__tasneefUnified4SupervisorScopeReadyV10847=false;
-    if(typeof previousInit==='function')await previousInit.apply(this,arguments);
-    return apply(true);
+    window.__tasneefUnified4SupervisorScopeReadyV10848=false;
+    try{
+      // نسمح للتهيئة الأساسية بتحميل بقية البيانات، لكن القائمة تظل مخفية حتى تصل النتيجة الحديثة الوحيدة.
+      if(typeof previousInit==='function')await previousInit.apply(this,arguments);
+      return await apply(true);
+    }finally{
+      unlockProjectSelects();
+    }
   };
   try{initSupervisor=window.initSupervisor;}catch(_){}
 
   const previousRefresh=window.refreshAll;
   if(typeof previousRefresh==='function')window.refreshAll=async function(){
-    delete window.__tasneefUnified4SupervisorProjectIdsV10847;
-    const r=await previousRefresh.apply(this,arguments);
-    if(isSupervisor())await apply(true);
-    return r;
+    if(!isSupervisor())return previousRefresh.apply(this,arguments);
+    lockProjectSelects();
+    try{
+      const r=await previousRefresh.apply(this,arguments);
+      await apply(true);
+      return r;
+    }finally{unlockProjectSelects();}
   };
 
   window.refreshSupervisorProjectsV10816=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10847=()=>apply(true);
-  function boot(){if(isSupervisor())apply(false).catch(e=>{console.error(BUILD,e);try{msg('تعذر تحميل مشاريع المشرف من النظام الموحد 4: '+e.message,'err');}catch(_){}});}
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
-  window.addEventListener('load',()=>{setTimeout(boot,900);setTimeout(()=>apply(true).catch(console.error),2300);});
+  window.refreshSupervisorProjectsUnified4V10848=()=>apply(true);
+  // V10848: تم إلغاء مؤقتات 600/900/2300ms ومصدر الكاش الأولي الذي كان يجعل المشروع يظهر ثم يختفي.
   console.log('Tasneef '+BUILD+' loaded');
 })();
