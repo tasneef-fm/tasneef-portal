@@ -4,7 +4,7 @@
   if(window.__tasneefSupervisorProjectsCompleteV10816) return;
   window.__tasneefSupervisorProjectsCompleteV10816 = true;
 
-  const BUILD='V10844_DIRECT_ASSIGNED_SUPERVISOR_PROJECTS';
+  const BUILD='V10845_DIRECT_PROJECT_LINK_SYNC';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -101,14 +101,16 @@
     return safeQuery('monthly_distribution '+month,sb.from('monthly_distribution').select('*').eq('month_key',month).limit(20000));
   }
   async function fetchBase(month){
-    const [projects,workers,assignments,dist,directProjects]=await Promise.all([
+    const [projects,workers,assignments,supervisorAssignments,dist,directProjects]=await Promise.all([
       safeQuery('projects',sb.from('projects').select('*').order('name')),
       safeQuery('workers',sb.from('workers').select('*').order('name')),
       safeQuery('worker_project_assignments',sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id')),
+      // V10845: هذا هو سجل الربط المباشر الذي تحفظه الإدارة. وجوده يكفي لإظهار المشروع حتى قبل توزيع العمال.
+      safeQuery('supervisor_project_assignments',sb.from('supervisor_project_assignments').select('*').limit(10000)),
       loadDistribution(month),
       secureDirectProjects()
     ]);
-    return {projects,workers,assignments,dist,directProjects:directProjects===null?[]:directProjects};
+    return {projects,workers,assignments,supervisorAssignments,dist,directProjects:directProjects===null?[]:directProjects};
   }
   function uniqueProjects(rows){
     const map=new Map();
@@ -149,7 +151,15 @@
       }
       const pids=new Set(); const pnames=new Set();
       A(base.projects).filter(p=>activeRow(p)&&rowMatchesSupervisor(p,id)).forEach(p=>pids.add(S(p.id)));
-      A(base.directProjects).filter(activeRow).forEach(p=>{if(S(p.id))pids.add(S(p.id));if(norm(p.name))pnames.add(norm(p.name));});
+      A(base.directProjects).filter(activeRow).forEach(p=>{
+        const pid=projectIdOf(p)||S(p.id), pn=norm(projectNameOf(p)||p.name);
+        if(pid)pids.add(pid); if(pn)pnames.add(pn);
+      });
+      // V10845: الربط المباشر للمشروع بالمشرف مستقل عن وجود عمال أو توزيع شهري.
+      A(base.supervisorAssignments).filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id)).forEach(r=>{
+        const pid=projectIdOf(r), pn=norm(projectNameOf(r));
+        if(pid)pids.add(pid); if(pn)pnames.add(pn);
+      });
       matchedDist.forEach(r=>{const pid=projectIdOf(r), pn=norm(projectNameOf(r)); if(pid)pids.add(pid); if(pn)pnames.add(pn);});
 
       const supWorkers=A(base.workers).filter(w=>activeRow(w)&&workerMatchesSupervisor(w,id));
@@ -157,7 +167,12 @@
       supWorkers.forEach(w=>workerProjectIds(w).forEach(pid=>pids.add(pid)));
       A(base.assignments).filter(a=>activeRow(a)&&supWorkerIds.has(workerIdOf(a))).forEach(a=>{const pid=projectIdOf(a); if(pid)pids.add(pid);});
 
-      const allProjectRows=uniqueProjects([...A(base.projects),...A(base.directProjects)]);
+      const directProjectRows=A(base.directProjects).map(p=>Object.assign({},p,{id:S(p.id)||projectIdOf(p),name:S(p.name)||projectNameOf(p)})).filter(p=>S(p.id)||S(p.name));
+      const assignmentProjectRows=A(base.supervisorAssignments).filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id)).map(r=>({
+        id:projectIdOf(r),name:projectNameOf(r),status:r.project_status||r.status,is_active:r.project_is_active??r.is_active,active:r.project_active??r.active,
+        required_daily_minutes:r.required_daily_minutes,friday_minutes:r.friday_minutes,operation_type:r.operation_type,visit_type_default:r.visit_type_default
+      })).filter(p=>S(p.id)||S(p.name));
+      const allProjectRows=uniqueProjects([...A(base.projects),...directProjectRows,...assignmentProjectRows]);
       let projects=uniqueProjects(allProjectRows.filter(p=>activeRow(p)&&(pids.has(S(p.id))||pnames.has(norm(p.name)))));
       // البيانات الشهرية هي المرجع التشغيلي الحالي؛ نثبت الربط داخل ذاكرة صفحة المشرف فقط حتى لا تحذفه الفلاتر القديمة.
       projects=projects.map(p=>Object.assign({},p,{
@@ -171,7 +186,7 @@
       const relevantAssignments=A(base.assignments).filter(a=>activeRow(a)&&finalIds.has(projectIdOf(a)));
       const assignmentWorkerIds=new Set(relevantAssignments.map(workerIdOf).filter(Boolean));
       const workers=A(base.workers).filter(w=>activeRow(w)&&(workerMatchesSupervisor(w,id)||assignmentWorkerIds.has(S(w.id))||[...workerProjectIds(w)].some(pid=>finalIds.has(pid))));
-      cache={u,id,month,projects,workers,assignments:relevantAssignments,projectIds:finalIds,dist:matchedDist}; cacheAt=Date.now();
+      cache={u,id,month,projects,workers,assignments:relevantAssignments,supervisorAssignments:A(base.supervisorAssignments),projectIds:finalIds,dist:matchedDist}; cacheAt=Date.now();
       return cache;
     })();
     try{return await running;}finally{running=null;}
