@@ -1,281 +1,240 @@
-/* ===== TASNEEF V10847 - Supervisor projects from unified distribution authority ===== */
+/* ===== TASNEEF V10848 - One unified supervisor-project source ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsCompleteV10847) return;
-  window.__tasneefSupervisorProjectsCompleteV10847 = true;
-  window.__tasneefSupervisorProjectsCompleteV10846 = true;
-  window.__tasneefSupervisorProjectsCompleteV10816 = true;
+  if(window.__tasneefSupervisorProjectsUnifiedV10848)return;
+  window.__tasneefSupervisorProjectsUnifiedV10848=true;
+  window.__tasneefSupervisorProjectsCompleteV10848=true;
+  window.__tasneefSupervisorProjectsCompleteV10847=true;
+  window.__tasneefSupervisorProjectsCompleteV10846=true;
+  window.__tasneefSupervisorProjectsCompleteV10816=true;
 
-  const BUILD='V10847_SUPERVISOR_PROJECTS_DISTRIBUTION_AUTHORITY';
+  const BUILD='V10848_UNIFIED_SUPERVISOR_PROJECTS';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
-  const arabicDigits={'٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};
-  const norm=v=>S(v).toLowerCase()
-    .replace(/[٠-٩]/g,d=>arabicDigits[d]||d)
-    .replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه')
-    .replace(/ء/g,'').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ـ/g,'')
-    .replace(/[\u064B-\u0652]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ')
-    .replace(/\s+/g,' ').trim();
-  const compact=v=>norm(v).replace(/\s+/g,'');
-  const inactiveWords=new Set(['false','0','inactive','disabled','stopped','ended','deleted','archived','موقوف','متوقف','منتهي','محذوف','مؤرشف','غير نشط']);
-  const falseLike=v=>inactiveWords.has(norm(v));
-  const activeRow=r=>!!r && !falseLike(r.is_active) && !falseLike(r.active) && !falseLike(r.status||r.state);
-  const currentMonth=()=>{
-    try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);}
-    catch(_){return new Date().toISOString().slice(0,7);}
-  };
-  const previousMonth=m=>{const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
+  const norm=v=>S(v).toLowerCase().replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه').replace(/ء/g,'').replace(/ؤ/g,'و').replace(/ئ/g,'ي').replace(/ـ/g,'').replace(/[\u064B-\u0652]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim();
+  const projectCache=new Map();
+  let applyRequestId=0;
+  let realtimeChannel=null;
+
   function user(){
-    try{ if(typeof session==='function'){const u=session(); if(u) return u;} }catch(_){}
-    for(const key of ['tasneef_user','tasneefUser','current_user']){
-      try{const u=JSON.parse(localStorage.getItem(key)||'null'); if(u) return u;}catch(_){}
-    }
-    return {};
+    let local={};try{local=JSON.parse(localStorage.getItem('tasneef_user')||'{}')||{};}catch(_){local={};}
+    let live={};try{live=typeof session==='function'?(session()||{}):{};}catch(_){live={};}
+    return Object.assign({},local,live);
   }
+  function isSupervisor(){const u=user();return ['supervisor','مشرف'].includes(norm(u.role_key||u.role||u.user_role));}
   function sessionToken(){
     for(const key of ['tasneef_session_token_v10817','tasneef_permission_session_v10817','tasneef_session_token','tasneefPermissionSession']){
-      const value=S(localStorage.getItem(key)); if(value) return value;
+      const value=S(localStorage.getItem(key)||'');if(value)return value;
     }
     return '';
   }
-  function isSupervisor(){
+  function riyadhDate(){
+    try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+    catch(_){return new Date().toISOString().slice(0,10);}
+  }
+  function selectedDate(){
+    const values=[$('logDate')?.value,$('attendanceDate')?.value,$('summaryDate')?.value].map(S).filter(v=>/^\d{4}-\d{2}-\d{2}$/.test(v));
+    return values[0]||riyadhDate();
+  }
+  function identity(){
     const u=user();
-    return ['supervisor','مشرف'].includes(norm(u.role_key||u.role||u.user_role));
+    return {
+      authUserId:S(u.id||u.user_id||u.uid||u.app_user_id),
+      employeeId:S(u.employee_id||u.worker_id||''),
+      employeeCode:S(u.employee_code||u.employee_number||u.code||u.user_code||''),
+      supervisorName:S(u.full_name||u.name||u.display_name||u.username||''),
+      role:S(u.role_key||u.role||'')
+    };
   }
-  function identity(u){
-    const ids=new Set([u.id,u.user_id,u.uid,u.app_user_id].map(S).filter(Boolean));
-    const codes=new Set([u.employee_id,u.worker_id,u.employee_code,u.employee_number,u.worker_employee_code,u.supervisor_employee_code,u.code,u.user_code,u.username].map(S).filter(Boolean));
-    const normCodes=new Set([...codes].map(norm).filter(Boolean));
-    const names=new Set([u.full_name,u.name,u.display_name,u.username].map(norm).filter(Boolean));
-    return {ids,codes,normCodes,names,name:S(u.full_name||u.name||u.display_name||u.username),id:S(u.id||u.user_id||u.uid||u.app_user_id)};
-  }
-  function nameMatch(value,names){
-    const n=norm(value); if(!n) return false;
-    if(names.has(n)) return true;
-    for(const x of names){
-      if(!x) continue;
-      if(compact(x)===compact(n)) return true;
-      const xt=x.split(' '), nt=n.split(' ');
-      if(xt.length===1 && xt[0].length>=3 && nt[0]===xt[0]) return true;
-      if(nt.length===1 && nt[0].length>=3 && xt[0]===nt[0]) return true;
-    }
-    return false;
-  }
-  function rowMatchesSupervisor(r,id){
-    if(!r) return false;
-    const rid=[r.supervisor_id,r.app_supervisor_id,r.current_supervisor_id,r.supervisor_user_id,r.manager_id,r.assigned_supervisor_id].map(S).filter(Boolean);
-    if(rid.some(v=>id.ids.has(v)||id.normCodes.has(norm(v)))) return true;
-    const rc=[r.supervisor_employee_code,r.supervisor_code,r.employee_code,r.manager_code,r.supervisor_username].map(S).filter(Boolean);
-    if(rc.some(v=>id.codes.has(v)||id.normCodes.has(norm(v)))) return true;
-    return [r.supervisor_name,r.manager_name,r.supervisor,r.assigned_supervisor_name].some(v=>nameMatch(v,id.names));
-  }
-  function projectIdOf(r){return S(r?.project_id||r?.projectId||r?.project_key||r?.assigned_project_id||r?.current_project_id);}
-  function projectNameOf(r){return S(r?.project_name||r?.project||r?.project_title||r?.name_project||r?.projectName);}
-  function workerIdOf(r){return S(r?.worker_id||r?.employee_id||r?.worker_user_id||r?.staff_id);}
-  function workerMatchesSupervisor(w,id){
-    if(rowMatchesSupervisor(w,id)) return true;
-    const code=S(w?.supervisor_employee_code||w?.supervisor_code);
-    const name=S(w?.supervisor_name||w?.manager_name);
-    return (code&&(id.codes.has(code)||id.normCodes.has(norm(code)))) || nameMatch(name,id.names);
-  }
-  function workerProjectIds(w){
-    const out=new Set();
-    [w?.project_id,w?.assigned_project_id,w?.current_project_id,w?.projectId].forEach(v=>{if(S(v))out.add(S(v));});
-    A(w?.project_ids||w?.projects||w?.assigned_projects).forEach(v=>{const x=S(v?.id??v?.project_id??v); if(x)out.add(x);});
-    return out;
-  }
-  function workerProjectNames(w){
-    const out=new Set();
-    [w?.project_name,w?.assigned_project_name,w?.current_project_name].forEach(v=>{if(norm(v))out.add(norm(v));});
-    A(w?.projects||w?.assigned_projects).forEach(v=>{const x=S(v?.name??v?.project_name??''); if(norm(x))out.add(norm(x));});
-    return out;
-  }
-  async function safeQuery(label,promise){
-    try{const r=await promise; if(r?.error){console.warn(BUILD,label,r.error.message); return [];} return r?.data||[];}
-    catch(e){console.warn(BUILD,label,e?.message||e); return [];}
-  }
+  function cacheKey(date){const id=identity();return ['supervisor-projects',id.authUserId||id.employeeCode||norm(id.supervisorName),date].join(':');}
   function missingRpc(error,name){
-    const c=S(error?.code),m=S(error?.message||error).toLowerCase();
-    return c==='PGRST202'||c==='42883'||(m.includes(name.toLowerCase())&&(m.includes('not find')||m.includes('does not exist')));
+    const code=S(error?.code),msg=S(error?.message||error).toLowerCase();
+    return code==='PGRST202'||code==='42883'||(msg.includes(S(name).toLowerCase())&&(msg.includes('not find')||msg.includes('does not exist')));
   }
-  async function secureDistribution(month){
-    try{
-      const r=await sb.rpc('tasneef_get_supervisor_distribution_v10819',{p_month:month});
-      if(r?.error){if(missingRpc(r.error,'tasneef_get_supervisor_distribution_v10819'))return null;throw r.error;}
-      const payload=r?.data||{};
-      if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل توزيع المشرف');
-      return Array.isArray(payload)?payload:A(payload?.rows);
-    }catch(e){if(missingRpc(e,'tasneef_get_supervisor_distribution_v10819'))return null;console.warn(BUILD,'secure distribution',e);return [];}
+  function esc(v){return S(v).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]||c));}
+  function ensureStateBox(){
+    let box=$('supervisorProjectsLoadStateV10848');if(box)return box;
+    const card=$('supLogs')?.querySelector('.card');if(!card)return null;
+    box=document.createElement('div');box.id='supervisorProjectsLoadStateV10848';box.className='help';box.style.margin='0 0 10px';
+    const firstHelp=card.querySelector('.help');if(firstHelp?.nextSibling)card.insertBefore(box,firstHelp.nextSibling);else card.prepend(box);
+    return box;
   }
-  async function secureDirectProjects(){
-    const token=sessionToken();
-    for(const rpcName of ['tasneef_get_supervisor_projects_v10847','tasneef_get_supervisor_projects_v10846','tasneef_get_supervisor_projects_v10845']){
-      try{
-        const r=await sb.rpc(rpcName,{p_session_token:token||null});
-        if(r?.error){if(missingRpc(r.error,rpcName))continue;throw r.error;}
-        const payload=r?.data||{};
-        if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل المشاريع المسندة للمشرف');
-        window.__tasneefSupervisorProjectDiagnosticV10847={
-          rpc:rpcName,user_id:payload?.user_id||'',count:Number(payload?.count||0),sources:payload?.sources||{},identity:payload?.identity||{},unresolved:payload?.unresolved||[]
-        };
-        return Array.isArray(payload)?payload:A(payload?.rows);
-      }catch(e){
-        if(missingRpc(e,rpcName))continue;
-        console.warn(BUILD,rpcName,e); return [];
-      }
-    }
-    return null;
+  function stateMessage(text,type='info'){
+    const box=ensureStateBox();if(!box)return;
+    box.textContent=text;
+    box.style.color=type==='error'?'#9b2222':type==='success'?'#0b6b47':'#455f57';
+    box.style.background=type==='error'?'#fff0f0':type==='success'?'#eef9f3':'#f6faf8';
+    box.style.borderColor=type==='error'?'#efc1c1':'#d6e6df';
   }
-  async function loadDistribution(month){
-    const secure=await secureDistribution(month);
-    if(secure!==null)return secure;
-    return safeQuery('monthly_distribution '+month,sb.from('monthly_distribution').select('*').eq('month_key',month).limit(20000));
+  const selectConfigs=[
+    ['logProject','اختر المشروع'],['attendanceProject','كل مشاريع المشرف'],['ticketProject','اختر المشروع'],['supTicketFilterProject','كل المشاريع'],
+    ['supOrderProjectV10061','اختر المشروع'],['supOrderFilterProjectV10061','كل المشاريع'],['supInventoryRequestProject','اختر المشروع'],['supClientReportProject','اختر المشروع']
+  ];
+  function loadingSelects(){
+    selectConfigs.forEach(([id])=>{const el=$(id);if(!el)return;const old=S(el.value);el.dataset.previousProjectValue=old;el.innerHTML='<option value="">جاري تحميل مشاريع المشرف…</option>';el.disabled=true;});
+    stateMessage('جاري تحميل مشاريع المشرف…');
   }
-  async function fetchBase(month){
-    const [projects,workers,assignments,dist,directProjects]=await Promise.all([
-      safeQuery('projects',sb.from('projects').select('*').order('name')),
-      safeQuery('workers',sb.from('workers').select('*').order('name')),
-      safeQuery('worker_project_assignments',sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id')),
-      loadDistribution(month),
-      secureDirectProjects()
-    ]);
-    return {projects,workers,assignments,dist,directProjects:directProjects===null?[]:directProjects};
+  function setSelect(id,projects,label){
+    const el=$(id);if(!el)return;
+    const old=S(el.dataset.previousProjectValue||el.value);delete el.dataset.previousProjectValue;
+    el.innerHTML=`<option value="">${esc(label)}</option>`+projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name||'-')}</option>`).join('');
+    el.disabled=false;
+    if([...el.options].some(o=>S(o.value)===old))el.value=old;
   }
+  function refill(projects){selectConfigs.forEach(([id,label])=>setSelect(id,projects,label));}
   function uniqueProjects(rows){
-    const map=new Map();
-    A(rows).forEach(p=>{
-      if(!p) return;
-      const k=S(p.id)||('name:'+norm(p.name));
-      if(!k) return;
-      if(!map.has(k)) map.set(k,p);
-      else map.set(k,Object.assign({},map.get(k),p));
-    });
+    const map=new Map();A(rows).forEach(p=>{if(!p)return;const key=S(p.id)||('name:'+norm(p.name));if(!key)return;if(!map.has(key))map.set(key,p);else map.set(key,Object.assign({},map.get(key),p));});
     return [...map.values()].sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
   }
-  function projectMatchesAlias(p,pids,pnames){
-    if(pids.has(S(p.id))) return true;
-    const n=norm(p.name), c=compact(p.name);
-    if(pnames.has(n)||pnames.has(c)) return true;
-    for(const alias of pnames){
-      const a=norm(alias), ac=compact(alias);
-      if(!a) continue;
-      if(a===n||ac===c) return true;
-    }
-    return false;
-  }
-  function setSelect(id,projects,allLabel){
-    const el=$(id); if(!el) return;
-    const old=S(el.value);
-    const esc=v=>S(v).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    el.innerHTML=(allLabel!==null?`<option value="">${esc(allLabel||'اختر المشروع')}</option>`:'')+
-      projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name||'-')}</option>`).join('');
-    if([...el.options].some(o=>S(o.value)===old)) el.value=old;
-  }
-  function refill(projects){
-    setSelect('logProject',projects,'اختر المشروع');
-    setSelect('attendanceProject',projects,'كل مشاريع المشرف');
-    setSelect('ticketProject',projects,'اختر المشروع');
-    setSelect('supTicketFilterProject',projects,'كل المشاريع');
-    setSelect('supOrderProjectV10061',projects,'اختر المشروع');
-    setSelect('supOrderFilterProjectV10061',projects,'كل المشاريع');
-    setSelect('supInventoryRequestProject',projects,'اختر المشروع');
-    setSelect('supClientReportProject',projects,'اختر المشروع');
-  }
-  let cache=null,cacheAt=0,running=null;
-  async function buildContext(force=false){
-    if(!isSupervisor()||!window.sb) return null;
-    if(!force&&cache&&Date.now()-cacheAt<15000) return cache;
-    if(running&&!force) return running;
-    running=(async()=>{
-      const u=user(),id=identity(u),month=currentMonth();
-      const base=await fetchBase(month);
-      let matchedDist=A(base.dist).filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id));
-      if(!matchedDist.length){
-        const prev=await loadDistribution(previousMonth(month));
-        matchedDist=A(prev).filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id));
+  async function rpcProjects(date){
+    const token=sessionToken();
+    const primary='tasneef_get_unified_supervisor_projects_v10848';
+    let r=await sb.rpc(primary,{p_session_token:token||null,p_selected_date:date});
+    if(r?.error&&missingRpc(r.error,primary)){
+      for(const fallback of ['tasneef_get_supervisor_projects_v10847','tasneef_get_supervisor_projects_v10846']){
+        r=await sb.rpc(fallback,{p_session_token:token||null});
+        if(!r?.error)break;
+        if(!missingRpc(r.error,fallback))break;
       }
-      const pids=new Set(),pnames=new Set();
-      A(base.projects).filter(p=>activeRow(p)&&rowMatchesSupervisor(p,id)).forEach(p=>{if(S(p.id))pids.add(S(p.id));if(norm(p.name)){pnames.add(norm(p.name));pnames.add(compact(p.name));}});
-      A(base.directProjects).forEach(p=>{if(!p)return;if(S(p.id))pids.add(S(p.id));if(norm(p.name)){pnames.add(norm(p.name));pnames.add(compact(p.name));}});
-      matchedDist.forEach(r=>{const pid=projectIdOf(r),pn=projectNameOf(r);if(pid)pids.add(pid);if(norm(pn)){pnames.add(norm(pn));pnames.add(compact(pn));}});
+    }
+    if(r?.error)throw r.error;
+    const payload=r?.data||{};
+    if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل مشاريع المشرف');
+    return Array.isArray(payload)?{ok:true,rows:payload,build:'legacy'}:payload;
+  }
+  async function getUnifiedSupervisorProjects(supervisorId,date=selectedDate(),force=false){
+    const key=cacheKey(date);
+    if(!force){const hit=projectCache.get(key);if(hit&&Date.now()-hit.at<60000)return hit.payload;}
+    const payload=await rpcProjects(date);
+    payload.rows=uniqueProjects(payload.rows);
+    projectCache.set(key,{at:Date.now(),payload});
+    return payload;
+  }
+  window.getUnifiedSupervisorProjects=getUnifiedSupervisorProjects;
+  window.getUnifiedSupervisorProjectsV10848=getUnifiedSupervisorProjects;
 
-      const supWorkers=A(base.workers).filter(w=>activeRow(w)&&workerMatchesSupervisor(w,id));
-      const supWorkerIds=new Set(supWorkers.map(w=>S(w.id)).filter(Boolean));
-      supWorkers.forEach(w=>{
-        workerProjectIds(w).forEach(pid=>pids.add(pid));
-        workerProjectNames(w).forEach(pn=>{pnames.add(pn);pnames.add(compact(pn));});
-      });
-      A(base.assignments).filter(a=>activeRow(a)&&supWorkerIds.has(workerIdOf(a))).forEach(a=>{
-        const pid=projectIdOf(a),pn=projectNameOf(a);if(pid)pids.add(pid);if(norm(pn)){pnames.add(norm(pn));pnames.add(compact(pn));}
-      });
-
-      const allProjectRows=uniqueProjects([...A(base.directProjects),...A(base.projects)]);
-      let projects=uniqueProjects(allProjectRows.filter(p=>activeRow(p)&&projectMatchesAlias(p,pids,pnames)));
-      projects=projects.map(p=>Object.assign({},p,{
-        __original_supervisor_id:p.supervisor_id,
-        supervisor_id:Number(id.id)||id.id||p.supervisor_id,
-        app_supervisor_id:Number(id.id)||id.id||p.app_supervisor_id,
-        current_supervisor_id:Number(id.id)||id.id||p.current_supervisor_id,
-        supervisor_name:id.name||p.supervisor_name
-      }));
-      const finalIds=new Set(projects.map(p=>S(p.id)));
-      const finalNames=new Set(projects.map(p=>norm(p.name)).filter(Boolean));
-      const relevantAssignments=A(base.assignments).filter(a=>activeRow(a)&&(finalIds.has(projectIdOf(a))||finalNames.has(norm(projectNameOf(a)))));
-      const assignmentWorkerIds=new Set(relevantAssignments.map(workerIdOf).filter(Boolean));
-      const workers=A(base.workers).filter(w=>activeRow(w)&&(
-        workerMatchesSupervisor(w,id)||assignmentWorkerIds.has(S(w.id))||[...workerProjectIds(w)].some(pid=>finalIds.has(pid))||[...workerProjectNames(w)].some(pn=>finalNames.has(pn))
-      ));
-      cache={u,id,month,projects,workers,assignments:relevantAssignments,projectIds:finalIds,dist:matchedDist};
-      cacheAt=Date.now();
-      return cache;
-    })();
-    try{return await running;}finally{running=null;}
+  async function loadWorkersAndAssignments(date,projects,force,requestId){
+    let workers=[];
+    try{
+      if(typeof window.getUnifiedSupervisorWorkersV10713==='function'){
+        const result=await window.getUnifiedSupervisorWorkersV10713(date,force);workers=A(result?.workers);
+      }else workers=A(window.data?.workers);
+    }catch(e){console.warn(BUILD,'workers load',e);workers=A(window.data?.workers);}
+    if(requestId!==applyRequestId)return null;
+    const ids=projects.map(p=>S(p.id)).filter(Boolean);
+    let assignments=[];
+    if(ids.length&&window.sb){
+      try{const r=await sb.from('worker_project_assignments').select('*').in('project_id',ids).eq('is_active',true).limit(10000);if(!r.error)assignments=r.data||[];}catch(e){console.warn(BUILD,'assignments load',e);}
+    }
+    return {workers,assignments};
+  }
+  function diagnostics(payload,projects,date){
+    const id=identity(),sources=payload?.sources||{};
+    console.table({
+      authUserId:payload?.identity?.authUserId||id.authUserId,
+      employeeId:payload?.identity?.employeeId||id.employeeId,
+      resolvedSupervisorId:payload?.identity?.resolvedSupervisorId||payload?.user_id||id.authUserId,
+      supervisorName:payload?.identity?.supervisorName||id.supervisorName,
+      selectedDate:date,
+      selectedMonth:date.slice(0,7)
+    });
+    console.table({
+      projectsFromDirectSupervisorField:Number(sources.projectsFromDirectSupervisorField||0),
+      projectsFromMonthlyDistribution:Number(sources.projectsFromMonthlyDistribution||0),
+      projectsFromAssignmentHeader:Number(sources.projectsFromAssignmentHeader||0),
+      projectsFromWorkerAssignments:0,
+      finalSupervisorProjects:projects.length
+    });
+    console.table({
+      supervisorId:payload?.user_id||id.authUserId,
+      adminDistributionProjectsCount:Number(payload?.adminDistributionProjectsCount??projects.length),
+      supervisorPageProjectsCount:projects.length,
+      missingInSupervisorPage:A(payload?.missingInSupervisorPage),
+      extraInSupervisorPage:A(payload?.extraInSupervisorPage)
+    });
+    if(A(payload?.comparison).length)console.table(payload.comparison);
+    window.__tasneefSupervisorProjectsDiagnosticV10848={payload,projects,date,identity:id};
   }
   async function apply(force=false){
-    const ctx=await buildContext(force); if(!ctx) return;
-    const d=window.data=window.data||{};
-    d.projects=ctx.projects;
-    d.workers=ctx.workers;
-    d.workerAssignments=ctx.assignments;
-    window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
-    window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
-    window.__tasneefSupervisorProjectIdsV10846=new Set(ctx.projectIds);
-    window.__tasneefSupervisorProjectIdsV10847=new Set(ctx.projectIds);
-    refill(ctx.projects);
-    const title=$('supTitle'); if(title) title.textContent='لوحة المشرف - '+(ctx.id.name||ctx.u.username||'');
-    const help=document.querySelector('#supLogs .help,#supLogs .footer-note');
-    if(help) help.dataset.projectCount=String(ctx.projects.length);
-    try{if(typeof renderTimeLogs==='function')renderTimeLogs();}catch(e){console.warn(BUILD,e);}
-    try{if(typeof renderTickets==='function')renderTickets();}catch(e){console.warn(BUILD,e);}
-    try{if(typeof renderSupervisorAttendanceList==='function'&&document.getElementById('supAttendance')?.classList.contains('active'))renderSupervisorAttendanceList();}catch(e){console.warn(BUILD,e);}
-    console.log(BUILD,{projects:ctx.projects.length,workers:ctx.workers.length,month:ctx.month,direct_rpc:window.__tasneefSupervisorProjectDiagnosticV10847||window.__tasneefSupervisorProjectDiagnosticV10846||null,project_ids:[...ctx.projectIds],project_names:ctx.projects.map(p=>p.name)});
+    if(!isSupervisor()||!window.sb)return;
+    const requestId=++applyRequestId;
+    const date=selectedDate();
+    loadingSelects();
+    try{
+      const payload=await getUnifiedSupervisorProjects(identity().authUserId,date,force);
+      if(requestId!==applyRequestId)return;
+      const projects=uniqueProjects(payload.rows);
+      const d=window.data=window.data||{};
+      d.projects=projects;
+      const projectIds=new Set(projects.map(p=>S(p.id)));
+      window.__tasneefSupervisorProjectIdsV371=projectIds;
+      window.__tasneefSupervisorProjectIdsV10816=projectIds;
+      window.__tasneefSupervisorProjectIdsV10846=projectIds;
+      window.__tasneefSupervisorProjectIdsV10847=projectIds;
+      window.__tasneefSupervisorProjectIdsV10848=projectIds;
+      refill(projects);
+      stateMessage(projects.length?`تم تحميل ${projects.length} مشاريع مرتبطة بالمشرف`:'لا توجد مشاريع مرتبطة بالمشرف في التاريخ المحدد',projects.length?'success':'info');
+      diagnostics(payload,projects,date);
+      const workerCtx=await loadWorkersAndAssignments(date,projects,force,requestId);
+      if(requestId!==applyRequestId||!workerCtx)return;
+      d.workers=workerCtx.workers;
+      d.workerAssignments=workerCtx.assignments;
+      const title=$('supTitle');const id=identity();if(title)title.textContent='لوحة المشرف - '+(id.supervisorName||'');
+      try{window.renderTimeLogs?.();}catch(e){console.warn(BUILD,e);}
+      try{window.renderTickets?.();}catch(e){console.warn(BUILD,e);}
+      try{if($('supAttendance')?.classList.contains('active'))window.renderSupervisorAttendanceList?.();}catch(e){console.warn(BUILD,e);}
+    }catch(e){
+      if(requestId!==applyRequestId)return;
+      console.error(BUILD,e);
+      const current=A(window.data?.projects);
+      if(current.length)refill(current);else selectConfigs.forEach(([id,label])=>{const el=$(id);if(el){el.disabled=false;el.innerHTML=`<option value="">${esc(label)}</option>`;}});
+      stateMessage('تعذر تحميل مشاريع المشرف: '+S(e?.message||e),'error');
+    }
   }
-
-  const previousInit=window.initSupervisor;
-  window.initSupervisor=async function(){
-    if(typeof previousInit==='function') await previousInit.apply(this,arguments);
-    cache=null;cacheAt=0;
-    await apply(true);
-  };
-  try{initSupervisor=window.initSupervisor;}catch(_){}
-
-  const previousLoadAll=window.loadAll;
-  if(typeof previousLoadAll==='function') window.loadAll=async function(){
-    const r=await previousLoadAll.apply(this,arguments);
-    if(isSupervisor()){cache=null;cacheAt=0;await apply(true);}
-    return r;
-  };
-  try{loadAll=window.loadAll;}catch(_){}
-
-  window.refreshSupervisorProjectsV10816=()=>{cache=null;cacheAt=0;return apply(true);};
+  function invalidateAndRefresh(detail){
+    const id=identity();
+    if(detail){
+      const targetId=S(detail.supervisorId),targetCode=S(detail.supervisorCode);
+      if(targetId&&targetId!==id.authUserId&&targetCode&&targetCode!==id.employeeCode)return;
+    }
+    projectCache.clear();apply(true);
+  }
+  window.refreshSupervisorProjectsV10816=()=>{projectCache.clear();return apply(true);};
   window.refreshSupervisorProjectsV10845=window.refreshSupervisorProjectsV10816;
   window.refreshSupervisorProjectsV10846=window.refreshSupervisorProjectsV10816;
   window.refreshSupervisorProjectsV10847=window.refreshSupervisorProjectsV10816;
-  function boot(){if(isSupervisor()){cache=null;cacheAt=0;apply(true);}}
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,450));
-  window.addEventListener('load',()=>{setTimeout(boot,700);setTimeout(boot,1700);setTimeout(boot,3500);});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&isSupervisor())boot();});
-  setTimeout(boot,5200);
-  console.log('Tasneef '+BUILD+' loaded');
+  window.refreshSupervisorProjectsV10848=window.refreshSupervisorProjectsV10816;
+
+  const previousInit=window.initSupervisor;
+  window.initSupervisor=async function(){if(typeof previousInit==='function')await previousInit.apply(this,arguments);projectCache.clear();await apply(true);};
+  try{initSupervisor=window.initSupervisor;}catch(_){ }
+  const previousLoadAll=window.loadAll;
+  if(typeof previousLoadAll==='function')window.loadAll=async function(){const result=await previousLoadAll.apply(this,arguments);if(isSupervisor()){projectCache.clear();await apply(true);}return result;};
+  try{loadAll=window.loadAll;}catch(_){ }
+  const previousLogout=window.logout;
+  if(typeof previousLogout==='function')window.logout=async function(){projectCache.clear();try{realtimeChannel&&sb.removeChannel(realtimeChannel);}catch(_){ }return previousLogout.apply(this,arguments);};
+
+  window.addEventListener('tasneef:distribution-updated',e=>invalidateAndRefresh(e.detail||{}));
+  window.addEventListener('storage',e=>{if(e.key!=='tasneef_distribution_changed_v10848'||!e.newValue)return;try{invalidateAndRefresh(JSON.parse(e.newValue));}catch(_){invalidateAndRefresh();}});
+  try{
+    const bc=new BroadcastChannel('tasneef-supervisor-projects-v10848');
+    bc.onmessage=e=>invalidateAndRefresh(e.data||{});
+    window.__tasneefSupervisorProjectsBroadcastV10848=bc;
+  }catch(_){ }
+  function setupRealtime(){
+    if(!window.sb||typeof sb.channel!=='function'||realtimeChannel)return;
+    try{
+      realtimeChannel=sb.channel('supervisor-projects-v10848-'+(identity().authUserId||Date.now()))
+        .on('postgres_changes',{event:'*',schema:'public',table:'supervisor_project_assignments'},()=>invalidateAndRefresh())
+        .on('postgres_changes',{event:'*',schema:'public',table:'monthly_distribution'},()=>invalidateAndRefresh())
+        .subscribe();
+    }catch(e){console.warn(BUILD,'realtime unavailable',e);}
+  }
+  ['logDate','attendanceDate','summaryDate'].forEach(id=>document.addEventListener('change',e=>{if(e.target?.id===id){projectCache.clear();apply(true);}}));
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&isSupervisor()){projectCache.clear();apply(true);}});
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{if(isSupervisor())apply(true);setupRealtime();},500));
+  window.addEventListener('load',()=>{setTimeout(()=>{if(isSupervisor())apply(true);setupRealtime();},850);});
+  setInterval(()=>{if(!document.hidden&&isSupervisor())apply(false);},30000);
+  console.info(BUILD,'loaded');
 })();
