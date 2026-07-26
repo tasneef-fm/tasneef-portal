@@ -389,46 +389,9 @@ function editUser(id){ const u=data.users.find(x=>x.id===id); if(!u)return; $('u
 function projectOperationText(t){ return t==='full_time'?'دوام كامل':(t==='as_needed'?'حسب الحاجة':'زيارة يومية'); }
 function visitTypeText(t){ return t==='deep'?'نظافة عميقة':'نظافة سطحية'; }
 function projectRequiredMinutes(p, dateStr){ const day=dateStr?new Date(dateStr+'T00:00:00').getDay():null; return day===5?Number(p.friday_minutes??90):Number(p.required_daily_minutes??180); }
-/* V10845: مزامنة ربط المشروع بالمشرف في المصدر المباشر مع إبقاء projects.supervisor_id للتوافق. */
-function tasneefSupervisorAssignmentMissingV10845(error){
-  const code=String(error?.code||''), text=String(error?.message||error||'').toLowerCase();
-  return code==='42P01'||code==='PGRST205'||code==='PGRST204'||(text.includes('supervisor_project_assignments')&&(text.includes('does not exist')||text.includes('not find')||text.includes('schema cache')));
-}
+/* V10847: تم إيقاف سجل الربط المباشر القديم. المصدر الوحيد لظهور مشاريع المشرف هو توزيع النظام الموحد 4 (monthly_distribution). */
 async function syncSupervisorProjectAssignmentV10845(projectId,supervisorId){
-  const pid=Number(projectId), sid=Number(supervisorId)||null;
-  if(!pid||!window.sb) return {ok:false,skipped:true};
-  const table=()=>window.sb.from('supervisor_project_assignments');
-  try{
-    if(!sid){
-      const del=await table().delete().eq('project_id',pid);
-      if(del?.error&&!tasneefSupervisorAssignmentMissingV10845(del.error)) console.warn('V10845 remove supervisor assignment',del.error.message);
-      return {ok:!del?.error||tasneefSupervisorAssignmentMissingV10845(del.error),skipped:tasneefSupervisorAssignmentMissingV10845(del?.error)};
-    }
-    const supervisorKeys=['supervisor_id','supervisor_user_id','app_supervisor_id','manager_id'];
-    let lastError=null;
-    for(const supervisorKey of supervisorKeys){
-      for(const includeActive of [true,false]){
-        const payload={project_id:pid}; payload[supervisorKey]=sid; if(includeActive) payload.is_active=true;
-        let result=await table().upsert(payload,{onConflict:'project_id'}).select('*');
-        const text=String(result?.error?.message||'').toLowerCase();
-        if(result?.error && (String(result.error.code||'')==='42P10'||/unique|conflict/.test(text))){
-          const del=await table().delete().eq('project_id',pid);
-          if(!del?.error) result=await table().insert(payload).select('*');
-        }
-        if(!result?.error) return {ok:true,data:result.data||[]};
-        if(tasneefSupervisorAssignmentMissingV10845(result.error)) return {ok:true,skipped:true};
-        lastError=result.error;
-        // جرّب الشكل التالي فقط عندما يكون الخطأ متعلقًا باسم عمود غير موجود.
-        if(!/column|schema cache|could not find/.test(text)) break;
-      }
-    }
-    console.warn('V10845 sync supervisor assignment',lastError?.message||lastError);
-    return {ok:false,error:lastError};
-  }catch(error){
-    if(tasneefSupervisorAssignmentMissingV10845(error)) return {ok:true,skipped:true};
-    console.warn('V10845 sync supervisor assignment',error);
-    return {ok:false,error};
-  }
+  return {ok:true,skipped:true,source:'monthly_distribution',projectId:Number(projectId)||null,supervisorId:Number(supervisorId)||null};
 }
 window.syncSupervisorProjectAssignmentV10845=syncSupervisorProjectAssignmentV10845;
 function clearProjectForm(){ ['projectId','projectName','projectLocation','projectNotes'].forEach(id=>$(id)&&($(id).value='')); if($('projectSupervisor')) $('projectSupervisor').value=''; if($('projectStatus')) $('projectStatus').value='active'; if($('projectRequiredDaily')) $('projectRequiredDaily').value=180; if($('projectFridayMinutes')) $('projectFridayMinutes').value=90; if($('projectOperationType')) $('projectOperationType').value='daily_visit'; if($('projectVisitDefault')) $('projectVisitDefault').value='surface'; $('projectFormTitle')&&($('projectFormTitle').textContent='إضافة مشروع'); $('projectSaveBtn')&&($('projectSaveBtn').textContent='حفظ المشروع'); }
@@ -439,7 +402,7 @@ async function toggleProjectStatus(id){ const p=data.projects.find(x=>x.id===id)
 function openProjectManager(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; $('manageProjectId').value=id; $('projectManagerCard')?.classList.remove('hidden'); $('projectManagerTitle').textContent=`إدارة المشروع: ${p.name}`; if($('projectManageSupervisor')) $('projectManageSupervisor').value=p.supervisor_id||''; renderProjectManager(); setTimeout(()=>$('projectManagerCard')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 function closeProjectManager(){ $('projectManagerCard')?.classList.add('hidden'); if($('manageProjectId')) $('manageProjectId').value=''; }
 function renderProjectManager(){ const b=$('projectWorkersBody'); if(!b) return; const pid=$('manageProjectId')?.value; if(!pid){ b.innerHTML='<tr><td colspan="5">اختر مشروع من زر إدارة المشروع</td></tr>'; return; } const rows=activeWorkers().filter(w=>String(workerProjectId(w))===String(pid)); b.innerHTML=rows.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc(supervisorName(workerSupId(w)))}</td><td><span class="badge ${w.worker_type==='support'?'amber':'green'}">${workerTypeText(w.worker_type)}</span></td><td><span class="badge ${w.status==='inactive'?'red':'green'}">${w.status==='inactive'?'موقوف':'نشط'}</span></td><td class="row-actions"><button class="danger" onclick="removeWorkerFromProject(${w.id})">إزالة من المشروع</button></td></tr>`).join('')||'<tr><td colspan="5">لا يوجد عمال مرتبطون بهذا المشروع</td></tr>'; }
-async function saveProjectManagerSupervisor(){ const pid=Number($('manageProjectId')?.value), sid=Number($('projectManageSupervisor')?.value)||null; if(!pid) return msg('اختر المشروع أولاً','err'); const {error}=await sb.from('projects').update({supervisor_id:sid}).eq('id',pid); if(error) return msg(error.message,'err'); const workerUpdate=await sb.from('workers').update({supervisor_id:sid, app_supervisor_id:sid}).eq('project_id',pid); if(workerUpdate.error) console.warn('V10845 worker supervisor sync',workerUpdate.error.message); const sync=await syncSupervisorProjectAssignmentV10845(pid,sid); if(!sync.ok) return msg('تم تحديث المشروع، لكن تعذر تثبيت الربط المباشر للمشرف: '+(sync.error?.message||'خطأ غير معروف'),'err'); msg(sid?'تم ربط المشرف بالمشروع وسيظهر له مباشرة':'تم إلغاء ربط المشرف بالمشروع'); await refreshAll(); openProjectManager(pid); }
+async function saveProjectManagerSupervisor(){ const pid=Number($('manageProjectId')?.value), sid=Number($('projectManageSupervisor')?.value)||null; if(!pid) return msg('اختر المشروع أولاً','err'); const {error}=await sb.from('projects').update({supervisor_id:sid}).eq('id',pid); if(error) return msg(error.message,'err'); const workerUpdate=await sb.from('workers').update({supervisor_id:sid, app_supervisor_id:sid}).eq('project_id',pid); if(workerUpdate.error) console.warn('V10845 worker supervisor sync',workerUpdate.error.message); const sync=await syncSupervisorProjectAssignmentV10845(pid,sid); if(!sync.ok) return msg('تم تحديث المشروع، لكن تعذر تثبيت الربط المباشر للمشرف: '+(sync.error?.message||'خطأ غير معروف'),'err'); msg(sid?'تم حفظ المشرف في بيانات المشروع. ظهور المشروع للمشرف يعتمد على ربطه من النظام الموحد 4.':'تم إلغاء المشرف من بيانات المشروع. حدّث التوزيع في النظام الموحد 4 أيضًا.'); await refreshAll(); openProjectManager(pid); }
 async function addExistingWorkerToProject(){ const pid=Number($('manageProjectId')?.value), wid=Number($('manageWorkerSelect')?.value), type=$('manageWorkerType')?.value||'primary'; if(!pid||!wid) return msg('اختر المشروع والعامل','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const {error}=await sb.from('workers').update({project_id:pid, supervisor_id:sid, app_supervisor_id:sid, worker_type:type}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تم ربط العامل بالمشروع'); await refreshAll(); openProjectManager(pid); }
 async function removeWorkerFromProject(wid){ if(!confirm('إزالة العامل من هذا المشروع؟')) return; const pid=Number($('manageProjectId')?.value); const {error}=await sb.from('workers').update({project_id:null}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تمت إزالة العامل من المشروع'); await refreshAll(); if(pid) openProjectManager(pid); }
 async function addWorkerInsideProject(){ const pid=Number($('manageProjectId')?.value); if(!pid) return msg('اختر المشروع أولاً','err'); const name=$('manageNewWorkerName')?.value.trim(); if(!name) return msg('اسم العامل مطلوب','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active', is_active:true, active:true}; const {error}=await sb.from('workers').insert(row); if(error) return msg(error.message,'err'); ['manageNewWorkerName','manageNewWorkerPhone'].forEach(id=>$(id)&&($(id).value='')); if($('manageNewWorkerSalary')) $('manageNewWorkerSalary').value=1500; msg('تم إضافة العامل وربطه بالمشروع'); await refreshAll(); openProjectManager(pid); }
@@ -569,7 +532,7 @@ function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyB
 async function initSupervisor(){
   const u=requireRole('supervisor'); if(!u) return;
   await loadAll();
-  // V10846: يظهر للمشرف فقط المشروع المرتبط به مباشرة؛ ربط العمال أو السجلات القديمة لا يضيف مشاريع.
+  // V10847: هذا المسار قديم ويُستبدل لاحقًا بمصدر النظام الموحد 4؛ لا يعتمد عليه كنطاق نهائي.
   let assignments=[];
   try{ const ar=await sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id'); if(!ar.error) assignments=ar.data||[]; }catch(_){ assignments=[]; }
   data.workerAssignments=assignments;
@@ -24094,20 +24057,18 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     return S(w?.app_supervisor_id || w?.supervisor_id || w?.manager_id);
   }
   function assignedProjectSet(){
-    const sid=uid();
-    const d=window.data || data || {};
-    const projects=Array.isArray(d.projects)?d.projects:[];
-    const workers=Array.isArray(d.workers)?d.workers:[];
-    const set=new Set(projects.filter(p=>projectSupId(p)===sid).map(p=>S(p.id)));
-    // احتياط: لو العامل مربوط بالمشرف وفيه project_id، ندخل مشروعه ضمن نطاق المشرف.
-    workers.forEach(w=>{ if(workerSupIdSafe(w)===sid && S(w.project_id)) set.add(S(w.project_id)); });
-    return set;
+    // V10847: نطاق المشاريع يأتينا جاهزًا من توزيع النظام الموحد 4 فقط.
+    const unified4=window.__tasneefUnified4SupervisorProjectIdsV10847;
+    if(unified4 instanceof Set) return new Set(unified4);
+    return new Set();
   }
   function rowProjectId(r){ return S(r?.project_id || r?.project || r?.projectId); }
   function rowSupervisorId(r){ return S(r?.supervisor_id || r?.app_supervisor_id || r?.created_by || r?.user_id); }
   function filterByProject(rows,set){ return Array.isArray(rows) ? rows.filter(r=>set.has(rowProjectId(r))) : []; }
   function applyScope(){
     if(!pageIsSupervisor() || !isSupervisor()) return;
+    // لا نسمح للحارس القديم بتصفية البيانات قبل اكتمال قراءة النظام الموحد 4؛ لأن ذلك كان يحذف السجلات الصحيحة من الذاكرة.
+    if(!(window.__tasneefUnified4SupervisorProjectIdsV10847 instanceof Set)) return;
     const d=window.data || data;
     if(!d) return;
     const sid=uid();
@@ -26257,7 +26218,7 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
-  const VERSION='v10707-unified-project-source';
+  const VERSION='v10847-unified4-monthly-distribution-source';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
   let latestRequestId=0;
@@ -26286,52 +26247,33 @@ ${finalUrl}
     const u=currentUser();
     const sid=await resolveCurrentSupervisorId(userId||u.id);
     const period=S(filters.period||'current');
-    const key=['accessible-projects',S(userId||u.id),sid,period].join('|');
+    const key=['accessible-projects-unified4',S(userId||u.id),sid,period].join('|');
     const req=++latestRequestId;
     try{
-      const projects=await queryRows('projects',sb.from('projects').select('*').eq('is_active',true).order('id'));
+      const projects=await queryRows('projects',sb.from('projects').select('*').order('id'));
       if(req!==latestRequestId) return cache.get(key)||[];
-      if(role!=='supervisor') { cache.set(key,projects); return projects; }
-      const identityIds=stringSetV10802([u.id,u.user_id,u.supervisor_id,u.employee_id,sid]);
-      const identityCodes=normSetV10802([u.employee_code,u.employee_number,u.code,u.user_code]);
-      const identityNames=normSetV10802([u.full_name,u.name,u.display_name]);
-      let workers=[], assignments=[];
-      try{ workers=await queryRows('workers',sb.from('workers').select('*').eq('is_active',true).order('id')); }catch(e){ console.warn(VERSION,e.message); }
-      try{ assignments=await queryRows('worker_project_assignments',sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id')); }catch(e){ console.warn(VERSION,e.message); }
-      const projectIds=new Set();
-      const belongsToSupervisor=row=>{
-        const codes=[row?.supervisor_employee_code,row?.supervisor_code,row?.assigned_supervisor_code].map(normScopeV10802).filter(Boolean);
-        if(codes.length&&identityCodes.size) return codes.some(v=>identityCodes.has(v));
-        const ids=[row?.supervisor_id,row?.app_supervisor_id,row?.manager_id,row?.supervisor_user_id,row?.assigned_supervisor_id].map(S).filter(Boolean);
-        if(ids.length&&identityIds.size&&ids.some(v=>identityIds.has(v))) return true;
-        const names=[row?.supervisor_name,row?.manager_name].map(normScopeV10802).filter(Boolean);
-        return names.length&&identityNames.size&&names.some(v=>identityNames.has(v));
-      };
-      projects.forEach(p=>{ if(belongsToSupervisor(p)) projectIds.add(S(p.id)); });
-      const workerIds=new Set();
-      workers.forEach(w=>{
-        if(belongsToSupervisor(w)){
-          workerIds.add(S(w.id));
-          if(w.project_id) projectIds.add(S(w.project_id));
-        }
-      });
-      assignments.forEach(a=>{ if(workerIds.has(S(a.worker_id)) && a.project_id) projectIds.add(S(a.project_id)); });
+      if(role!=='supervisor') { const rows=projects.filter(active); cache.set(key,rows); return rows; }
 
-      // المصدر الحاسم هو نفس توزيع الشهر الذي يحمّل عمال المشرف؛ يضيف مشاريعه فقط.
-      try{
-        if(typeof window.getUnifiedSupervisorWorkersV10713==='function'){
-          const unified=await window.getUnifiedSupervisorWorkersV10713(new Date().toISOString().slice(0,10),false);
-          A(unified?.assignments).forEach(a=>{
-            const pid=S(a?.project_id||a?.project_key||a?.app_project_id);
-            if(pid) projectIds.add(pid);
-          });
-        }
-      }catch(e){console.warn(VERSION,'unified distribution projects:',e.message);}
+      // V10847: المصدر الوحيد هو نفس نتيجة توزيع النظام الموحد 4 المستخدمة لتحضير اليوم والدخول والخروج.
+      if(typeof window.getUnifiedSupervisorWorkersV10713!=='function') throw new Error('مصدر النظام الموحد 4 غير جاهز');
+      const date=S(document.getElementById('attendanceDate')?.value||document.getElementById('logDate')?.value||new Date().toISOString().slice(0,10));
+      const unified=await window.getUnifiedSupervisorWorkersV10713(date,!!filters.force);
+      const projectIds=new Set();
+      A(unified?.assignments).forEach(row=>{
+        const status=normScopeV10802(row?.status||row?.state);
+        if(['ended','inactive','cancelled','deleted','stopped','منتهي','موقوف','ملغي','محذوف','متوقف'].includes(status)) return;
+        const pid=S(row?.project_id||row?.project_key||row?.app_project_id);
+        if(pid) projectIds.add(pid);
+      });
       const result=projects.filter(p=>projectIds.has(S(p.id)) && active(p));
       cache.set(key,result);
+      window.__tasneefUnified4AccessibleProjectsV10847={
+        projectIds:[...projectIds],count:result.length,month:date.slice(0,7),
+        supervisorId:S(unified?.identity?.sid||sid),matchStrategy:S(unified?.identity?.matchStrategy),at:new Date().toISOString()
+      };
       return result;
     }catch(e){
-      console.error('ProjectsService.getAccessibleProjects failed',e);
+      console.error('ProjectsService.getAccessibleProjects unified4 failed',e);
       if(cache.has(key)) return cache.get(key);
       throw e;
     }

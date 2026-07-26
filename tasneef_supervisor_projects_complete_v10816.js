@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10816 - Complete supervisor projects from unified distribution ===== */
+/* ===== TASNEEF V10847 - Supervisor projects from Unified System 4 only ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsCompleteV10816) return;
-  window.__tasneefSupervisorProjectsCompleteV10816 = true;
+  if(window.__tasneefSupervisorProjectsUnified4V10847) return;
+  window.__tasneefSupervisorProjectsUnified4V10847=true;
 
-  const BUILD='V10846_STRICT_SUPERVISOR_PROJECT_SCOPE';
+  const BUILD='V10847_UNIFIED4_MONTHLY_DISTRIBUTION_ONLY';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -12,118 +12,23 @@
     .replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه')
     .replace(/[\u064B-\u0652]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ')
     .replace(/\s+/g,' ').trim();
-  const isOff=v=>['false','0','inactive','disabled','stopped','ended','deleted','archived','موقوف','متوقف','منتهي','محذوف','مؤرشف'].includes(norm(v));
-  const activeRow=r=>!!r && r.is_active!==false && r.active!==false && !isOff(r.status||r.state);
-  const currentMonth=()=>{
-    try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7);}
-    catch(_){return new Date().toISOString().slice(0,7);}
-  };
-  const previousMonth=m=>{const [y,mo]=m.split('-').map(Number); const d=new Date(y,mo-2,1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
-  function user(){
-    try{ if(typeof session==='function'){const u=session(); if(u) return u;} }catch(_){}
+  const ended=new Set(['ended','inactive','cancelled','deleted','stopped','disabled','archived','منتهي','موقوف','ملغي','محذوف','متوقف','مؤرشف']);
+  const activeDistribution=r=>!!r && r.is_active!==false && r.active!==false && !ended.has(norm(r.status||r.state));
+  const activeProject=p=>!!p && p.is_active!==false && p.active!==false && !ended.has(norm(p.status||p.state));
+  const projectIdOf=r=>S(r?.project_id||r?.project_key||r?.app_project_id||r?.id);
+  const projectNameOf=r=>S(r?.project_name||r?.project||r?.project_title||r?.name_project||r?.name);
+  const currentDate=()=>{try{return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}catch(_){return new Date().toISOString().slice(0,10);}};
+  function currentUser(){
+    try{if(typeof session==='function'){const u=session();if(u)return u;}}catch(_){}
     try{return JSON.parse(localStorage.getItem('tasneef_user')||'{}')||{};}catch(_){return {};}
   }
-  function isSupervisor(){return norm(user().role)==='supervisor';}
-  function identity(u){
-    const ids=new Set([u.id,u.user_id,u.uid].map(S).filter(Boolean));
-    const codes=new Set([u.employee_code,u.worker_employee_code,u.supervisor_employee_code,u.code,u.user_code,u.username].map(S).filter(Boolean));
-    const names=new Set([u.full_name,u.name,u.display_name,u.username].map(norm).filter(Boolean));
-    return {ids,codes,names,name:S(u.full_name||u.name||u.display_name||u.username),id:S(u.id||u.user_id||u.uid)};
-  }
-  function nameMatch(value,names){
-    const n=norm(value); if(!n) return false;
-    if(names.has(n)) return true;
-    for(const x of names){
-      if(!x) continue;
-      const xt=x.split(' '), nt=n.split(' ');
-      if(xt.length===1 && xt[0].length>=3 && nt[0]===xt[0]) return true;
-      if(nt.length===1 && nt[0].length>=3 && xt[0]===nt[0]) return true;
-    }
-    return false;
-  }
-  function rowMatchesSupervisor(r,id){
-    if(!r) return false;
-    const rid=[r.supervisor_id,r.app_supervisor_id,r.current_supervisor_id,r.supervisor_user_id,r.manager_id].map(S).filter(Boolean);
-    if(rid.some(v=>id.ids.has(v))) return true;
-    const rc=[r.supervisor_employee_code,r.supervisor_code,r.employee_code,r.manager_code].map(S).filter(Boolean);
-    if(rc.some(v=>id.codes.has(v))) return true;
-    return [r.supervisor_name,r.manager_name,r.supervisor].some(v=>nameMatch(v,id.names));
-  }
-  function projectIdOf(r){return S(r?.project_id||r?.projectId||r?.project_key||r?.assigned_project_id||r?.current_project_id);}
-  function projectNameOf(r){return S(r?.project_name||r?.project||r?.project_title||r?.name_project);}
-  function workerIdOf(r){return S(r?.worker_id||r?.employee_id||r?.worker_user_id);}
-  function workerMatchesSupervisor(w,id){
-    if(rowMatchesSupervisor(w,id)) return true;
-    const code=S(w?.supervisor_employee_code||w?.supervisor_code);
-    const name=S(w?.supervisor_name||w?.manager_name);
-    return (code&&id.codes.has(code)) || nameMatch(name,id.names);
-  }
-  function workerProjectIds(w){
-    const out=new Set();
-    [w?.project_id,w?.assigned_project_id,w?.current_project_id,w?.projectId].forEach(v=>{if(S(v))out.add(S(v));});
-    A(w?.project_ids||w?.projects||w?.assigned_projects).forEach(v=>{const x=S(v?.id??v?.project_id??v); if(x)out.add(x);});
-    return out;
-  }
-  async function safeQuery(label,promise){
-    try{const r=await promise; if(r?.error){console.warn(BUILD,label,r.error.message); return [];} return r?.data||[];}
-    catch(e){console.warn(BUILD,label,e?.message||e); return [];}
-  }
-  function rpcMissing(error){const c=S(error?.code),m=S(error?.message||error).toLowerCase();return c==='PGRST202'||c==='42883'||(m.includes('tasneef_get_supervisor_distribution_v10819')&&(m.includes('not find')||m.includes('does not exist')));}
-  async function secureDistribution(month){
-    try{
-      const r=await sb.rpc('tasneef_get_supervisor_distribution_v10819',{p_month:month});
-      if(r?.error){if(rpcMissing(r.error))return null;throw r.error;}
-      const payload=r?.data||{};
-      if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل توزيع المشرف');
-      return Array.isArray(payload)?payload:A(payload?.rows);
-    }catch(e){if(rpcMissing(e))return null;console.warn(BUILD,'secure distribution',e);return [];}
-  }
-  function directProjectsRpcMissing(error){
-    const c=S(error?.code),m=S(error?.message||error).toLowerCase();
-    return c==='PGRST202'||c==='42883'||(m.includes('tasneef_get_supervisor_projects_v10844')&&(m.includes('not find')||m.includes('does not exist')));
-  }
-  async function secureDirectProjects(){
-    try{
-      const r=await sb.rpc('tasneef_get_supervisor_projects_v10844');
-      if(r?.error){if(directProjectsRpcMissing(r.error))return null;throw r.error;}
-      const payload=r?.data||{};
-      if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل المشاريع المسندة للمشرف');
-      return Array.isArray(payload)?payload:A(payload?.rows);
-    }catch(e){
-      if(directProjectsRpcMissing(e))return null;
-      console.warn(BUILD,'secure direct projects',e);
-      return [];
-    }
-  }
-  async function loadDistribution(month){
-    const secure=await secureDistribution(month);
-    if(secure!==null)return secure;
-    return safeQuery('monthly_distribution '+month,sb.from('monthly_distribution').select('*').eq('month_key',month).limit(20000));
-  }
-  async function fetchBase(month){
-    const [projects,workers,assignments,supervisorAssignments,dist,directProjects]=await Promise.all([
-      safeQuery('projects',sb.from('projects').select('*').order('name')),
-      safeQuery('workers',sb.from('workers').select('*').order('name')),
-      safeQuery('worker_project_assignments',sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id')),
-      // V10845: هذا هو سجل الربط المباشر الذي تحفظه الإدارة. وجوده يكفي لإظهار المشروع حتى قبل توزيع العمال.
-      safeQuery('supervisor_project_assignments',sb.from('supervisor_project_assignments').select('*').limit(10000)),
-      loadDistribution(month),
-      secureDirectProjects()
-    ]);
-    return {projects,workers,assignments,supervisorAssignments,dist,directProjects:directProjects===null?[]:directProjects};
-  }
-  function uniqueProjects(rows){
-    const map=new Map();
-    A(rows).forEach(p=>{const k=S(p.id)||('name:'+norm(p.name)); if(k&&!map.has(k))map.set(k,p);});
-    return [...map.values()].sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
-  }
-  function setSelect(id,projects,allLabel){
-    const el=$(id); if(!el) return;
+  function isSupervisor(){return norm(currentUser().role)==='supervisor';}
+  function esc(v){return S(v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+  function setSelect(id,rows,label){
+    const el=$(id); if(!el)return;
     const old=S(el.value);
-    const esc=v=>S(v).replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    el.innerHTML=(allLabel!==null?`<option value="">${esc(allLabel||'اختر المشروع')}</option>`:'')+
-      projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name||'-')}</option>`).join('');
-    if([...el.options].some(o=>S(o.value)===old)) el.value=old;
+    el.innerHTML=`<option value="">${esc(label)}</option>`+rows.map(p=>`<option value="${esc(p.id)}">${esc(p.name||p.project_name||p.id)}</option>`).join('');
+    if([...el.options].some(o=>S(o.value)===old))el.value=old;
   }
   function refill(projects){
     setSelect('logProject',projects,'اختر المشروع');
@@ -135,133 +40,135 @@
     setSelect('supInventoryRequestProject',projects,'اختر المشروع');
     setSelect('supClientReportProject',projects,'اختر المشروع');
   }
-  let cache=null, cacheAt=0, running=null;
-  async function buildContext(force=false){
-    if(!isSupervisor()||!window.sb) return null;
-    if(!force&&cache&&Date.now()-cacheAt<30000) return cache;
-    if(running&&!force) return running;
-    running=(async()=>{
-      const u=user(), id=identity(u), month=currentMonth();
-      const base=await fetchBase(month);
-
-      // V10846: مصدر نطاق المشاريع هو ربط المشروع بالمشرف فقط.
-      // لا نضيف أي مشروع بسبب وجود عامل، توزيع شهري، حضور سابق أو اسم مشرف قديم داخل سجل آخر.
-      const linkedProjectIds=new Set();
-      const linkedProjectNames=new Set();
-
-      // RPC آمن يعيد مشاريع المشرف الحالي فقط عند توفره في قاعدة البيانات.
-      A(base.directProjects).filter(activeRow).forEach(r=>{
-        const pid=projectIdOf(r)||S(r.id), pn=norm(projectNameOf(r)||r.name);
-        if(pid) linkedProjectIds.add(pid);
-        if(pn) linkedProjectNames.add(pn);
-      });
-
-      // سجل الربط المباشر الذي تحفظه الإدارة.
-      A(base.supervisorAssignments)
-        .filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id))
-        .forEach(r=>{
-          const pid=projectIdOf(r), pn=norm(projectNameOf(r));
-          if(pid) linkedProjectIds.add(pid);
-          if(pn) linkedProjectNames.add(pn);
-        });
-
-      // حقل المشرف الحالي داخل المشروع نفسه؛ يستخدم كمسار توافق مباشر فقط.
-      A(base.projects)
-        .filter(p=>activeRow(p)&&rowMatchesSupervisor(p,id))
-        .forEach(p=>{
-          const pid=S(p.id), pn=norm(p.name);
-          if(pid) linkedProjectIds.add(pid);
-          if(pn) linkedProjectNames.add(pn);
-        });
-
-      const directProjectRows=A(base.directProjects)
-        .map(p=>Object.assign({},p,{id:S(p.id)||projectIdOf(p),name:S(p.name)||projectNameOf(p)}))
-        .filter(p=>S(p.id)||S(p.name));
-      const assignmentProjectRows=A(base.supervisorAssignments)
-        .filter(r=>activeRow(r)&&rowMatchesSupervisor(r,id))
-        .map(r=>({
-          id:projectIdOf(r),name:projectNameOf(r),status:r.project_status||r.status,
-          is_active:r.project_is_active??r.is_active,active:r.project_active??r.active,
-          required_daily_minutes:r.required_daily_minutes,friday_minutes:r.friday_minutes,
-          operation_type:r.operation_type,visit_type_default:r.visit_type_default
-        }))
-        .filter(p=>S(p.id)||S(p.name));
-
-      const allProjectRows=uniqueProjects([...A(base.projects),...directProjectRows,...assignmentProjectRows]);
-      let projects=uniqueProjects(allProjectRows.filter(p=>
-        activeRow(p) && (linkedProjectIds.has(S(p.id)) || linkedProjectNames.has(norm(p.name)))
-      ));
-
-      // تثبيت هوية المشرف الحالي داخل ذاكرة الصفحة لمنع الفلاتر القديمة من إعادة توسيع النطاق.
-      projects=projects.map(p=>Object.assign({},p,{
-        __original_supervisor_id:p.supervisor_id,
-        supervisor_id:Number(id.id)||id.id||p.supervisor_id,
-        app_supervisor_id:Number(id.id)||id.id||p.app_supervisor_id,
-        current_supervisor_id:Number(id.id)||id.id||p.current_supervisor_id,
-        supervisor_name:id.name||p.supervisor_name,
-        __strict_supervisor_link:true
-      }));
-
-      const finalIds=new Set(projects.map(p=>S(p.id)).filter(Boolean));
-      const relevantAssignments=A(base.assignments).filter(a=>activeRow(a)&&finalIds.has(projectIdOf(a)));
-      const assignmentWorkerIds=new Set(relevantAssignments.map(workerIdOf).filter(Boolean));
-
-      // عمال صفحة المشرف يجب أن يكونوا داخل أحد مشاريعه الحالية فقط.
-      const workers=A(base.workers).filter(w=>{
-        if(!activeRow(w)) return false;
-        if(assignmentWorkerIds.has(S(w.id))) return true;
-        return [...workerProjectIds(w)].some(pid=>finalIds.has(pid));
-      });
-
-      // التوزيع يُستخدم لتفاصيل العمال داخل المشاريع المسموحة فقط، ولا يضيف مشاريع جديدة.
-      const matchedDist=A(base.dist).filter(r=>
-        activeRow(r) && rowMatchesSupervisor(r,id) && finalIds.has(projectIdOf(r))
-      );
-
-      cache={u,id,month,projects,workers,assignments:relevantAssignments,supervisorAssignments:A(base.supervisorAssignments),projectIds:finalIds,dist:matchedDist};
-      return cache;
-    })();
-    try{return await running;}finally{running=null;}
+  function uniqueProjects(rows){
+    const map=new Map();
+    A(rows).forEach(p=>{const id=S(p.id);if(id&&!map.has(id))map.set(id,p);});
+    return [...map.values()].sort((a,b)=>S(a.name).localeCompare(S(b.name),'ar'));
   }
+  function mergeWorkerProject(worker,assignments){
+    const code=norm(worker?.employee_code||worker?.worker_employee_code||worker?.code);
+    const wid=S(worker?.id||worker?.worker_id||worker?.canonical_employee_id);
+    const name=norm(worker?.name||worker?.worker_name||worker?.full_name);
+    const rows=A(assignments).filter(r=>{
+      const rc=norm(r?.worker_employee_code||r?.employee_code||r?.worker_code||r?.code);
+      const rid=S(r?.worker_id||r?.canonical_employee_id||r?.employee_id);
+      const rn=norm(r?.worker_name||r?.employee_name||r?.name);
+      return (code&&rc===code)||(wid&&rid===wid)||(name&&rn===name);
+    });
+    const projects=[];
+    rows.forEach(r=>{const id=projectIdOf(r),nm=projectNameOf(r);if(id&&!projects.some(p=>S(p.id)===id))projects.push({id,name:nm||id});});
+    return projects;
+  }
+
+  let applying=false,cache=null,cacheAt=0;
+  async function buildContext(force=false){
+    if(!isSupervisor()||!window.sb)return null;
+    if(!force&&cache&&Date.now()-cacheAt<20000)return cache;
+    if(typeof window.getUnifiedSupervisorWorkersV10713!=='function')throw new Error('تعذر الوصول إلى مصدر النظام الموحد 4');
+
+    const u=currentUser();
+    const date=S($('attendanceDate')?.value||$('logDate')?.value||currentDate());
+    const unified=await window.getUnifiedSupervisorWorkersV10713(date,force);
+    const assignments=A(unified?.assignments).filter(activeDistribution);
+    const projectIds=new Set(assignments.map(projectIdOf).filter(Boolean));
+
+    const pr=await window.sb.from('projects').select('*').order('id').limit(10000);
+    if(pr.error)throw pr.error;
+    const allProjects=A(pr.data);
+    const projectById=new Map(allProjects.map(p=>[S(p.id),p]));
+    const projects=[];
+    projectIds.forEach(pid=>{
+      const master=projectById.get(pid);
+      if(master&&!activeProject(master))return;
+      const dist=assignments.find(r=>projectIdOf(r)===pid)||{};
+      const base=master||{id:pid,name:projectNameOf(dist)||pid,is_active:true,active:true,status:'active'};
+      projects.push(Object.assign({},base,{
+        id:pid,name:S(base.name||projectNameOf(dist)||pid),
+        supervisor_id:Number(u.id)||u.id||base.supervisor_id,
+        app_supervisor_id:Number(u.id)||u.id||base.app_supervisor_id,
+        current_supervisor_id:Number(u.id)||u.id||base.current_supervisor_id,
+        supervisor_name:S(unified?.identity?.name||u.full_name||u.name||u.username),
+        __unified4_link:true
+      }));
+    });
+    const finalProjects=uniqueProjects(projects);
+    const finalIds=new Set(finalProjects.map(p=>S(p.id)));
+
+    const workers=A(unified?.workers).map(w=>{
+      const wProjects=A(w?.projects).length?A(w.projects):mergeWorkerProject(w,assignments);
+      const first=wProjects.find(p=>finalIds.has(S(p.id)))||wProjects[0]||{};
+      return Object.assign({},w,{
+        project_id:S(w?.project_id||first.id),
+        projects:wProjects.filter(p=>finalIds.has(S(p.id))),
+        supervisor_id:Number(u.id)||u.id||w?.supervisor_id,
+        app_supervisor_id:Number(u.id)||u.id||w?.app_supervisor_id,
+        supervisor_name:S(unified?.identity?.name||u.full_name||u.name||u.username),
+        is_active:w?.is_active!==false,
+        __unified4_link:true
+      });
+    });
+
+    cache={u,date,month:date.slice(0,7),identity:unified?.identity||{},assignments,projects:finalProjects,projectIds:finalIds,workers};
+    cacheAt=Date.now();
+    return cache;
+  }
+
   async function apply(force=false){
-    const ctx=await buildContext(force); if(!ctx) return;
-    const d=window.data=window.data||{};
-    d.projects=ctx.projects;
-    d.workers=ctx.workers;
-    d.workerAssignments=ctx.assignments;
-    d.logs=A(d.logs).filter(r=>ctx.projectIds.has(projectIdOf(r)));
-    d.tickets=A(d.tickets).filter(r=>ctx.projectIds.has(projectIdOf(r)));
-    window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
-    window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
-    refill(ctx.projects);
-    const title=$('supTitle'); if(title) title.textContent='لوحة المشرف - '+(ctx.id.name||ctx.u.username||'');
-    const help=document.querySelector('#supLogs .help,#supLogs .footer-note');
-    if(help) help.dataset.projectCount=String(ctx.projects.length);
-    try{ if(typeof renderTimeLogs==='function') renderTimeLogs(); }catch(e){console.warn(BUILD,e);}
-    try{ if(typeof renderTickets==='function') renderTickets(); }catch(e){console.warn(BUILD,e);}
-    try{ if(typeof renderSupervisorAttendanceList==='function'&&document.getElementById('supAttendance')?.classList.contains('active')) renderSupervisorAttendanceList(); }catch(e){console.warn(BUILD,e);}
-    console.log(BUILD,'projects:',ctx.projects.length,'workers:',ctx.workers.length,'month:',ctx.month);
+    if(applying)return cache;
+    applying=true;
+    try{
+      const ctx=await buildContext(force); if(!ctx)return null;
+      // يعلن النطاق قبل تشغيل أي حارس قديم، حتى لا يقوم بحذف البيانات الصحيحة من الذاكرة.
+      window.__tasneefUnified4SupervisorProjectIdsV10847=new Set(ctx.projectIds);
+      window.__tasneefUnified4SupervisorScopeReadyV10847=true;
+      window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
+      window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
+
+      const d=window.data=window.data||{};
+      d.projects=ctx.projects;
+      d.workers=ctx.workers;
+      d.workerAssignments=ctx.assignments;
+      const pid=r=>S(r?.project_id||r?.project||r?.projectId);
+      ['logs','attendance','tickets','inventoryRequests','contractServices','clientReports'].forEach(key=>{
+        if(Array.isArray(d[key]))d[key]=d[key].filter(r=>ctx.projectIds.has(pid(r)));
+      });
+      refill(ctx.projects);
+      const title=$('supTitle');if(title)title.textContent='لوحة المشرف - '+S(ctx.identity?.name||ctx.u.full_name||ctx.u.name||ctx.u.username);
+      try{if(typeof renderSupervisorAttendanceList==='function')await renderSupervisorAttendanceList();}catch(e){console.warn(BUILD,'attendance render',e);}
+      try{if(typeof renderTimeLogs==='function')renderTimeLogs();}catch(e){console.warn(BUILD,'logs render',e);}
+      try{if(typeof renderTickets==='function')renderTickets();}catch(e){console.warn(BUILD,'tickets render',e);}
+      window.__tasneefUnified4SupervisorScopeV10847={
+        source:'monthly_distribution',month:ctx.month,projectCount:ctx.projects.length,workerCount:ctx.workers.length,
+        projectIds:[...ctx.projectIds],supervisorId:S(ctx.identity?.sid||ctx.u.id),supervisorCode:S(ctx.identity?.code),
+        supervisorName:S(ctx.identity?.name||ctx.u.full_name),matchStrategy:S(ctx.identity?.matchStrategy),at:new Date().toISOString()
+      };
+      console.table(window.__tasneefUnified4SupervisorScopeV10847);
+      return ctx;
+    }finally{applying=false;}
   }
 
   const previousInit=window.initSupervisor;
   window.initSupervisor=async function(){
-    if(typeof previousInit==='function') await previousInit.apply(this,arguments);
-    await apply(true);
+    // يمنع الحارس القديم من التصفية قبل إعادة تحميل البيانات الكاملة.
+    delete window.__tasneefUnified4SupervisorProjectIdsV10847;
+    window.__tasneefUnified4SupervisorScopeReadyV10847=false;
+    if(typeof previousInit==='function')await previousInit.apply(this,arguments);
+    return apply(true);
   };
   try{initSupervisor=window.initSupervisor;}catch(_){}
 
-  const previousLoadAll=window.loadAll;
-  if(typeof previousLoadAll==='function') window.loadAll=async function(){
-    const r=await previousLoadAll.apply(this,arguments);
-    if(isSupervisor()) await apply(false);
+  const previousRefresh=window.refreshAll;
+  if(typeof previousRefresh==='function')window.refreshAll=async function(){
+    delete window.__tasneefUnified4SupervisorProjectIdsV10847;
+    const r=await previousRefresh.apply(this,arguments);
+    if(isSupervisor())await apply(true);
     return r;
   };
-  try{loadAll=window.loadAll;}catch(_){}
 
   window.refreshSupervisorProjectsV10816=()=>apply(true);
-  function boot(){ if(isSupervisor()) apply(false); }
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,700));
-  window.addEventListener('load',()=>{setTimeout(boot,900);setTimeout(()=>apply(true),2400);});
-  setTimeout(boot,3200);
+  window.refreshSupervisorProjectsUnified4V10847=()=>apply(true);
+  function boot(){if(isSupervisor())apply(false).catch(e=>{console.error(BUILD,e);try{msg('تعذر تحميل مشاريع المشرف من النظام الموحد 4: '+e.message,'err');}catch(_){}});}
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
+  window.addEventListener('load',()=>{setTimeout(boot,900);setTimeout(()=>apply(true).catch(console.error),2300);});
   console.log('Tasneef '+BUILD+' loaded');
 })();
