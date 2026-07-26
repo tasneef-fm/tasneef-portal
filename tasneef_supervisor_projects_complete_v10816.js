@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10847 - Supervisor projects from Unified System 4 only ===== */
+/* ===== TASNEEF V10849 - Unified System 4 visible single authoritative supervisor project load ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsUnified4V10847) return;
-  window.__tasneefSupervisorProjectsUnified4V10847=true;
+  if(window.__tasneefSupervisorProjectsUnified4V10849) return;
+  window.__tasneefSupervisorProjectsUnified4V10849=true;
 
-  const BUILD='V10847_UNIFIED4_MONTHLY_DISTRIBUTION_ONLY';
+  const BUILD='V10849_UNIFIED4_VISIBLE_PROJECT_FIELD';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -31,14 +31,15 @@
     if([...el.options].some(o=>S(o.value)===old))el.value=old;
   }
   function refill(projects){
-    setSelect('logProject',projects,'اختر المشروع');
-    setSelect('attendanceProject',projects,'كل مشاريع المشرف');
-    setSelect('ticketProject',projects,'اختر المشروع');
-    setSelect('supTicketFilterProject',projects,'كل المشاريع');
-    setSelect('supOrderProjectV10061',projects,'اختر المشروع');
-    setSelect('supOrderFilterProjectV10061',projects,'كل المشاريع');
-    setSelect('supInventoryRequestProject',projects,'اختر المشروع');
-    setSelect('supClientReportProject',projects,'اختر المشروع');
+    const empty=!A(projects).length;
+    setSelect('logProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
+    setSelect('attendanceProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل مشاريع المشرف');
+    setSelect('ticketProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
+    setSelect('supTicketFilterProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل المشاريع');
+    setSelect('supOrderProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
+    setSelect('supOrderFilterProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل المشاريع');
+    setSelect('supInventoryRequestProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
+    setSelect('supClientReportProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
   }
   function uniqueProjects(rows){
     const map=new Map();
@@ -60,7 +61,7 @@
     return projects;
   }
 
-  let applying=false,cache=null,cacheAt=0;
+  let applying=false,cache=null,cacheAt=0,requestSeq=0,lastAppliedSeq=0;
   async function buildContext(force=false){
     if(!isSupervisor()||!window.sb)return null;
     if(!force&&cache&&Date.now()-cacheAt<20000)return cache;
@@ -113,14 +114,22 @@
     return cache;
   }
 
-  async function apply(force=false){
-    if(applying)return cache;
+  async function apply(force=true){
+    const seq=++requestSeq;
+    if(applying){
+      // لا نعرض نتيجة موازية أو قديمة؛ آخر طلب فقط هو المسموح له بتحديث الواجهة.
+      while(applying) await new Promise(r=>setTimeout(r,25));
+      if(seq<requestSeq) return cache;
+    }
     applying=true;
     try{
-      const ctx=await buildContext(force); if(!ctx)return null;
+      const ctx=await buildContext(force); if(!ctx||seq<requestSeq)return cache;
+      lastAppliedSeq=seq;
       // يعلن النطاق قبل تشغيل أي حارس قديم، حتى لا يقوم بحذف البيانات الصحيحة من الذاكرة.
       window.__tasneefUnified4SupervisorProjectIdsV10847=new Set(ctx.projectIds);
+      window.__tasneefUnified4SupervisorProjectIdsV10848=new Set(ctx.projectIds);
       window.__tasneefUnified4SupervisorScopeReadyV10847=true;
+      window.__tasneefUnified4SupervisorScopeReadyV10848=true;
       window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
       window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
 
@@ -137,38 +146,103 @@
       try{if(typeof renderSupervisorAttendanceList==='function')await renderSupervisorAttendanceList();}catch(e){console.warn(BUILD,'attendance render',e);}
       try{if(typeof renderTimeLogs==='function')renderTimeLogs();}catch(e){console.warn(BUILD,'logs render',e);}
       try{if(typeof renderTickets==='function')renderTickets();}catch(e){console.warn(BUILD,'tickets render',e);}
-      window.__tasneefUnified4SupervisorScopeV10847={
+      window.__tasneefUnified4SupervisorScopeV10848={
         source:'monthly_distribution',month:ctx.month,projectCount:ctx.projects.length,workerCount:ctx.workers.length,
         projectIds:[...ctx.projectIds],supervisorId:S(ctx.identity?.sid||ctx.u.id),supervisorCode:S(ctx.identity?.code),
         supervisorName:S(ctx.identity?.name||ctx.u.full_name),matchStrategy:S(ctx.identity?.matchStrategy),at:new Date().toISOString()
       };
-      console.table(window.__tasneefUnified4SupervisorScopeV10847);
+      window.__tasneefUnified4SupervisorScopeV10847=window.__tasneefUnified4SupervisorScopeV10848;
+      console.table(window.__tasneefUnified4SupervisorScopeV10848);
       return ctx;
     }finally{applying=false;}
   }
 
+  const projectSelectIds=['logProject','attendanceProject','ticketProject','supTicketFilterProject','supOrderProjectV10061','supOrderFilterProjectV10061','supInventoryRequestProject','supClientReportProject'];
+  function lockProjectSelects(){
+    // V10849: لا نخفي خانة المشروع أبدًا. تبقى ظاهرة مع حالة تحميل واضحة.
+    projectSelectIds.forEach(id=>{
+      const el=$(id);if(!el)return;
+      el.disabled=true;
+      el.style.visibility='visible';
+      el.style.display='';
+      el.setAttribute('aria-busy','true');
+    });
+  }
+  function unlockProjectSelects(){
+    projectSelectIds.forEach(id=>{
+      const el=$(id);if(!el)return;
+      el.disabled=false;
+      el.style.visibility='visible';
+      el.style.display='';
+      el.removeAttribute('aria-busy');
+    });
+  }
+  function loadingPlaceholder(){
+    projectSelectIds.forEach(id=>{
+      const el=$(id);if(!el)return;
+      el.style.visibility='visible';
+      el.style.display='';
+      el.innerHTML='<option value="">جاري تحميل مشاريع النظام الموحد 4…</option>';
+    });
+  }
+  function errorPlaceholder(error){
+    const text=S(error?.message||error||'تعذر تحميل المشاريع');
+    projectSelectIds.forEach(id=>{
+      const el=$(id);if(!el)return;
+      el.style.visibility='visible';
+      el.style.display='';
+      el.innerHTML='<option value="">تعذر تحميل المشاريع — حدّث الصفحة</option>';
+      el.title=text;
+    });
+  }
+
   const previousInit=window.initSupervisor;
   window.initSupervisor=async function(){
-    // يمنع الحارس القديم من التصفية قبل إعادة تحميل البيانات الكاملة.
+    lockProjectSelects();
+    loadingPlaceholder();
     delete window.__tasneefUnified4SupervisorProjectIdsV10847;
+    delete window.__tasneefUnified4SupervisorProjectIdsV10848;
     window.__tasneefUnified4SupervisorScopeReadyV10847=false;
-    if(typeof previousInit==='function')await previousInit.apply(this,arguments);
-    return apply(true);
+    window.__tasneefUnified4SupervisorScopeReadyV10848=false;
+    try{
+      // أي خطأ في تهيئة قسم آخر لا يمنع محاولة تحميل المشاريع من المصدر الموحد المستقل.
+      try{
+        if(typeof previousInit==='function')await previousInit.apply(this,arguments);
+      }catch(baseError){
+        console.warn(BUILD,'base supervisor init failed; continuing with unified project source',baseError);
+      }
+      try{
+        return await apply(true);
+      }catch(error){
+        console.error(BUILD,'unified project load failed',error);
+        errorPlaceholder(error);
+        return null;
+      }
+    }finally{
+      unlockProjectSelects();
+    }
   };
   try{initSupervisor=window.initSupervisor;}catch(_){}
 
   const previousRefresh=window.refreshAll;
   if(typeof previousRefresh==='function')window.refreshAll=async function(){
-    delete window.__tasneefUnified4SupervisorProjectIdsV10847;
-    const r=await previousRefresh.apply(this,arguments);
-    if(isSupervisor())await apply(true);
-    return r;
+    if(!isSupervisor())return previousRefresh.apply(this,arguments);
+    lockProjectSelects();
+    try{
+      const r=await previousRefresh.apply(this,arguments);
+      await apply(true);
+      return r;
+    }catch(error){
+      console.error(BUILD,'refresh failed',error);
+      errorPlaceholder(error);
+      return null;
+    }finally{unlockProjectSelects();}
   };
 
   window.refreshSupervisorProjectsV10816=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10847=()=>apply(true);
-  function boot(){if(isSupervisor())apply(false).catch(e=>{console.error(BUILD,e);try{msg('تعذر تحميل مشاريع المشرف من النظام الموحد 4: '+e.message,'err');}catch(_){}});}
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
-  window.addEventListener('load',()=>{setTimeout(boot,900);setTimeout(()=>apply(true).catch(console.error),2300);});
+  window.refreshSupervisorProjectsUnified4V10848=()=>apply(true);
+  window.refreshSupervisorProjectsUnified4V10849=()=>apply(true);
+  // V10849: المصدر القديم متوقف، والقائمة تبقى ظاهرة دائمًا أثناء تحميل المصدر الموحد الوحيد.
   console.log('Tasneef '+BUILD+' loaded');
 })();

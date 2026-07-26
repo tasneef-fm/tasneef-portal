@@ -24057,7 +24057,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     return S(w?.app_supervisor_id || w?.supervisor_id || w?.manager_id);
   }
   function assignedProjectSet(){
-    // V10847: نطاق المشاريع يأتينا جاهزًا من توزيع النظام الموحد 4 فقط.
+    // V10848: نطاق المشاريع يأتينا حصريًا من توزيع النظام الموحد 4 فقط، وتم إيقاف fallback الحقول القديمة.
     const unified4=window.__tasneefUnified4SupervisorProjectIdsV10847;
     if(unified4 instanceof Set) return new Set(unified4);
     return new Set();
@@ -24073,16 +24073,21 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     if(!d) return;
     const sid=uid();
     const pset=assignedProjectSet();
-    if(Array.isArray(d.projects)) d.projects = d.projects.filter(p=>pset.has(S(p.id)) || projectSupId(p)===sid);
+    // V10848: أُوقف مصدر الربط القديم نهائيًا. لا يسمح بإضافة مشروع بسبب projects.supervisor_id أو أي ربط تاريخي.
+    if(Array.isArray(d.projects)) d.projects = d.projects.filter(p=>pset.has(S(p.id)));
     const finalSet=new Set((d.projects||[]).map(p=>S(p.id)));
-    // بيانات المشرف تظهر فقط من مشاريعه
-    if(Array.isArray(d.workers)) d.workers = d.workers.filter(w=>finalSet.has(S(w.project_id)) || workerSupIdSafe(w)===sid);
-    if(Array.isArray(d.logs)) d.logs = d.logs.filter(l=>finalSet.has(rowProjectId(l)) && (rowSupervisorId(l)===sid || !rowSupervisorId(l)));
-    if(Array.isArray(d.attendance)) d.attendance = d.attendance.filter(a=>finalSet.has(rowProjectId(a)) || rowSupervisorId(a)===sid);
-    if(Array.isArray(d.tickets)) d.tickets = d.tickets.filter(t=>finalSet.has(rowProjectId(t)) || rowSupervisorId(t)===sid);
-    if(Array.isArray(d.inventoryRequests)) d.inventoryRequests = d.inventoryRequests.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
-    if(Array.isArray(d.contractServices)) d.contractServices = d.contractServices.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
-    if(Array.isArray(d.clientReports)) d.clientReports = d.clientReports.filter(r=>finalSet.has(rowProjectId(r)) || rowSupervisorId(r)===sid);
+    // جميع بيانات نسخة المشرف محصورة في مشاريع النظام الموحد 4 فقط، بلا أي fallback باسم المشرف أو حقله القديم.
+    if(Array.isArray(d.workers)) d.workers = d.workers.filter(w=>{
+      const ids=[w?.project_id,w?.projectId,w?.current_project_id].map(S).filter(Boolean);
+      if(Array.isArray(w?.projects)) w.projects.forEach(p=>ids.push(S(p?.id||p?.project_id)));
+      return ids.some(id=>finalSet.has(id));
+    });
+    if(Array.isArray(d.logs)) d.logs = filterByProject(d.logs,finalSet);
+    if(Array.isArray(d.attendance)) d.attendance = filterByProject(d.attendance,finalSet);
+    if(Array.isArray(d.tickets)) d.tickets = filterByProject(d.tickets,finalSet);
+    if(Array.isArray(d.inventoryRequests)) d.inventoryRequests = filterByProject(d.inventoryRequests,finalSet);
+    if(Array.isArray(d.contractServices)) d.contractServices = filterByProject(d.contractServices,finalSet);
+    if(Array.isArray(d.clientReports)) d.clientReports = filterByProject(d.clientReports,finalSet);
     window.__tasneefSupervisorProjectIdsV371 = finalSet;
     refillSupervisorProjectSelects(finalSet);
   }
@@ -26218,7 +26223,7 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
-  const VERSION='v10847-unified4-monthly-distribution-source';
+  const VERSION='v10849-unified4-visible-project-field';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
   let latestRequestId=0;
