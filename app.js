@@ -24028,7 +24028,6 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 /* ===== V371: Supervisor project scope guard - show only assigned projects data ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   if(window.__tasneefSupervisorProjectScopeV371) return;
   window.__tasneefSupervisorProjectScopeV371 = true;
   const BUILD='V371_SUPERVISOR_PROJECT_SCOPE_GUARD';
@@ -26211,7 +26210,6 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   const VERSION='v10707-unified-project-source';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
