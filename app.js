@@ -24028,6 +24028,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 /* ===== V371: Supervisor project scope guard - show only assigned projects data ===== */
 (function(){
   'use strict';
+  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   if(window.__tasneefSupervisorProjectScopeV371) return;
   window.__tasneefSupervisorProjectScopeV371 = true;
   const BUILD='V371_SUPERVISOR_PROJECT_SCOPE_GUARD';
@@ -25412,27 +25413,33 @@ ${finalUrl}
   async function loadUnifiedSupervisorWorkersV10713(selectedDate,force=false){
     if(!window.sb)return {workers:[],identity:{},assignments:[]};
     const date=S(selectedDate)||new Date().toISOString().slice(0,10);
-    const month=date.slice(0,7)||monthKey();
-    const [secureRows,employeesMaster,workersMaster]=await Promise.all([
-      loadSecureSupervisorDistributionV10819(month),
-      loadEmployeesMasterV10713(force),
-      loadActiveWorkersMasterV10713(force)
-    ]);
-    const distributionRows=secureRows===null?await loadMonthlyDistributionV10713(month,force):secureRows;
-    const ident=resolveSupervisorIdentityV10713(employeesMaster,distributionRows);
-    // نتيجة RPC تمت فلترتها بالسيرفر بواسطة جلسة المشرف. لا نعيد إسقاطها بسبب اختلاف كتابة الاسم أو الكود محليًا.
-    if(distributionRows?.__tasneefSecureSupervisorScopeV10819){
-      ident.rows=[...distributionRows];
-      const serverIdentity=distributionRows.__tasneefIdentityV10819||{};
-      ident.sid=S(serverIdentity.user_id||ident.sid||currentUser().id||'');
-      ident.code=S(serverIdentity.employee_code||ident.code||'');
-      ident.name=S(serverIdentity.full_name||ident.name||currentUser().full_name||currentUser().name||'');
-      ident.authUserId=S(serverIdentity.user_id||ident.authUserId||currentUser().id||'');
-      ident.matchStrategy='secure-session-rpc-v10819';
-      resolvedSupervisorIdV10712=ident.sid;
+    if(typeof window.getUnifiedSupervisorWorkersV10849==='function'){
+      return window.getUnifiedSupervisorWorkersV10849(S(currentUser().id||''),date,force);
     }
-    const workers=buildSupervisorWorkersV10713(ident.rows,workersMaster,employeesMaster,ident);
-    return {workers,identity:ident,assignments:ident.rows,month,excludedInactive:workers.excludedInactive||[]};
+    let token='';
+    for(const key of ['tasneef_session_token_v10817','tasneef_permission_session_v10817','tasneef_session_token','tasneefPermissionSession']){
+      token=S(localStorage.getItem(key)||'');if(token)break;
+    }
+    const r=await window.sb.rpc('tasneef_get_unified_supervisor_workers_v10849',{p_session_token:token||null,p_selected_date:date});
+    if(r?.error)throw r.error;
+    const payload=r?.data||{};
+    if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل عمال المشرف من التوزيع الموحد');
+    const identity=payload.identity||{};
+    return {
+      workers:Array.isArray(payload.workers)?payload.workers:[],
+      identity:{
+        sid:S(identity.resolvedSupervisorId||payload.user_id||''),
+        authUserId:S(identity.authUserId||payload.user_id||''),
+        employeeId:S(identity.employeeId||''),
+        code:S(identity.employeeCode||''),
+        name:S(identity.supervisorName||''),
+        rows:Array.isArray(payload.assignments)?payload.assignments:[],
+        matchStrategy:'unified-distribution-v10849'
+      },
+      assignments:Array.isArray(payload.assignments)?payload.assignments:[],
+      selectedDate:date,
+      excludedInactive:[]
+    };
   }
   window.getUnifiedSupervisorWorkersV10713=async function(dateOrForce,maybeForce){
     const force=typeof dateOrForce==='boolean'?dateOrForce:!!maybeForce;
@@ -25443,7 +25450,7 @@ ${finalUrl}
     if(!window.sb)return [];
     const u=currentUser(),date=S($id('logDate')?.value||new Date().toISOString().slice(0,10)),month=date.slice(0,7)||monthKey();
     const identityKey=S(u.id||u.employee_code||u.employee_number||u.username||u.full_name);
-    const preKey='supervisor-workers:'+identityKey+':'+month;
+    const preKey='supervisor-workers:'+identityKey+':'+date;
     const cached=workersMemoryCache.get(preKey);
     if(!force&&cached&&Date.now()-cached.at<WORKERS_CACHE_TTL){
       state.workers=cached.rows;state.workersLoading=false;state.workersError='';
@@ -25462,8 +25469,8 @@ ${finalUrl}
         authUserId:ident.authUserId,resolvedEmployeeId:ident.employeeId,resolvedSupervisorId:ident.sid,
         supervisorCode:ident.code,supervisorName:ident.name,assignmentsCount:(unified.assignments||[]).length,
         uniqueActiveWorkersCount:workers.length,workerNamesLoaded:workers.map(workerDisplay).join('، '),
-        workersRequestDurationMs:Math.round(performance.now()-started),networkRequests:3,
-        sourceTable:'monthly_distribution',sourceFunction:'getUnifiedSupervisorWorkersV10713',
+        workersRequestDurationMs:Math.round(performance.now()-started),networkRequests:1,
+        sourceTable:'unified_distribution',sourceFunction:'getUnifiedSupervisorWorkersV10849',
         excludedInactiveWorkers:(unified.excludedInactive||[]).join('، '),unlinkedWorkers:unlinked.join('، '),loadedAt:new Date().toISOString()
       };
       window.__tasneefSupervisorWorkersHealthV10713=health;
@@ -26210,6 +26217,7 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
+  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   const VERSION='v10707-unified-project-source';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
