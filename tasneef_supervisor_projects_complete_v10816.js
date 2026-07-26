@@ -1,11 +1,12 @@
-/* ===== TASNEEF V10846 - Supervisor projects authoritative union ===== */
+/* ===== TASNEEF V10847 - Supervisor projects from unified distribution authority ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsCompleteV10846) return;
+  if(window.__tasneefSupervisorProjectsCompleteV10847) return;
+  window.__tasneefSupervisorProjectsCompleteV10847 = true;
   window.__tasneefSupervisorProjectsCompleteV10846 = true;
   window.__tasneefSupervisorProjectsCompleteV10816 = true;
 
-  const BUILD='V10846_SUPERVISOR_PROJECTS_AUTHORITATIVE_UNION';
+  const BUILD='V10847_SUPERVISOR_PROJECTS_DISTRIBUTION_AUTHORITY';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -109,13 +110,13 @@
   }
   async function secureDirectProjects(){
     const token=sessionToken();
-    for(const rpcName of ['tasneef_get_supervisor_projects_v10846','tasneef_get_supervisor_projects_v10845']){
+    for(const rpcName of ['tasneef_get_supervisor_projects_v10847','tasneef_get_supervisor_projects_v10846','tasneef_get_supervisor_projects_v10845']){
       try{
         const r=await sb.rpc(rpcName,{p_session_token:token||null});
         if(r?.error){if(missingRpc(r.error,rpcName))continue;throw r.error;}
         const payload=r?.data||{};
         if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل المشاريع المسندة للمشرف');
-        window.__tasneefSupervisorProjectDiagnosticV10846={
+        window.__tasneefSupervisorProjectDiagnosticV10847={
           rpc:rpcName,user_id:payload?.user_id||'',count:Number(payload?.count||0),sources:payload?.sources||{},identity:payload?.identity||{},unresolved:payload?.unresolved||[]
         };
         return Array.isArray(payload)?payload:A(payload?.rows);
@@ -196,7 +197,7 @@
       }
       const pids=new Set(),pnames=new Set();
       A(base.projects).filter(p=>activeRow(p)&&rowMatchesSupervisor(p,id)).forEach(p=>{if(S(p.id))pids.add(S(p.id));if(norm(p.name)){pnames.add(norm(p.name));pnames.add(compact(p.name));}});
-      A(base.directProjects).forEach(p=>{if(!p||!activeRow(p))return;if(S(p.id))pids.add(S(p.id));if(norm(p.name)){pnames.add(norm(p.name));pnames.add(compact(p.name));}});
+      A(base.directProjects).forEach(p=>{if(!p)return;if(S(p.id))pids.add(S(p.id));if(norm(p.name)){pnames.add(norm(p.name));pnames.add(compact(p.name));}});
       matchedDist.forEach(r=>{const pid=projectIdOf(r),pn=projectNameOf(r);if(pid)pids.add(pid);if(norm(pn)){pnames.add(norm(pn));pnames.add(compact(pn));}});
 
       const supWorkers=A(base.workers).filter(w=>activeRow(w)&&workerMatchesSupervisor(w,id));
@@ -240,6 +241,7 @@
     window.__tasneefSupervisorProjectIdsV371=new Set(ctx.projectIds);
     window.__tasneefSupervisorProjectIdsV10816=new Set(ctx.projectIds);
     window.__tasneefSupervisorProjectIdsV10846=new Set(ctx.projectIds);
+    window.__tasneefSupervisorProjectIdsV10847=new Set(ctx.projectIds);
     refill(ctx.projects);
     const title=$('supTitle'); if(title) title.textContent='لوحة المشرف - '+(ctx.id.name||ctx.u.username||'');
     const help=document.querySelector('#supLogs .help,#supLogs .footer-note');
@@ -247,7 +249,7 @@
     try{if(typeof renderTimeLogs==='function')renderTimeLogs();}catch(e){console.warn(BUILD,e);}
     try{if(typeof renderTickets==='function')renderTickets();}catch(e){console.warn(BUILD,e);}
     try{if(typeof renderSupervisorAttendanceList==='function'&&document.getElementById('supAttendance')?.classList.contains('active'))renderSupervisorAttendanceList();}catch(e){console.warn(BUILD,e);}
-    console.log(BUILD,{projects:ctx.projects.length,workers:ctx.workers.length,month:ctx.month,direct_rpc:window.__tasneefSupervisorProjectDiagnosticV10846||null,project_ids:[...ctx.projectIds],project_names:ctx.projects.map(p=>p.name)});
+    console.log(BUILD,{projects:ctx.projects.length,workers:ctx.workers.length,month:ctx.month,direct_rpc:window.__tasneefSupervisorProjectDiagnosticV10847||window.__tasneefSupervisorProjectDiagnosticV10846||null,project_ids:[...ctx.projectIds],project_names:ctx.projects.map(p=>p.name)});
   }
 
   const previousInit=window.initSupervisor;
@@ -269,6 +271,7 @@
   window.refreshSupervisorProjectsV10816=()=>{cache=null;cacheAt=0;return apply(true);};
   window.refreshSupervisorProjectsV10845=window.refreshSupervisorProjectsV10816;
   window.refreshSupervisorProjectsV10846=window.refreshSupervisorProjectsV10816;
+  window.refreshSupervisorProjectsV10847=window.refreshSupervisorProjectsV10816;
   function boot(){if(isSupervisor()){cache=null;cacheAt=0;apply(true);}}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,450));
   window.addEventListener('load',()=>{setTimeout(boot,700);setTimeout(boot,1700);setTimeout(boot,3500);});
