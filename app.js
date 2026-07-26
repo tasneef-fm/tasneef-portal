@@ -569,21 +569,26 @@ function exportMonthlyCSV(){ const rows=[...document.querySelectorAll('#monthlyB
 async function initSupervisor(){
   const u=requireRole('supervisor'); if(!u) return;
   await loadAll();
-  // V10602: تحميل الربط من مصدره الموحد في كل مرة، ثم بناء نطاق المشرف دون إسقاط أسماء أو مشاريع.
+  // V10846: يظهر للمشرف فقط المشروع المرتبط به مباشرة؛ ربط العمال أو السجلات القديمة لا يضيف مشاريع.
   let assignments=[];
   try{ const ar=await sb.from('worker_project_assignments').select('*').eq('is_active',true).order('id'); if(!ar.error) assignments=ar.data||[]; }catch(_){ assignments=[]; }
   data.workerAssignments=assignments;
   const sid=String(u.id);
   const allProjects=[...(data.projects||[])], allWorkers=[...(data.workers||[])];
-  const directProjectIds=new Set(allProjects.filter(p=>String(p.supervisor_id||p.app_supervisor_id||p.manager_id||p.supervisor_user_id||'')===sid).map(p=>String(p.id)));
-  const directWorkerIds=new Set(allWorkers.filter(w=>String(w.app_supervisor_id||w.supervisor_id||w.assigned_supervisor_id||w.manager_id||'')===sid).map(w=>String(w.id)));
-  assignments.forEach(a=>{ if(directWorkerIds.has(String(a.worker_id)) && a.project_id) directProjectIds.add(String(a.project_id)); });
-  // أي عامل مربوط فعليًا بمشروع المشرف يجب أن يظهر حتى لو كان حقل المشرف القديم ناقصًا.
-  const assignedWorkerIds=new Set(assignments.filter(a=>directProjectIds.has(String(a.project_id)) && a.is_active!==false).map(a=>String(a.worker_id)));
+  const directProjectIds=new Set(
+    allProjects
+      .filter(p=>String(p.supervisor_id||p.app_supervisor_id||p.manager_id||p.supervisor_user_id||'')===sid)
+      .map(p=>String(p.id))
+  );
+  const assignedWorkerIds=new Set(
+    assignments
+      .filter(a=>a.is_active!==false && directProjectIds.has(String(a.project_id)))
+      .map(a=>String(a.worker_id))
+  );
   data.projects=allProjects.filter(p=>directProjectIds.has(String(p.id)));
-  data.workers=allWorkers.filter(w=>directWorkerIds.has(String(w.id)) || directProjectIds.has(String(workerProjectId(w))) || assignedWorkerIds.has(String(w.id)));
-  data.logs=(data.logs||[]).filter(l=>String(l.supervisor_id)===sid || directProjectIds.has(String(l.project_id)));
-  data.tickets=(data.tickets||[]).filter(t=>String(t.supervisor_id)===sid || String(t.created_by)===sid || directProjectIds.has(String(t.project_id)));
+  data.workers=allWorkers.filter(w=>directProjectIds.has(String(workerProjectId(w))) || assignedWorkerIds.has(String(w.id)));
+  data.logs=(data.logs||[]).filter(l=>directProjectIds.has(String(l.project_id)));
+  data.tickets=(data.tickets||[]).filter(t=>directProjectIds.has(String(t.project_id)));
   $('supTitle').textContent=`لوحة المشرف - ${u.full_name}`;
   fillSelect('logProject',data.projects,'name','اختر المشروع');
   fillSelect('attendanceProject',data.projects,'name','اختر المشروع');
