@@ -7,7 +7,7 @@
   if(window.__tasneefCoreUnifiedV413) return;
   window.__tasneefCoreUnifiedV413 = true;
 
-  const VERSION='465'; // V10833 exact payroll distribution
+  const VERSION='466'; // V10849-R1 reliable removal of legacy distribution workers
   const S=v=>String(v??'').trim();
   const N=v=>{const n=Number(v||0);return Number.isFinite(n)?n:0};
   const $=id=>document.getElementById(id);
@@ -720,7 +720,26 @@ function printWorkersFiltered(){
     box.innerHTML=`<div><b>المشاريع المحددة: ${projects.length}</b><br>${projects.map(p=>`<span class="cu413-chip">${esc(projectName(p))}<button onclick="tasneefCoreUnifiedV413.toggleProject('${esc(projectId(p))}')" type="button">×</button></span>`).join('')||'<small>لم يتم اختيار مشاريع</small>'}</div><div style="margin-top:8px"><b>العمال المحددون: ${workers.length}</b><br>${workers.map(w=>`<span class="cu413-chip">${esc(workerDisplay(w))}<button onclick="tasneefCoreUnifiedV413.toggleWorker('${esc(workerCode(w))}')" type="button">×</button></span>`).join('')||'<small>لم يتم اختيار عمال</small>'}</div>`;
   }
   function toggleProject(pid){ if(state.selectedProjects.has(pid)) state.selectedProjects.delete(pid); else state.selectedProjects.add(pid); renderPickProjects(); renderSelected(); }
-  function toggleWorker(code){const w=(state.allWorkers||state.workers).find(x=>workerCode(x)===code); if(!w)return; if(state.selected.has(code)) state.selected.delete(code); else state.selected.set(code,w); renderPickWorkers(); renderSelected();}
+  function toggleWorker(code){
+    code=S(code);
+    // إزالة العامل من الاختيار لا يجب أن تعتمد على وجود سجله في قائمة الموظفين الحالية.
+    // بعض سجلات التوزيع القديمة قد تخص عاملًا موقوفًا أو غير موجود في employees_master_v386.
+    if(state.selected.has(code)){
+      state.selected.delete(code);
+      renderPickWorkers();
+      renderSelected();
+      return;
+    }
+    const source=(state.allWorkers&&state.allWorkers.length?state.allWorkers:state.workers)||[];
+    const w=source.find(x=>workerCode(x)===code) || (state.workers||[]).find(x=>workerCode(x)===code);
+    if(!w){
+      showMsg('تعذر إضافة العامل لأن سجله غير موجود في قائمة الموظفين الحالية.',true);
+      return;
+    }
+    state.selected.set(code,w);
+    renderPickWorkers();
+    renderSelected();
+  }
   function selectVisibleProjects(){visibleProjects().forEach(p=>state.selectedProjects.add(projectId(p))); renderPickProjects(); renderSelected();}
   function selectVisibleWorkers(){visibleWorkers().forEach(w=>state.selected.set(workerCode(w),w)); renderPickWorkers(); renderSelected();}
   function clearDistributionSelection(){state.selected.clear(); state.selectedProjects.clear(); renderPickProjects(); renderPickWorkers(); renderSelected();}
