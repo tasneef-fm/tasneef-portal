@@ -771,68 +771,13 @@ function printWorkersFiltered(){
     let r;
     if(pid) r=await c.from('projects').update(row).eq('id',pid).select(); else r=await c.from('projects').insert(row).select();
     if(r.error){showMsg('تعذر حفظ المشروع: '+r.error.message,true);return;}
-    state.projects=[]; await reload(true); clearProjectForm(); showMsg('تم حفظ بيانات المشروع. الربط التشغيلي بالمشرف والعمال يتم من قسم التوزيع فقط.');
-  }
-  function permissionSessionTokenV10848(){
-    for(const key of ['tasneef_session_token_v10817','tasneef_permission_session_v10817','tasneef_session_token','tasneefPermissionSession']){
-      const value=S(localStorage.getItem(key)||''); if(value)return value;
+    const savedPid=pid||S((r.data||[])[0]?.id||'');
+    if(savedPid){
+      const m=todayMonth();
+      await safe('sync monthly distribution supervisor',c.from('monthly_distribution').update({supervisor_employee_code:supCode||null,supervisor_name:supName||null,supervisor_id:supUserId,updated_at:new Date().toISOString()}).eq('month_key',m).eq('project_id',savedPid).neq('status','ended'));
+      await safe('sync project monthly settings supervisor',c.from('project_monthly_settings_v387').update({supervisor_id:supUserId||supCode||null,supervisor_name:supName||null,updated_at:new Date().toISOString()}).eq('month_key',m).eq('project_id',savedPid));
     }
-    return '';
-  }
-  async function resolveSupervisorAppUserV10848(c,sup){
-    const code=workerCode(sup),name=workerName(sup);
-    const ur=await c.from('app_users').select('id,full_name,username,employee_code,employee_number,code,user_code,role,role_key,is_active').eq('is_active',true).limit(5000);
-    if(ur.error){console.warn('V10848 app_users resolve',ur.error);return null;}
-    const hit=(ur.data||[]).find(u=>
-      (code&&[u.employee_code,u.employee_number,u.code,u.user_code,u.username].some(v=>S(v)===S(code))) ||
-      (name&&norm(u.full_name||u.username)===norm(name))
-    );
-    return hit||null;
-  }
-  function announceDistributionChangeV10848(payload){
-    const event=Object.assign({type:'supervisor-projects-updated',build:'V10848',ts:Date.now()},payload||{});
-    try{localStorage.setItem('tasneef_distribution_changed_v10848',JSON.stringify(event));}catch(_){ }
-    try{window.dispatchEvent(new CustomEvent('tasneef:distribution-updated',{detail:event}));}catch(_){ }
-    try{const bc=new BroadcastChannel('tasneef-supervisor-projects-v10848');bc.postMessage(event);setTimeout(()=>bc.close(),150);}catch(_){ }
-  }
-  async function saveUnifiedDistributionV10849(c,{project,supervisorUser,supervisor,month,startDate,endDate,workers,isActive=true}){
-    const payloadWorkers=(workers||[]).map(w=>({
-      worker_id:Number(w?.canonical_employee_id||w?.worker_id||w?.id)||null,
-      worker_employee_code:workerCode(w)||null,
-      worker_name:workerName(w)||null,
-      role_type:workerRole(w)||'عامل'
-    }));
-    const rpc=await c.rpc('tasneef_save_unified_distribution_v10849',{
-      p_session_token:permissionSessionTokenV10848()||null,
-      p_project_id:Number(projectId(project)),
-      p_supervisor_id:Number(supervisorUser?.id),
-      p_supervisor_employee_code:workerCode(supervisor)||null,
-      p_supervisor_name:workerName(supervisor)||null,
-      p_month_key:month,
-      p_start_date:startDate||null,
-      p_end_date:endDate||null,
-      p_workers:payloadWorkers,
-      p_is_active:isActive!==false
-    });
-    if(rpc.error)throw rpc.error;
-    if(rpc.data?.ok===false)throw new Error(rpc.data?.message||'تعذر حفظ التوزيع الموحد');
-    return rpc.data||{};
-  }
-  async function saveProjectHeaderAssignmentV10848(c,{project,supervisor,supervisorUser,month,startDate,endDate,isActive=true}){
-    const rpc=await c.rpc('tasneef_save_supervisor_project_assignment_v10848',{
-      p_session_token:permissionSessionTokenV10848()||null,
-      p_project_id:Number(projectId(project)),
-      p_supervisor_user_id:supervisorUser?.id?Number(supervisorUser.id):null,
-      p_supervisor_employee_code:workerCode(supervisor)||null,
-      p_supervisor_name:workerName(supervisor)||null,
-      p_month_key:month,
-      p_start_date:startDate||null,
-      p_end_date:endDate||null,
-      p_is_active:isActive!==false
-    });
-    if(rpc.error)throw rpc.error;
-    if(rpc.data?.ok===false)throw new Error(rpc.data?.message||'تعذر حفظ ربط المشروع بالمشرف');
-    return rpc.data||{};
+    state.projects=[]; state.dist={}; await reload(true); clearProjectForm(); showMsg('تم حفظ المشروع ونقله للمشرف الجديد وتحديث التوزيع الحالي.');
   }
   async function saveQuickDistribution(){
     const c=client(); if(!c)return;
@@ -842,70 +787,31 @@ function printWorkersFiltered(){
     const chosen=[...state.selected.values()];
     if(!m||!sup){showMsg('اختر الشهر والمشرف.',true);return;}
     if(!projects.length){showMsg('اختر مشروعًا واحدًا على الأقل.',true);return;}
-    const supervisorUser=await resolveSupervisorAppUserV10848(c,sup);
-    if(!supervisorUser){showMsg('تعذر تحديد معرف حساب المشرف الحقيقي. لا يتم الحفظ بالاسم فقط.',true);return;}
-    const startDate=m+'-01',results=[];
-    try{
-      for(const p of projects){
-        results.push(await saveUnifiedDistributionV10849(c,{
-          project:p,supervisorUser,supervisor:sup,month:m,startDate,endDate:null,workers:chosen,isActive:true
-        }));
+    const now=new Date().toISOString(), endDate=new Date().toISOString().slice(0,10);
+    for(const p of projects){
+      const pid=projectId(p);
+      const existing=await safe('existing distribution',c.from('monthly_distribution').select('id,worker_employee_code,status').eq('month_key',m).eq('project_id',pid).limit(10000));
+      const chosenCodes=new Set(chosen.map(workerCode));
+      const removed=(existing.data||[]).filter(x=>!chosenCodes.has(S(x.worker_employee_code)) && !['ended','inactive','cancelled','منتهي','ملغي'].includes(S(x.status).toLowerCase()));
+      if(removed.length){
+        const ids=removed.map(x=>x.id).filter(Boolean);
+        if(ids.length) await safe('end removed workers',c.from('monthly_distribution').update({status:'ended',end_date:endDate,updated_at:now}).in('id',ids));
       }
-    }catch(e){showMsg('تعذر حفظ التوزيع الموحد: '+(e.message||e),true);return;}
-    delete state.dist[m];
-    await loadDistribution(true); await loadBorrowings(m,true);
-    fillSelects(); renderDistBox();
-    const change={
-      supervisorId:Number(supervisorUser.id),supervisorCode:workerCode(sup),supervisorName:workerName(sup),
-      selectedDate:startDate,month:m,projectIds:projects.map(projectId),projectNames:projects.map(projectName),
-      cacheKeys:['supervisor-projects','supervisor-workers','monthly-distribution','daily-preparation','checkin-checkout']
-    };
-    announceDistributionChangeV10848(change);
-    try{localStorage.setItem('tasneef_distribution_changed_v10849',JSON.stringify(Object.assign({ts:Date.now()},change)));}catch(_){ }
-    try{const bc=new BroadcastChannel('tasneef-unified-distribution-v10849');bc.postMessage(change);setTimeout(()=>bc.close(),120);}catch(_){ }
-    console.table({
-      authUserId:supervisorUser.id,resolvedSupervisorId:supervisorUser.id,supervisorName:workerName(sup),
-      selectedDate:startDate,selectedMonth:m,projectsSaved:projects.length,workersSaved:chosen.length,
-      unifiedDistributionAssignments:results.length
-    });
-    showMsg(chosen.length
-      ?'تم حفظ المشاريع والعمال من مصدر التوزيع الموحد، وستتحدث صفحة المشرف فورًا.'
-      :'تم ربط المشروع بالمشرف في التوزيع الموحد دون عمال، وسيظهر للمشرف فورًا.');
+    }
+    const rows=[], rowKeys=new Set();
+    projects.forEach(p=>chosen.forEach(w=>{const key=[m,projectId(p),workerCode(w)].join('|'); if(rowKeys.has(key)) return; rowKeys.add(key); rows.push({month_key:m, supervisor_employee_code:workerCode(sup), supervisor_name:workerName(sup), project_id:projectId(p), project_name:projectName(p), worker_employee_code:workerCode(w), worker_name:workerName(w), role_type:workerRole(w)||'عامل', shift_name:'default', required_minutes:projectRequired(p), start_date:m+'-01', end_date:null, status:'active',updated_at:now});}));
+    if(rows.length){
+      const r=await c.from('monthly_distribution').upsert(rows,{onConflict:'month_key,project_id,worker_employee_code'}).select();
+      if(r.error){showMsg('تعذر حفظ التوزيع: '+r.error.message,true);return;}
+    }
+    delete state.dist[m]; await loadDistribution(true); await loadBorrowings($('cu413Month')?.value||todayMonth(),true); fillSelects(); renderDistBox(); showMsg(chosen.length?'تم تحديث الربط وإلغاء العمال غير المحددين من السجلات الجديدة.':'تم إلغاء ربط جميع العمال من المشروع لهذا الشهر.');
   }
   async function saveDistribution(){ return saveQuickDistribution(); }
   async function copyPreviousMonth(){
-    const c=client(); if(!c)return;
-    const m=$('cu413Month')?.value||todayMonth(),pm=prevMonth(m);
-    if(!confirm('نسخ توزيع '+pm+' إلى '+m+'؟'))return;
-    const old=await safe('previous dist',c.from('monthly_distribution').select('*').eq('month_key',pm).eq('is_active',true).limit(10000));
-    if(!(old.data||[]).length){showMsg('لا يوجد توزيع فعال في الشهر السابق.',true);return;}
-    const groups=new Map();
-    (old.data||[]).forEach(r=>{
-      const key=[S(r.supervisor_id),S(r.project_id)].join('|');
-      if(!r.supervisor_id||!r.project_id)return;
-      if(!groups.has(key))groups.set(key,{first:r,workers:[]});
-      groups.get(key).workers.push({
-        canonical_employee_id:Number(r.worker_id)||null,
-        employee_code:S(r.worker_employee_code),
-        worker_employee_code:S(r.worker_employee_code),
-        name:S(r.worker_name),app_name:S(r.worker_name),job_title:S(r.role_type||'عامل')
-      });
-    });
-    const results=[];
-    try{
-      for(const group of groups.values()){
-        const r=group.first,p=state.projects.find(x=>S(projectId(x))===S(r.project_id));
-        if(!p)continue;
-        const supervisorUser={id:Number(r.supervisor_id)};
-        const sup={employee_code:S(r.supervisor_employee_code),app_name:S(r.supervisor_name),name:S(r.supervisor_name),job_title:'مشرف'};
-        results.push(await saveUnifiedDistributionV10849(c,{project:p,supervisorUser,supervisor:sup,month:m,startDate:m+'-01',endDate:null,workers:group.workers,isActive:true}));
-      }
-    }catch(e){showMsg('تعذر نسخ التوزيع الموحد: '+(e.message||e),true);return;}
-    delete state.dist[m];await loadDistribution(true);renderDistBox();
-    const change={month:m,selectedDate:m+'-01',cacheKeys:['supervisor-projects','supervisor-workers','monthly-distribution','daily-preparation','checkin-checkout']};
-    announceDistributionChangeV10848(change);
-    try{localStorage.setItem('tasneef_distribution_changed_v10849',JSON.stringify(Object.assign({ts:Date.now()},change)));}catch(_){ }
-    showMsg('تم نسخ المشاريع والعمال إلى التوزيع الموحد للشهر الجديد.');
+    const c=client(); if(!c)return; const m=$('cu413Month')?.value||todayMonth(), pm=prevMonth(m); if(!confirm('نسخ توزيع '+pm+' إلى '+m+'؟'))return;
+    const old=await safe('previous dist', c.from('monthly_distribution').select('*').eq('month_key',pm).limit(10000)); if(!(old.data||[]).length){showMsg('لا يوجد توزيع في الشهر السابق.',true);return;}
+    const rows=(old.data||[]).map(({id,created_at,updated_at,...r})=>({...r,month_key:m,start_date:m+'-01',end_date:monthEnd(m)}));
+    const res=await c.from('monthly_distribution').upsert(rows,{onConflict:'month_key,project_id,worker_employee_code'}).select(); if(res.error){showMsg('تعذر النسخ: '+res.error.message,true);return;} delete state.dist[m]; await loadDistribution(true); renderDistBox(); showMsg('تم نسخ توزيع الشهر السابق.');
   }
 
   function attendanceDate(){return $('cu413AttDate')?.value || new Date().toISOString().slice(0,10);}

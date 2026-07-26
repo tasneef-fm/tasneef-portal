@@ -397,7 +397,7 @@ async function toggleProjectStatus(id){ const p=data.projects.find(x=>x.id===id)
 function openProjectManager(id){ const p=data.projects.find(x=>x.id===id); if(!p)return; $('manageProjectId').value=id; $('projectManagerCard')?.classList.remove('hidden'); $('projectManagerTitle').textContent=`إدارة المشروع: ${p.name}`; if($('projectManageSupervisor')) $('projectManageSupervisor').value=p.supervisor_id||''; renderProjectManager(); setTimeout(()=>$('projectManagerCard')?.scrollIntoView({behavior:'smooth',block:'start'}),50); }
 function closeProjectManager(){ $('projectManagerCard')?.classList.add('hidden'); if($('manageProjectId')) $('manageProjectId').value=''; }
 function renderProjectManager(){ const b=$('projectWorkersBody'); if(!b) return; const pid=$('manageProjectId')?.value; if(!pid){ b.innerHTML='<tr><td colspan="5">اختر مشروع من زر إدارة المشروع</td></tr>'; return; } const rows=activeWorkers().filter(w=>String(workerProjectId(w))===String(pid)); b.innerHTML=rows.map(w=>`<tr><td>${esc(w.name)}</td><td>${esc(supervisorName(workerSupId(w)))}</td><td><span class="badge ${w.worker_type==='support'?'amber':'green'}">${workerTypeText(w.worker_type)}</span></td><td><span class="badge ${w.status==='inactive'?'red':'green'}">${w.status==='inactive'?'موقوف':'نشط'}</span></td><td class="row-actions"><button class="danger" onclick="removeWorkerFromProject(${w.id})">إزالة من المشروع</button></td></tr>`).join('')||'<tr><td colspan="5">لا يوجد عمال مرتبطون بهذا المشروع</td></tr>'; }
-async function saveProjectManagerSupervisor(){ const pid=Number($('manageProjectId')?.value), sid=Number($('projectManageSupervisor')?.value)||null; if(!pid) return msg('اختر المشروع أولاً','err'); const {error}=await sb.from('projects').update({supervisor_id:sid}).eq('id',pid); if(error) return msg(error.message,'err'); await sb.from('workers').update({supervisor_id:sid, app_supervisor_id:sid}).eq('project_id',pid); try{ const token=localStorage.getItem('tasneef_session_token_v10817')||localStorage.getItem('tasneef_permission_session_v10817')||''; let sync=await sb.rpc('tasneef_sync_project_supervisor_scope_v10846',{p_project_id:pid,p_session_token:token||null}); if(sync?.error&&['PGRST202','42883'].includes(String(sync.error.code||''))) sync=await sb.rpc('tasneef_sync_project_supervisor_scope_v10845',{p_project_id:pid,p_session_token:token||null}); if(sync?.error&&!['PGRST202','42883'].includes(String(sync.error.code||''))) console.warn('V10846 scope sync',sync.error); }catch(e){console.warn('V10846 scope sync',e);} msg('تم ربط المشرف بالمشروع وتحديث نطاق ظهوره فورًا'); await refreshAll(); openProjectManager(pid); }
+async function saveProjectManagerSupervisor(){ const pid=Number($('manageProjectId')?.value), sid=Number($('projectManageSupervisor')?.value)||null; if(!pid) return msg('اختر المشروع أولاً','err'); const {error}=await sb.from('projects').update({supervisor_id:sid}).eq('id',pid); if(error) return msg(error.message,'err'); await sb.from('workers').update({supervisor_id:sid, app_supervisor_id:sid}).eq('project_id',pid); msg('تم ربط المشرف بالمشروع وتحديث عمال المشروع'); await refreshAll(); openProjectManager(pid); }
 async function addExistingWorkerToProject(){ const pid=Number($('manageProjectId')?.value), wid=Number($('manageWorkerSelect')?.value), type=$('manageWorkerType')?.value||'primary'; if(!pid||!wid) return msg('اختر المشروع والعامل','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const {error}=await sb.from('workers').update({project_id:pid, supervisor_id:sid, app_supervisor_id:sid, worker_type:type}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تم ربط العامل بالمشروع'); await refreshAll(); openProjectManager(pid); }
 async function removeWorkerFromProject(wid){ if(!confirm('إزالة العامل من هذا المشروع؟')) return; const pid=Number($('manageProjectId')?.value); const {error}=await sb.from('workers').update({project_id:null}).eq('id',wid); if(error) return msg(error.message,'err'); msg('تمت إزالة العامل من المشروع'); await refreshAll(); if(pid) openProjectManager(pid); }
 async function addWorkerInsideProject(){ const pid=Number($('manageProjectId')?.value); if(!pid) return msg('اختر المشروع أولاً','err'); const name=$('manageNewWorkerName')?.value.trim(); if(!name) return msg('اسم العامل مطلوب','err'); const p=data.projects.find(x=>x.id===pid); const sid=p?.supervisor_id||null; const row={name, phone:$('manageNewWorkerPhone')?.value.trim()||'', salary:Number($('manageNewWorkerSalary')?.value||1500), supervisor_id:sid, app_supervisor_id:sid, project_id:pid, worker_type:$('manageNewWorkerType')?.value||'primary', status:'active', is_active:true, active:true}; const {error}=await sb.from('workers').insert(row); if(error) return msg(error.message,'err'); ['manageNewWorkerName','manageNewWorkerPhone'].forEach(id=>$(id)&&($(id).value='')); if($('manageNewWorkerSalary')) $('manageNewWorkerSalary').value=1500; msg('تم إضافة العامل وربطه بالمشروع'); await refreshAll(); openProjectManager(pid); }
@@ -24028,7 +24028,6 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
 /* ===== V371: Supervisor project scope guard - show only assigned projects data ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   if(window.__tasneefSupervisorProjectScopeV371) return;
   window.__tasneefSupervisorProjectScopeV371 = true;
   const BUILD='V371_SUPERVISOR_PROJECT_SCOPE_GUARD';
@@ -25413,33 +25412,27 @@ ${finalUrl}
   async function loadUnifiedSupervisorWorkersV10713(selectedDate,force=false){
     if(!window.sb)return {workers:[],identity:{},assignments:[]};
     const date=S(selectedDate)||new Date().toISOString().slice(0,10);
-    if(typeof window.getUnifiedSupervisorWorkersV10849==='function'){
-      return window.getUnifiedSupervisorWorkersV10849(S(currentUser().id||''),date,force);
+    const month=date.slice(0,7)||monthKey();
+    const [secureRows,employeesMaster,workersMaster]=await Promise.all([
+      loadSecureSupervisorDistributionV10819(month),
+      loadEmployeesMasterV10713(force),
+      loadActiveWorkersMasterV10713(force)
+    ]);
+    const distributionRows=secureRows===null?await loadMonthlyDistributionV10713(month,force):secureRows;
+    const ident=resolveSupervisorIdentityV10713(employeesMaster,distributionRows);
+    // نتيجة RPC تمت فلترتها بالسيرفر بواسطة جلسة المشرف. لا نعيد إسقاطها بسبب اختلاف كتابة الاسم أو الكود محليًا.
+    if(distributionRows?.__tasneefSecureSupervisorScopeV10819){
+      ident.rows=[...distributionRows];
+      const serverIdentity=distributionRows.__tasneefIdentityV10819||{};
+      ident.sid=S(serverIdentity.user_id||ident.sid||currentUser().id||'');
+      ident.code=S(serverIdentity.employee_code||ident.code||'');
+      ident.name=S(serverIdentity.full_name||ident.name||currentUser().full_name||currentUser().name||'');
+      ident.authUserId=S(serverIdentity.user_id||ident.authUserId||currentUser().id||'');
+      ident.matchStrategy='secure-session-rpc-v10819';
+      resolvedSupervisorIdV10712=ident.sid;
     }
-    let token='';
-    for(const key of ['tasneef_session_token_v10817','tasneef_permission_session_v10817','tasneef_session_token','tasneefPermissionSession']){
-      token=S(localStorage.getItem(key)||'');if(token)break;
-    }
-    const r=await window.sb.rpc('tasneef_get_unified_supervisor_workers_v10849',{p_session_token:token||null,p_selected_date:date});
-    if(r?.error)throw r.error;
-    const payload=r?.data||{};
-    if(payload?.ok===false)throw new Error(payload?.message||'تعذر تحميل عمال المشرف من التوزيع الموحد');
-    const identity=payload.identity||{};
-    return {
-      workers:Array.isArray(payload.workers)?payload.workers:[],
-      identity:{
-        sid:S(identity.resolvedSupervisorId||payload.user_id||''),
-        authUserId:S(identity.authUserId||payload.user_id||''),
-        employeeId:S(identity.employeeId||''),
-        code:S(identity.employeeCode||''),
-        name:S(identity.supervisorName||''),
-        rows:Array.isArray(payload.assignments)?payload.assignments:[],
-        matchStrategy:'unified-distribution-v10849'
-      },
-      assignments:Array.isArray(payload.assignments)?payload.assignments:[],
-      selectedDate:date,
-      excludedInactive:[]
-    };
+    const workers=buildSupervisorWorkersV10713(ident.rows,workersMaster,employeesMaster,ident);
+    return {workers,identity:ident,assignments:ident.rows,month,excludedInactive:workers.excludedInactive||[]};
   }
   window.getUnifiedSupervisorWorkersV10713=async function(dateOrForce,maybeForce){
     const force=typeof dateOrForce==='boolean'?dateOrForce:!!maybeForce;
@@ -25450,7 +25443,7 @@ ${finalUrl}
     if(!window.sb)return [];
     const u=currentUser(),date=S($id('logDate')?.value||new Date().toISOString().slice(0,10)),month=date.slice(0,7)||monthKey();
     const identityKey=S(u.id||u.employee_code||u.employee_number||u.username||u.full_name);
-    const preKey='supervisor-workers:'+identityKey+':'+date;
+    const preKey='supervisor-workers:'+identityKey+':'+month;
     const cached=workersMemoryCache.get(preKey);
     if(!force&&cached&&Date.now()-cached.at<WORKERS_CACHE_TTL){
       state.workers=cached.rows;state.workersLoading=false;state.workersError='';
@@ -25469,8 +25462,8 @@ ${finalUrl}
         authUserId:ident.authUserId,resolvedEmployeeId:ident.employeeId,resolvedSupervisorId:ident.sid,
         supervisorCode:ident.code,supervisorName:ident.name,assignmentsCount:(unified.assignments||[]).length,
         uniqueActiveWorkersCount:workers.length,workerNamesLoaded:workers.map(workerDisplay).join('، '),
-        workersRequestDurationMs:Math.round(performance.now()-started),networkRequests:1,
-        sourceTable:'unified_distribution',sourceFunction:'getUnifiedSupervisorWorkersV10849',
+        workersRequestDurationMs:Math.round(performance.now()-started),networkRequests:3,
+        sourceTable:'monthly_distribution',sourceFunction:'getUnifiedSupervisorWorkersV10713',
         excludedInactiveWorkers:(unified.excludedInactive||[]).join('، '),unlinkedWorkers:unlinked.join('، '),loadedAt:new Date().toISOString()
       };
       window.__tasneefSupervisorWorkersHealthV10713=health;
@@ -26217,7 +26210,6 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsAuthoritativeV10847) return;
   const VERSION='v10707-unified-project-source';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
