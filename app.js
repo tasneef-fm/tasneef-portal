@@ -27894,3 +27894,105 @@ ${finalUrl}
   console.info(BUILD,'loaded');
 })();
 /* ===== END V10843 ===== */
+
+/* ===== V10852: Supervisor ticket save through secure RPC (RLS-safe) ===== */
+(function(){
+  'use strict';
+  if(window.__tasneefSupervisorTicketRlsFixV10852) return;
+  window.__tasneefSupervisorTicketRlsFixV10852=true;
+  window.TASNEEF_SUPERVISOR_TICKET_BUILD='V10852';
+
+  const S=v=>String(v??'').trim();
+  const byId=id=>document.getElementById(id);
+  const currentUser=()=>{ try{return typeof window.session==='function'?(window.session()||{}):JSON.parse(localStorage.getItem('tasneef_user')||'{}');}catch(_){return {};} };
+  const roleKey=u=>S(u?.role_key||u?.role).toLowerCase();
+  const isSupervisor=u=>roleKey(u)==='supervisor';
+  const say=(text,type='err')=>{ try{ if(typeof window.msg==='function') return window.msg(text,type); }catch(_){} const el=byId('globalMsg'); if(el){el.textContent=text;el.className='msg '+(type==='err'?'err':'');el.classList.remove('hidden');setTimeout(()=>el.classList.add('hidden'),6500);}else alert(text); };
+  const token=()=>S(localStorage.getItem('tasneef_session_token_v10817'));
+  const randomKey=()=>{ try{return crypto.randomUUID();}catch(_){return 'ticket-'+Date.now()+'-'+Math.random().toString(36).slice(2);} };
+  const minutesBetween=(a,b)=>{const x=a?new Date(a):null,y=b?new Date(b):null;return x&&y&&!isNaN(x)&&!isNaN(y)?Math.max(0,Math.round((y-x)/60000)):0;};
+
+  let saving=false;
+  const previousSaveTicket=window.saveTicket;
+
+  window.saveTicket=async function(){
+    const user=currentUser();
+    if(!isSupervisor(user)){
+      return typeof previousSaveTicket==='function' ? await previousSaveTicket.apply(this,arguments) : undefined;
+    }
+    if(saving) return;
+
+    const projectId=Number(byId('ticketProject')?.value||0);
+    const title=S(byId('ticketTitle')?.value);
+    const description=S(byId('ticketDescription')?.value);
+    const priority=S(byId('ticketPriority')?.value)||'normal';
+    const status=S(byId('ticketStatus')?.value)||'open';
+    const ticketId=Number(byId('ticketId')?.value||0)||null;
+
+    if(!token()) return say('انتهت جلسة الصلاحيات. سجل الخروج ثم ادخل مرة أخرى.','err');
+    if(!projectId) return say('اختر المشروع أولًا.','err');
+    if(!title) return say('اختر نوع المشكلة.','err');
+    if(!description) return say('اكتب وصف التذكرة.','err');
+
+    const payload={
+      project_id:projectId,
+      title,
+      category:title,
+      description,
+      priority,
+      status
+    };
+
+    if(status==='closed'){
+      const existing=(window.data?.tickets||[]).find(x=>String(x.id)===String(ticketId));
+      const note=S(byId('ticketClosureNote')?.value)||S(prompt('كيف تم حل وإغلاق التذكرة؟'));
+      const closer=S(byId('ticketClosedByName')?.value)||S(user.full_name||user.name||user.username||'المشرف');
+      if(!note) return say('اكتب طريقة حل التذكرة قبل الإغلاق.','err');
+      payload.closure_note=note;
+      payload.closed_by_name=closer;
+      payload.closed_at=new Date().toISOString();
+      payload.open_duration_minutes=existing?.created_at?minutesBetween(existing.created_at,payload.closed_at):0;
+      payload.processing_duration_minutes=existing?.claimed_at?minutesBetween(existing.claimed_at,payload.closed_at):0;
+    }
+
+    saving=true;
+    try{
+      const key=ticketId ? ('ticket-update-'+ticketId+'-'+randomKey()) : (window.__tasneefNewTicketKeyV10852||(window.__tasneefNewTicketKeyV10852=randomKey()));
+      const client=window.sb;
+      if(!client?.rpc) throw new Error('تعذر الاتصال بخدمة قاعدة البيانات');
+      const {data:result,error}=await client.rpc('tasneef_supervisor_save_ticket_v10852',{
+        p_session_token:token(),
+        p_ticket_id:ticketId,
+        p_payload:payload,
+        p_idempotency_key:key
+      });
+      if(error) throw error;
+      if(result && result.ok===false) throw new Error(result.message||'تعذر حفظ التذكرة');
+
+      window.__tasneefNewTicketKeyV10852=null;
+      try{ if(typeof window.playAppSound==='function') window.playAppSound('ticket'); }catch(_){}
+      say(ticketId?'تم تحديث التذكرة بنجاح':'تم رفع التذكرة بنجاح','ok');
+      try{ if(typeof window.clearTicketForm==='function') window.clearTicketForm(); }catch(_){}
+      try{ if(typeof window.initSupervisor==='function') await window.initSupervisor(); else if(typeof window.refreshAll==='function') await window.refreshAll(); }catch(e){console.warn('[V10852 refresh]',e);}
+      return result;
+    }catch(error){
+      console.error('[V10852 supervisor ticket save]',error);
+      const raw=S(error?.message||error);
+      if(/Could not find the function|PGRST202|does not exist/i.test(raw)){
+        return say('لم يتم تشغيل ملف SQL الخاص بإصلاح التذاكر V10852 في Supabase.','err');
+      }
+      if(/جلسة|session|token/i.test(raw)) return say('الجلسة غير صالحة. سجل الخروج ثم ادخل مرة أخرى.','err');
+      if(/المشروع غير مرتبط|project.*not.*assigned|لا يمكنك/i.test(raw)) return say('المشروع غير مرتبط بالمشرف في النظام الموحد 4.','err');
+      return say(raw||'تعذر حفظ التذكرة','err');
+    }finally{
+      saving=false;
+    }
+  };
+
+  const oldClear=window.clearTicketForm;
+  if(typeof oldClear==='function'){
+    window.clearTicketForm=function(){ window.__tasneefNewTicketKeyV10852=null; return oldClear.apply(this,arguments); };
+  }
+
+  console.log('Tasneef V10852 supervisor ticket RLS fix loaded');
+})();
