@@ -1,93 +1,35 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#d5aa5b">
-  <title>وردة أشبيليا | WARDAT ASHBILYA</title>
-  <link rel="icon" href="assets/logo.png">
-  <link rel="stylesheet" href="styles.css?v=20260727-v10-finance-print-actions">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>تسجيل الدخول - تصنيف</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--brand:#0A4033;--bg:#eef6f3;--card:#fff;--line:#dce6e2;--text:#10231d;--muted:#60706a;--red:#b83232}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 15% 15%,#e8f3ef,transparent 35%),linear-gradient(180deg,#eef6f3,#f8fbfa);font-family:Tahoma,Arial,sans-serif;color:var(--text)}
+.login-card{width:min(440px,92vw);background:#fff;border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 18px 44px rgba(0,0,0,.08);text-align:center}
+.logo{width:58px;height:58px;border-radius:16px;background:var(--brand);color:#fff;display:grid;place-items:center;margin:0 auto 12px;font-size:26px;font-weight:900}
+h1{margin:0 0 8px;color:#071d35;font-size:28px}p{margin:0 0 18px;color:var(--muted)}label{display:block;margin:12px 0 6px;color:var(--brand);font-weight:700;font-size:13px;text-align:right}
+input{width:100%;border:1px solid #cbdcd6;border-radius:10px;padding:12px;background:#eef4ff;font-family:inherit;text-align:right}button{width:100%;border:0;border-radius:10px;background:var(--brand);color:#fff;padding:12px;font-weight:800;font-family:inherit;margin-top:14px;cursor:pointer}
+.msg{margin-top:14px;border:1px solid #cfe5dc;background:#effaf6;color:var(--brand);padding:10px;border-radius:10px;font-weight:700}.msg.err{border-color:#f0caca;background:#fff1f1;color:var(--red)}.hidden{display:none!important}.small{font-size:12px;color:var(--muted);margin-top:16px}
+</style>
 </head>
-<body data-portal="customer">
-  <div id="toast" class="toast"></div>
-
-  <section id="storeView" class="store-view">
-    <header class="store-header">
-      <a class="brand" href="#store" aria-label="وردة أشبيليا">
-        <img src="assets/logo.png" alt="شعار وردة أشبيليا">
-        <span><strong>وردة أشبيليا</strong><small>WARDAT ASHBILYA</small></span>
-      </a>
-      <nav>
-        <a href="#store">الرئيسية</a>
-        <a href="#products">المتجر</a>
-        <a href="#events">المناسبات</a>
-        <a href="#gallery">أعمالنا</a>
-      </nav>
-      <div class="store-actions">
-        <button class="icon-btn" id="cartBtn">السلة <b id="cartCount">0</b></button>
-        <a class="btn btn-outline" href="employee.html">دخول الموظفين</a><a class="btn btn-dark" href="admin.html">دخول الإدارة</a>
-      </div>
-    </header>
-
-    <main>
-      <section class="hero">
-        <div class="hero-content">
-          <span class="eyebrow">تفاصيل تُزهر فرحًا</span>
-          <h1>نصنع لحظاتكم<br><em>بأناقة الورد</em></h1>
-          <p>باقات فاخرة، كوش أعراس، وتنسيق مناسبات مصمم بعناية ليحكي قصتكم.</p>
-          <div class="hero-actions">
-            <button class="btn btn-primary" data-scroll="productsSection">اطلب الآن</button>
-            <button class="btn btn-dark" id="openBookingBtn">احجز مناسبتك</button>
-            <button class="btn btn-outline" id="openAssistantBtn">صمم باقتك</button>
-          </div>
-          <div class="trust-row"><span>✓ تنسيق حسب الطلب</span><span>✓ توصيل بالرياض</span><span>✓ دفع آمن</span></div>
-        </div>
-        <div class="hero-art">
-          <div class="logo-orbit"><img src="assets/logo.png" alt=""></div>
-          <div class="floating-card fc1">كوش أعراس <b>بتصميم خاص</b></div>
-          <div class="floating-card fc2">باقات مختارة <b>بعناية يومية</b></div>
-        </div>
-      </section>
-
-      <section class="section categories-section">
-        <div class="section-head"><div><span class="eyebrow">تسوق حسب المناسبة</span><h2>كل وردة لها حكاية</h2></div></div>
-        <div id="categoryChips" class="category-chips"></div>
-      </section>
-
-      <section id="productsSection" class="section">
-        <div class="section-head"><div><span class="eyebrow">مختاراتنا</span><h2>أحدث المنتجات</h2></div><button class="btn btn-outline" id="showAllProducts">عرض الكل</button></div>
-        <div id="storeProducts" class="product-grid"></div>
-      </section>
-
-      <section class="section event-showcase">
-        <div class="event-copy"><span class="eyebrow">الأعراس والمناسبات</span><h2>من الفكرة إلى لحظة التنفيذ</h2><p>نرافقكم من المعاينة وعرض السعر إلى التركيب والتوثيق والفك، بفريق واحد ونظام متابعة واضح.</p><button class="btn btn-primary" id="openBookingBtn2">ابدأ طلب حجز</button></div>
-        <div id="servicesGrid" class="services-grid"></div>
-      </section>
-
-      <section class="section assistant-banner">
-        <div><span class="eyebrow">مساعد وردة الذكي</span><h2>اختر الباقة المناسبة خلال دقيقة</h2><p>أخبرنا بالمناسبة والميزانية والألوان، وسنقترح ثلاث خيارات مناسبة.</p></div>
-        <button class="btn btn-dark" id="openAssistantBtn2">ابدأ الآن</button>
-      </section>
-    </main>
-
-    <footer class="store-footer"><div class="brand"><img src="assets/logo.png" alt=""><span><strong>وردة أشبيليا</strong><small>WARDAT ASHBILYA</small></span></div><p>الرياض، المملكة العربية السعودية · جميع الأسعار بالريال السعودي وتشمل الضريبة عند الفوترة.</p></footer>
-  </section>
-
-  <div id="cartDrawer" class="drawer hidden"><div class="drawer-head"><h2>سلة المشتريات</h2><button class="modal-close" data-close="cartDrawer">×</button></div><div id="cartItems" class="drawer-body"></div><div class="drawer-foot"><div class="totals" id="cartTotals"></div><button class="btn btn-primary wide" id="checkoutBtn">إتمام الطلب</button></div></div>
-
-  <div id="checkoutModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="checkoutModal">×</button><h2>إتمام طلبك</h2><form id="checkoutForm" class="form-grid"><label>الاسم<input name="customer_name" required></label><label>رقم الجوال<input name="phone" required></label><label>طريقة الاستلام<select name="fulfillment_type"><option value="pickup">استلام من المحل</option><option value="delivery">توصيل</option></select></label><label>موعد الاستلام أو التوصيل<input type="datetime-local" name="delivery_at"></label><label class="span-2">العنوان عند التوصيل<textarea name="delivery_address"></textarea></label><label class="span-2">نص البطاقة<textarea name="card_text"></textarea></label><button class="btn btn-primary span-2" type="submit">تأكيد الطلب</button></form></div></div>
-
-  <div id="bookingModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="bookingModal">×</button><h2>حجز مناسبة</h2><form id="publicBookingForm" class="form-grid"><label>اسم العميل<input name="customer_name" required></label><label>رقم الجوال<input name="phone" required></label><label>نوع المناسبة<select name="event_type" required><option>زفاف</option><option>خطوبة</option><option>ملكة</option><option>تخرج</option><option>عيد ميلاد</option><option>استقبال مولود</option><option>مناسبة شركات</option><option>حسب الطلب</option></select></label><label>عدد الضيوف<input type="number" name="guest_count" min="1"></label><label>بداية المناسبة<input type="datetime-local" name="start_at" required></label><label>نهاية المناسبة<input type="datetime-local" name="end_at" required></label><label>اسم القاعة أو الموقع<input name="venue_name"></label><label>الحي<input name="district"></label><label>الميزانية المتوقعة<input type="number" name="budget"></label><label>الألوان المفضلة<input name="preferred_colors"></label><label class="span-2">تفاصيل الطلب<textarea name="details"></textarea></label><label><input type="checkbox" name="inspection_required"> أطلب معاينة الموقع</label><button class="btn btn-primary" type="submit">إرسال طلب الحجز</button></form></div></div>
-
-  <div id="assistantModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="assistantModal">×</button><h2>مساعد اختيار الباقة</h2><form id="assistantForm" class="form-grid"><label>نوع المناسبة<select name="occasion"><option>زفاف</option><option>تخرج</option><option>عيد ميلاد</option><option>هدية</option><option>مولود</option></select></label><label>الميزانية<input type="number" name="budget" value="300" required></label><label>الألوان<input name="colors" placeholder="أبيض، ذهبي"></label><label>ورد طبيعي أم صناعي؟<select name="flower_type"><option>طبيعي</option><option>صناعي</option><option>لا يهم</option></select></label><button class="btn btn-primary span-2" type="submit">اعرض الخيارات</button></form><div id="assistantResults" class="assistant-results"></div></div></div>
-
-  <div id="formModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="formModal">×</button><div id="formModalContent"></div></div></div>
-  <script src="config.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="permissions-service.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="supabase-api.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="financial-engine.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="document-engine.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="app.js?v=20260727-v10-finance-print-actions"></script>
+<body>
+<main class="login-card">
+<div class="logo">ت</div><h1>نظام تصنيف للتشغيل</h1><p>تسجيل دخول الإدارة والمشرفين والفنيين</p>
+<label for="loginUsername">اسم المستخدم</label><input id="loginUsername" autocomplete="username" placeholder="مثال: admin أو fahad">
+<label for="loginPassword">كلمة المرور</label><input id="loginPassword" type="password" autocomplete="current-password" placeholder="كلمة المرور">
+<button onclick="login()">دخول</button><div id="loginMsg" class="msg hidden"></div><div class="small">V10818 - جلسة بيانات موحدة وآمنة</div>
+</main>
+<script>
+(async function(){try{localStorage.removeItem('tasneef_force_domain');sessionStorage.removeItem('tasneef_force_domain');if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs) await r.unregister();}if(window.caches && location.protocol !== 'file:'){const keys=await caches.keys();for(const k of keys) await caches.delete(k);}}catch(e){}})();
+document.addEventListener('keydown', function(e){ if(e.key === 'Enter') login(); });
+</script>
+<script src="app.js?v=10844-supervisor-projects-daily-print-counts"></script>
+<script defer src="tasneef_permissions_v10817.js?v=10825-strict-section-permissions"></script>
 </body>
 </html>
