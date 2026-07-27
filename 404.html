@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#d5aa5b">
   <title>وردة أشبيليا | WARDAT ASHBILYA</title>
   <link rel="icon" href="assets/logo.png">
-  <link rel="stylesheet" href="styles.css?v=20260727-v10-finance-print-actions">
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body data-portal="customer">
+<body>
   <div id="toast" class="toast"></div>
 
   <section id="storeView" class="store-view">
@@ -25,7 +25,7 @@
       </nav>
       <div class="store-actions">
         <button class="icon-btn" id="cartBtn">السلة <b id="cartCount">0</b></button>
-        <a class="btn btn-outline" href="employee.html">دخول الموظفين</a><a class="btn btn-dark" href="admin.html">دخول الإدارة</a>
+        <button class="btn btn-outline" id="openLoginBtn">دخول الموظفين</button>
       </div>
     </header>
 
@@ -73,6 +73,24 @@
     <footer class="store-footer"><div class="brand"><img src="assets/logo.png" alt=""><span><strong>وردة أشبيليا</strong><small>WARDAT ASHBILYA</small></span></div><p>الرياض، المملكة العربية السعودية · جميع الأسعار بالريال السعودي وتشمل الضريبة عند الفوترة.</p></footer>
   </section>
 
+  <section id="appView" class="app-view hidden">
+    <aside class="sidebar">
+      <div class="side-brand"><img src="assets/logo.png" alt=""><div><strong>وردة أشبيليا</strong><small>نظام الإدارة والتشغيل</small></div></div>
+      <nav id="sideNav"></nav>
+      <div class="side-user"><div class="avatar" id="userAvatar">و</div><div><strong id="userName">المستخدم</strong><small id="userRole">الإدارة</small></div><button id="logoutBtn" title="تسجيل الخروج">↪</button></div>
+    </aside>
+    <div class="app-main">
+      <header class="topbar">
+        <button class="menu-btn" id="menuBtn">☰</button>
+        <div><h1 id="pageTitle">لوحة الإدارة</h1><p id="pageSubtitle">نظرة مباشرة على التشغيل والمبيعات</p></div>
+        <div class="top-actions"><button class="icon-btn" id="refreshBtn">تحديث</button><button class="icon-btn" id="notificationsBtn">الإشعارات <b id="notificationCount">0</b></button><button class="btn btn-outline" id="backToStore">المتجر</button></div>
+      </header>
+      <main id="content" class="content"></main>
+    </div>
+  </section>
+
+  <div id="loginModal" class="modal hidden"><div class="modal-card login-card"><button class="modal-close" data-close="loginModal">×</button><img class="login-logo" src="assets/logo.png" alt=""><h2>دخول فريق وردة أشبيليا</h2><p>استخدم حساب الإدارة أو الموظف للوصول حسب الصلاحية.</p><form id="loginForm" class="form-grid single"><label>البريد الإلكتروني<input type="email" name="email" placeholder="admin@example.com" autocomplete="username" required></label><label>كلمة المرور<input type="password" name="password" autocomplete="current-password" required></label><button class="btn btn-primary" type="submit">تسجيل الدخول</button></form><div class="demo-note"><b>تسجيل الدخول:</b> استخدم حساب الموظف الذي تم إنشاؤه داخل Supabase Authentication، وتُحدد صلاحياته من جدول profiles.</div></div></div>
+
   <div id="cartDrawer" class="drawer hidden"><div class="drawer-head"><h2>سلة المشتريات</h2><button class="modal-close" data-close="cartDrawer">×</button></div><div id="cartItems" class="drawer-body"></div><div class="drawer-foot"><div class="totals" id="cartTotals"></div><button class="btn btn-primary wide" id="checkoutBtn">إتمام الطلب</button></div></div>
 
   <div id="checkoutModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="checkoutModal">×</button><h2>إتمام طلبك</h2><form id="checkoutForm" class="form-grid"><label>الاسم<input name="customer_name" required></label><label>رقم الجوال<input name="phone" required></label><label>طريقة الاستلام<select name="fulfillment_type"><option value="pickup">استلام من المحل</option><option value="delivery">توصيل</option></select></label><label>موعد الاستلام أو التوصيل<input type="datetime-local" name="delivery_at"></label><label class="span-2">العنوان عند التوصيل<textarea name="delivery_address"></textarea></label><label class="span-2">نص البطاقة<textarea name="card_text"></textarea></label><button class="btn btn-primary span-2" type="submit">تأكيد الطلب</button></form></div></div>
@@ -82,12 +100,12 @@
   <div id="assistantModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="assistantModal">×</button><h2>مساعد اختيار الباقة</h2><form id="assistantForm" class="form-grid"><label>نوع المناسبة<select name="occasion"><option>زفاف</option><option>تخرج</option><option>عيد ميلاد</option><option>هدية</option><option>مولود</option></select></label><label>الميزانية<input type="number" name="budget" value="300" required></label><label>الألوان<input name="colors" placeholder="أبيض، ذهبي"></label><label>ورد طبيعي أم صناعي؟<select name="flower_type"><option>طبيعي</option><option>صناعي</option><option>لا يهم</option></select></label><button class="btn btn-primary span-2" type="submit">اعرض الخيارات</button></form><div id="assistantResults" class="assistant-results"></div></div></div>
 
   <div id="formModal" class="modal hidden"><div class="modal-card wide-card"><button class="modal-close" data-close="formModal">×</button><div id="formModalContent"></div></div></div>
-  <script src="config.js?v=20260727-v10-finance-print-actions"></script>
+  <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="permissions-service.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="supabase-api.js?v=20260727-v10-finance-print-actions"></script>
+  <script src="permissions-service.js"></script>
+  <script src="supabase-api.js"></script>
   <script src="financial-engine.js?v=20260727-v10-finance-print-actions"></script>
   <script src="document-engine.js?v=20260727-v10-finance-print-actions"></script>
-  <script src="app.js?v=20260727-v10-finance-print-actions"></script>
+  <script src="app.js"></script>
 </body>
 </html>
