@@ -109,7 +109,7 @@
 </section>
 </section>
 <section class="sup-page" id="supTickets">
-<section class="card"><h2 id="ticketFormTitle">رفع / تعديل تذكرة</h2><input id="ticketId" type="hidden"/><label>المشروع</label><select id="ticketProject"></select><label>العنوان</label><select id="ticketTitle"><option value="">اختر نوع المشكلة</option><option value="صيانة">صيانة</option><option value="سباكة">سباكة</option><option value="تعطير">تعطير</option><option value="تشجير">تشجير</option><option value="كهرباء">كهرباء</option><option value="نظافة">نظافة</option><option value="دفاع مدني">دفاع مدني</option><option value="مصاعد">مصاعد</option></select><label>الأولوية</label><select id="ticketPriority"><option value="normal">عادي</option><option value="high">مهم</option><option value="urgent">عاجل</option><option value="low">منخفض</option></select><label>الحالة</label><select id="ticketStatus" onchange="toggleTicketClosureBox()"><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select><label>الوصف</label><textarea id="ticketDescription" placeholder="اكتب وصف التذكرة"></textarea>
+<section class="card"><h2 id="ticketFormTitle">رفع / تعديل تذكرة</h2><input id="ticketId" type="hidden"/><label>المشروع</label><select id="ticketProject"></select><label>العنوان</label><select id="ticketTitle"><option value="">اختر نوع المشكلة</option><option value="صيانة">صيانة</option><option value="سباكة">سباكة</option><option value="تعطير">تعطير</option><option value="تشجير">تشجير</option><option value="كهرباء">كهرباء</option><option value="نظافة">نظافة</option><option value="دفاع مدني">دفاع مدني</option><option value="مصاعد">مصاعد</option><option value="مشكلة عامل">مشكلة عامل</option><option value="مشكلة مشرف">مشكلة مشرف</option><option value="عام">عام</option></select><label>الأولوية</label><select id="ticketPriority"><option value="normal">عادي</option><option value="high">مهم</option><option value="urgent">عاجل</option><option value="low">منخفض</option></select><label>الحالة</label><select id="ticketStatus" onchange="toggleTicketClosureBox()"><option value="open">مفتوحة</option><option value="processing">تحت المعالجة</option><option value="closed">مغلقة</option></select><label>الوصف</label><textarea id="ticketDescription" placeholder="اكتب وصف التذكرة"></textarea>
 <div class="closure-box hidden" id="ticketClosureBox">
 <label>أغلق بواسطة / الفني أو المشرف</label>
 <input id="ticketClosedByName" list="ticketTechniciansList" placeholder="اختر أو اكتب اسم من أغلق التذكرة"/>
@@ -197,7 +197,7 @@ window.__tasneefOrdersUnifiedOnlyV10713=true;
 window.__tasneefOrdersUnifiedOnlyV10800=true;
 window.__TASNEEF_BUILD__="V10849-UNIFIED4-VISIBLE-PROJECT-FIELD";
 </script>
-<script defer="" src="app.js?v=10852-supervisor-ticket-rls"></script>
+<script defer="" src="app.js?v=10856-general-issues-creator"></script>
 <script defer src="tasneef_permissions_v10817.js?v=10841-multiple-open-projects"></script>
 
 

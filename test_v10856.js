@@ -1,0 +1,20 @@
+const fs=require('fs');
+const assert=require('assert');
+const app=fs.readFileSync('app.js','utf8');
+const admin=fs.readFileSync('admin.html','utf8');
+const supervisor=fs.readFileSync('supervisor.html','utf8');
+const tech=fs.readFileSync('technician.html','utf8');
+const sql=fs.readFileSync('supabase_general_issues_creator_v10856.sql','utf8');
+
+for(const x of ['مشكلة عامل','مشكلة مشرف','عام']) assert(app.includes(x), 'missing type '+x);
+for(const html of [admin,supervisor,tech]) for(const x of ['مشكلة عامل','مشكلة مشرف','عام']) assert(html.includes(x), 'html missing '+x);
+assert(app.includes('<th class="creator">المنشئ</th>'));
+assert(app.includes('creatorName(t)'));
+assert(app.includes("if(!id) row.created_by=u.id;"));
+assert(app.includes("isGeneralIssuesProjectV10856"));
+assert(app.includes("window.__tasneefGeneralIssuesProjectIdV10856"));
+assert(sql.includes("'مشاكل عامة'"));
+assert(sql.includes('created_by_name'));
+assert(sql.includes('trg_ticket_creator_stamp_v10856'));
+assert(sql.includes('tasneef_supervisor_has_project_v10852'));
+console.log('V10856 static tests passed');

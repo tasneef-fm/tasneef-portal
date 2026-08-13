@@ -524,7 +524,7 @@ function clearTicketForm(){ ['ticketId','ticketTitle','ticketDescription'].forEa
 async function saveTicket(){ const u=session(); const row={project_id:Number($('ticketProject').value)||null, supervisor_id:Number($('ticketSupervisor')?.value || (u.role==='supervisor'?u.id:''))||null, title:$('ticketTitle').value.trim(), description:$('ticketDescription').value, priority:$('ticketPriority').value, status:$('ticketStatus')?.value || 'open'}; if(!row.title) return msg('عنوان التكت مطلوب','err'); if(row.status==='closed') row.closed_at=new Date().toISOString(); const id=$('ticketId')?.value; const res=id?await sb.from('tickets').update(row).eq('id',id):await sb.from('tickets').insert(row); if(res.error) return msg(res.error.message,'err'); playAppSound('ticket'); msg('تم حفظ التكت'); clearTicketForm(); await refreshAll(); }
 function renderTickets(){ const b=$('ticketsBody'); if(!b) return; const st=$('ticketFilterStatus')?.value, q=($('ticketSearch')?.value||'').trim(); let rows=data.tickets; if(st) rows=rows.filter(t=>t.status===st); if(q) rows=rows.filter(t=>[t.title,t.description,projectName(t.project_id),supervisorName(t.supervisor_id)].join(' ').includes(q)); b.innerHTML=rows.map(t=>`<tr><td>${esc(projectName(t.project_id))}</td><td>${esc(supervisorName(t.supervisor_id))}</td><td>${esc(t.title)}</td><td><span class="badge ${t.priority==='high'?'red':'amber'}">${t.priority||'normal'}</span></td><td><span class="badge ${t.status==='closed'?'green':'red'}">${t.status==='closed'?'مغلق':'مفتوح'}</span></td><td class="row-actions"><button onclick="editTicket(${t.id})">تعديل</button><button class="danger" onclick="deleteRow('tickets',${t.id})">حذف</button></td></tr>`).join('')||'<tr><td colspan="6">لا توجد بيانات</td></tr>'; }
 function editTicket(id){ const t=data.tickets.find(x=>x.id===id); if(!t)return; $('ticketId').value=t.id; $('ticketProject').value=t.project_id||''; if($('ticketSupervisor')) $('ticketSupervisor').value=t.supervisor_id||''; $('ticketTitle').value=t.title||''; $('ticketPriority').value=t.priority||'normal'; if($('ticketStatus')) $('ticketStatus').value=t.status||'open'; $('ticketDescription').value=t.description||''; $('ticketFormTitle')&&($('ticketFormTitle').textContent='تعديل تكت'); }
-function renderAlerts(){ const div=$('alertsList'); if(!div) return; const alerts=[]; data.projects.filter(p=>!p.supervisor_id).forEach(p=>alerts.push(['warn',`مشروع بدون مشرف: ${p.name}`])); data.workers.filter(w=>!workerSupId(w)).forEach(w=>alerts.push(['warn',`عامل بدون مشرف: ${w.name}`])); data.logs.filter(l=>!l.check_out).forEach(l=>alerts.push(['danger',`تسجيل دخول بدون خروج: ${projectName(l.project_id)} - ${supervisorName(l.supervisor_id)}`])); data.tickets.filter(t=>t.status==='open').forEach(t=>alerts.push(['warn',`تكت مفتوح: ${t.title} - ${projectName(t.project_id)}`])); div.innerHTML=alerts.map(a=>`<div class="alert-item ${a[0]}">${esc(a[1])}</div>`).join('')||'<div class="alert-item">لا توجد تنبيهات حالياً</div>'; }
+function renderAlerts(){ const div=$('alertsList'); if(!div) return; const alerts=[]; data.projects.filter(p=>!p.supervisor_id && String(p.name||'').trim()!=='مشاكل عامة').forEach(p=>alerts.push(['warn',`مشروع بدون مشرف: ${p.name}`])); data.workers.filter(w=>!workerSupId(w)).forEach(w=>alerts.push(['warn',`عامل بدون مشرف: ${w.name}`])); data.logs.filter(l=>!l.check_out).forEach(l=>alerts.push(['danger',`تسجيل دخول بدون خروج: ${projectName(l.project_id)} - ${supervisorName(l.supervisor_id)}`])); data.tickets.filter(t=>t.status==='open').forEach(t=>alerts.push(['warn',`تكت مفتوح: ${t.title} - ${projectName(t.project_id)}`])); div.innerHTML=alerts.map(a=>`<div class="alert-item ${a[0]}">${esc(a[1])}</div>`).join('')||'<div class="alert-item">لا توجد تنبيهات حالياً</div>'; }
 function toCSV(rows){ if(!rows.length) return ''; const keys=Object.keys(rows[0]); return [keys.join(','),...rows.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\n'); }
 function download(name,text){ const blob=new Blob([text],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 async function exportTable(table){ const {data:rows,error}=await sb.from(table).select('*'); if(error) return msg(error.message,'err'); download(`${table}.csv`, toCSV(rows||[])); }
@@ -846,8 +846,9 @@ async function saveSupervisorAttendance(){ const u=session(); const date=$('atte
     const u=session(); if(!u) return msg('سجّل الدخول أولاً','err');
     const title=($('ticketTitle')?.value||'').trim(); if(!title) return msg('عنوان التكت مطلوب','err');
     const status=$('ticketStatus')?.value || 'open';
-    const row={project_id:Number($('ticketProject')?.value)||null, supervisor_id:Number($('ticketSupervisor')?.value || (u.role==='supervisor'?u.id:''))||null, created_by:u.id, title, description:$('ticketDescription')?.value || '', priority:$('ticketPriority')?.value || 'normal', status, updated_at:new Date().toISOString()};
     const id=$('ticketId')?.value;
+    const row={project_id:Number($('ticketProject')?.value)||null, supervisor_id:Number($('ticketSupervisor')?.value || (u.role==='supervisor'?u.id:''))||null, title, description:$('ticketDescription')?.value || '', priority:$('ticketPriority')?.value || 'normal', status, updated_at:new Date().toISOString()};
+    if(!id) row.created_by=u.id;
     if(status==='closed'){
       const existing=id?(data.tickets||[]).find(x=>String(x.id)===String(id)):null;
       const note=(($('ticketClosureNote')?.value)||'').trim() || askClosureNote(); if(!note) return msg('لا يمكن إغلاق التكت بدون ذكر كيف تم الإغلاق','err');
@@ -13606,7 +13607,7 @@ function financePrintReport(kind){
 
   function smartAlertsData(){
     const out=[];
-    A(window.data?.projects).filter(p=>!p.supervisor_id).forEach(p=>out.push({id:`project-nosup-${p.id}`, level:'warn', group:'المشاريع', title:'مشروع بدون مشرف', text:p.name || '-', action:`openProjectManager&&openProjectManager(${Number(p.id)||0})`}));
+    A(window.data?.projects).filter(p=>!p.supervisor_id && S(p.name)!=='مشاكل عامة').forEach(p=>out.push({id:`project-nosup-${p.id}`, level:'warn', group:'المشاريع', title:'مشروع بدون مشرف', text:p.name || '-', action:`openProjectManager&&openProjectManager(${Number(p.id)||0})`}));
     A(window.data?.workers).filter(w=>{ try{return !workerSupId(w);}catch(_){return !w.supervisor_id && !w.app_supervisor_id;} }).forEach(w=>out.push({id:`worker-nosup-${w.id}`, level:'warn', group:'العمال', title:'عامل بدون مشرف', text:w.name || '-', action:`editWorker&&editWorker(${Number(w.id)||0})`}));
     A(window.data?.logs).filter(l=>!l.check_out).forEach(l=>out.push({id:`log-open-${l.id}`, level:'danger', group:'الحضور', title:'دخول بدون خروج', text:`${projectText(l.project_id)} - ${supervisorText(l.supervisor_id)}`, action:''}));
     A(window.data?.tickets).filter(t=>S(t.status||'open')==='open').forEach(t=>out.push({id:`ticket-open-${t.id}`, level:S(t.priority)==='urgent'?'danger':'warn', group:'التكتات', title:'تكت مفتوح', text:`${t.title || '-'} - ${projectText(t.project_id)} — رفع بواسطة: ${raisedBy(t)}`, action:`viewTicketSmartV147&&viewTicketSmartV147(${Number(t.id)||0})`}));
@@ -15261,7 +15262,7 @@ function financePrintReport(kind){
   function clientReportsRows(){ return [['التاريخ','المشروع','الشهر','المشرف','عنوان التقرير','الحالة','الخدمات','التقييم'], ...filteredClientReports().map(r=>[r.report_date||S(r.created_at).slice(0,10),r.project_name||pName(r.project_id),S(r.report_date||r.created_at).slice(0,7),sName(r.supervisor_id),r.title||r.report_no||'',r.status||'',(dset().clientReportServices||[]).filter(s=>String(s.report_id)===String(r.id)).map(s=>s.service_name||s.service_type).filter(Boolean).join('، '), ''])]; }
   function ratingsRows(){ return [['التاريخ','المشروع','الخدمة','التقييم','ملاحظة العميل','تحتاج متابعة','الحالة'], ...filteredRatings().map(r=>[fmtDate(r.created_at||r.rating_date),r.project_name||pName(r.project_id),r.service_name||r.service_type||'',r.rating||r.score||'',r.comment||r.notes||'',r.need_followup||r.needs_follow_up?'نعم':'لا',r.status||''])]; }
   function alertsRows(){
-    const projectsNoSup=(dset().projects||[]).filter(p=>!p.supervisor_id).map(p=>['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف']);
+    const projectsNoSup=(dset().projects||[]).filter(p=>!p.supervisor_id && String(p.name||'').trim()!=='مشاكل عامة').map(p=>['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف']);
     const workersNoSup=(dset().workers||[]).filter(w=>!wSupId(w)).map(w=>['عامل بدون مشرف',w.name,'عادي','يحتاج ربط مشرف']);
     const openLogs=(dset().logs||[]).filter(l=>l.check_in&&!l.check_out).map(l=>['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)]);
     const openTickets=filteredTickets().filter(t=>!['closed','done','مغلق'].includes(String(t.status||'').toLowerCase())).map(t=>['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||'']);
@@ -16320,7 +16321,7 @@ function financePrintReport(kind){
   function expensesRows(){ return [['التاريخ','المشروع','التصنيف','المورد','المبلغ','طريقة الدفع','مركز التكلفة','ملاحظات'], ...filteredExpenses().map(e=>[e.expense_date||String(e.created_at||'').slice(0,10),e.project_name||pName(e.project_id),e.category||e.expense_type||'',e.supplier||'',N(e.total||e.amount),e.payment_method||'',e.cost_center||'',e.notes||''])]; }
   function clientReportsRows(){ const services=A(D().clientReportServices); return [['التاريخ','رقم التقرير','المشروع','الشهر','المشرف','العنوان','الحالة','الخدمات','النص/الملخص','ملاحظات'], ...filteredClientReports().map(r=>[r.report_date||String(r.created_at||'').slice(0,10),r.report_no||r.id,r.project_name||pName(r.project_id),String(r.report_date||r.created_at||'').slice(0,7),sName(r.supervisor_id),r.title||'',r.status||'',services.filter(s=>S(s.report_id)===S(r.id)).map(s=>s.service_name||s.service_type).filter(Boolean).join('، '),r.summary||r.description||r.report_text||'',r.notes||''])]; }
   function ratingsRows(){ return [['التاريخ','المشروع','الخدمة','التقرير المرتبط','التقييم','ملاحظة العميل','تحتاج متابعة','الحالة'], ...filteredRatings().map(r=>[fmtDate(r.rating_date||r.created_at),r.project_name||pName(r.project_id),r.service_name||r.service_type||'',r.report_id||'',r.rating||r.score||'',r.comment||r.notes||'',r.need_followup||r.needs_follow_up?'نعم':'لا',r.status||''])]; }
-  function alertsRows(){ const rows=[['نوع التنبيه','العنصر','الأهمية','الملاحظة']]; A(D().projects).filter(p=>!p.supervisor_id).forEach(p=>rows.push(['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف'])); A(D().workers).filter(w=>!w.supervisor_id&&!w.assigned_supervisor_id).forEach(w=>rows.push(['عامل بدون مشرف',w.name||w.full_name,'عادي','يحتاج ربط مشرف'])); A(D().logs).filter(l=>l.check_in&&!l.check_out).forEach(l=>rows.push(['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)])); filteredTickets().filter(t=>!['closed','done','مغلق'].includes(S(t.status).toLowerCase())).forEach(t=>rows.push(['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||''])); return rows; }
+  function alertsRows(){ const rows=[['نوع التنبيه','العنصر','الأهمية','الملاحظة']]; A(D().projects).filter(p=>!p.supervisor_id && S(p.name)!=='مشاكل عامة').forEach(p=>rows.push(['مشروع بدون مشرف',p.name,'حرج','يحتاج ربط مشرف'])); A(D().workers).filter(w=>!w.supervisor_id&&!w.assigned_supervisor_id).forEach(w=>rows.push(['عامل بدون مشرف',w.name||w.full_name,'عادي','يحتاج ربط مشرف'])); A(D().logs).filter(l=>l.check_in&&!l.check_out).forEach(l=>rows.push(['دخول بدون خروج',pName(l.project_id),'حرج',sName(l.supervisor_id)])); filteredTickets().filter(t=>!['closed','done','مغلق'].includes(S(t.status).toLowerCase())).forEach(t=>rows.push(['تكت مفتوح',pName(t.project_id),'عادي',t.title||t.subject||''])); return rows; }
   function usersRows(){ return [['الاسم','اسم المستخدم','الدور','الحالة','المشرف المرتبط','ملاحظات'], ...A(D().users).map(u=>[u.full_name||u.name,u.username||'',u.role||'',u.status||'',sName(u.supervisor_id||u.linked_supervisor_id),u.notes||''])]; }
   function suppliersRows(){ return [['المورد','الجوال','العنوان','الحالة','ملاحظات'], ...A(D().suppliers||D().inventorySuppliers).map(s=>[s.name||s.supplier_name,s.phone||s.mobile||'',s.address||'',s.status||'',s.notes||''])]; }
   function exportSheetsV230(){ const f=currentExportFilters(); const sub=`شركة تصنيف لإدارة المرافق - تاريخ التصدير ${fmtDate(new Date())} - الشهر: ${f.month||'كل الأشهر'} - المشرف: ${f.supervisor?sName(f.supervisor):'كل المشرفين'} - المشروع: ${f.project?pName(f.project):'كل المشاريع'}`; return [
@@ -22062,7 +22063,7 @@ function financePrintReport(kind){
 
 /* ===== V10222: unified ticket title dropdown + newest/oldest filters ===== */
 (function(){
-  const OPTIONS = ['صيانة','سباكة','تعطير','تشجير','كهرباء','صواريخ','دفاع مدني','مصاعد','مشكلة نظافة','صهاريج'];
+  const OPTIONS = ['صيانة','سباكة','تعطير','تشجير','كهرباء','صواريخ','دفاع مدني','مصاعد','مشكلة نظافة','صهاريج','مشكلة عامل','مشكلة مشرف','عام'];
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function makeSelect(id, current){
     const sel = document.createElement('select');
@@ -24052,6 +24053,12 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function uid(){ return S(currentUser().id || currentUser().user_id || currentUser().uid); }
   function pageIsSupervisor(){ return !!document.getElementById('supTitle') || location.pathname.toLowerCase().includes('supervisor'); }
   function projectSupId(p){ return S(p?.supervisor_id || p?.app_supervisor_id || p?.manager_id || p?.supervisor_user_id); }
+  function isGeneralIssuesProjectV10856(p){ return S(p?.name || p?.project_name).replace(/\s+/g,' ')==='مشاكل عامة'; }
+  function generalIssuesProjectV10856(){
+    const d=window.data || (typeof data!=='undefined'?data:{}) || {};
+    return (Array.isArray(d.projects)?d.projects:[]).find(isGeneralIssuesProjectV10856) || null;
+  }
+  function generalIssuesProjectIdV10856(){ return S(generalIssuesProjectV10856()?.id); }
   function workerSupIdSafe(w){
     try{ if(typeof workerSupId==='function') return S(workerSupId(w)); }catch(_){ }
     return S(w?.app_supervisor_id || w?.supervisor_id || w?.manager_id);
@@ -24073,10 +24080,13 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     if(!d) return;
     const sid=uid();
     const pset=assignedProjectSet();
-    // V10848: أُوقف مصدر الربط القديم نهائيًا. لا يسمح بإضافة مشروع بسبب projects.supervisor_id أو أي ربط تاريخي.
-    if(Array.isArray(d.projects)) d.projects = d.projects.filter(p=>pset.has(S(p.id)));
-    const finalSet=new Set((d.projects||[]).map(p=>S(p.id)));
-    // جميع بيانات نسخة المشرف محصورة في مشاريع النظام الموحد 4 فقط، بلا أي fallback باسم المشرف أو حقله القديم.
+    // V10856: مشروع "مشاكل عامة" مشروع تكتات مشترك لكل المشرفين، ولا يدخل في الحضور/الأوردرات/التقارير التشغيلية.
+    if(Array.isArray(d.projects)) d.projects = d.projects.filter(p=>pset.has(S(p.id)) || isGeneralIssuesProjectV10856(p));
+    const finalSet=new Set((d.projects||[]).filter(p=>!isGeneralIssuesProjectV10856(p)).map(p=>S(p.id)));
+    const ticketSet=new Set(finalSet);
+    const generalId=generalIssuesProjectIdV10856();
+    if(generalId) ticketSet.add(generalId);
+    // البيانات التشغيلية تبقى محصورة في مشاريع النظام الموحد 4؛ التكتات فقط تسمح بالمشروع العام.
     if(Array.isArray(d.workers)) d.workers = d.workers.filter(w=>{
       const ids=[w?.project_id,w?.projectId,w?.current_project_id].map(S).filter(Boolean);
       if(Array.isArray(w?.projects)) w.projects.forEach(p=>ids.push(S(p?.id||p?.project_id)));
@@ -24084,11 +24094,12 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     });
     if(Array.isArray(d.logs)) d.logs = filterByProject(d.logs,finalSet);
     if(Array.isArray(d.attendance)) d.attendance = filterByProject(d.attendance,finalSet);
-    if(Array.isArray(d.tickets)) d.tickets = filterByProject(d.tickets,finalSet);
+    if(Array.isArray(d.tickets)) d.tickets = filterByProject(d.tickets,ticketSet);
     if(Array.isArray(d.inventoryRequests)) d.inventoryRequests = filterByProject(d.inventoryRequests,finalSet);
     if(Array.isArray(d.contractServices)) d.contractServices = filterByProject(d.contractServices,finalSet);
     if(Array.isArray(d.clientReports)) d.clientReports = filterByProject(d.clientReports,finalSet);
     window.__tasneefSupervisorProjectIdsV371 = finalSet;
+    window.__tasneefGeneralIssuesProjectIdV10856 = generalId || '';
     refillSupervisorProjectSelects(finalSet);
   }
   function getProjectsInScope(){
@@ -24099,7 +24110,11 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function setSelectProjects(id, allLabel){
     const el=$id(id); if(!el) return;
     const old=el.value;
-    const rows=getProjectsInScope();
+    let rows=getProjectsInScope();
+    if(id==='ticketProject'){
+      const general=generalIssuesProjectV10856();
+      if(general && !rows.some(p=>S(p.id)===S(general.id))) rows=[general,...rows];
+    }
     el.innerHTML=(allLabel!==null?`<option value="">${allLabel||'اختر المشروع'}</option>`:'') + rows.map(p=>`<option value="${String(p.id).replace(/"/g,'&quot;')}">${String(p.name||'-').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</option>`).join('');
     if([...el.options].some(o=>o.value===old)) el.value=old;
   }
@@ -24122,8 +24137,11 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   }
   function projectAllowed(pid){
     if(!isSupervisor()) return true;
+    const wanted=S(pid);
+    const generalId=generalIssuesProjectIdV10856() || S(window.__tasneefGeneralIssuesProjectIdV10856);
+    if(generalId && wanted===generalId) return true;
     const set=window.__tasneefSupervisorProjectIdsV371 || assignedProjectSet();
-    return set.has(S(pid));
+    return set.has(wanted);
   }
   function say(t,type){ try{ if(typeof msg==='function') return msg(t,type||'err'); }catch(_){ } alert(t); }
 
@@ -27641,6 +27659,20 @@ ${finalUrl}
     try{const n=window.supervisorName?.(id);if(S(n)&&S(n)!=='-')return S(n);}catch(_){}
     const u=A(D().users||D().app_users).find(x=>S(x.id)===S(id));return S(u?.full_name||u?.name||u?.username||'-');
   }
+  function creatorName(t){
+    const direct=S(t?.created_by_name||t?.created_by_full_name||t?.raised_by_name||t?.created_user_name||t?.creator_name||t?.created_by_username||t?.reported_by_name);
+    if(direct) return direct;
+    const id=S(t?.created_by||t?.raised_by||t?.user_id||t?.created_user_id||t?.created_by_id||t?.reported_by);
+    const pools=[...A(D().users),...A(D().app_users),...A(D().supervisors),...A(D().technicians)];
+    const u=pools.find(x=>S(x?.id||x?.user_id)===id);
+    if(u) return S(u?.full_name||u?.name||u?.display_name||u?.username||u?.email||id);
+    try{
+      const me=typeof window.session==='function'?(window.session()||{}):(window.currentUser||{});
+      if(id&&S(me?.id||me?.user_id)===id) return S(me?.full_name||me?.name||me?.username||id);
+    }catch(_){}
+    if(id && !/^\d+$/.test(id)) return id;
+    return id ? ('مستخدم #'+id) : '-';
+  }
   function ticketNo(t){return S(t?.ticket_number||t?.ticket_no||t?.no)||('T-'+S(t?.id||0).padStart(4,'0'));}
   function isReceived(t){return !!S(t?.claimed_by||t?.claimed_by_name||t?.claimed_at||t?.received_by||t?.received_by_name||t?.received_at||t?.assigned_to||t?.assignee_id||t?.assignee_name||t?.technician_id||t?.technician_name);}
   function statusText(v,t){if(v&&typeof v==='object'){t=v;v=t.status;}v=S(v).toLowerCase();return v==='closed'?'مغلقة':v==='processing'||v==='in_progress'?'تحت المعالجة':(t&&isReceived(t)?'مستلمة':'مفتوحة');}
@@ -27675,7 +27707,7 @@ ${finalUrl}
       if(f.receive==='received'&&!isReceived(t))return false;
       if(f.receive==='unreceived'&&isReceived(t))return false;
       if(f.search&&![
-        ticketNo(t),t?.title,t?.description,projectName(t?.project_id,t),supervisorName(t?.supervisor_id,t),
+        ticketNo(t),t?.title,t?.description,projectName(t?.project_id,t),supervisorName(t?.supervisor_id,t),creatorName(t),
         t?.claimed_by_name,t?.closed_by_name,t?.closure_note,priorityText(t?.priority),statusText(t)
       ].join(' ').toLowerCase().includes(f.search))return false;
       return true;
@@ -27804,6 +27836,7 @@ ${finalUrl}
         <td class="date">${E(arDate(t?.created_at||t?.opened_at||t?.updated_at))}</td>
         <td class="project">${E(projectName(t?.project_id||t?.projectId,t))}</td>
         <td class="supervisor">${E(supervisorName(t?.supervisor_id||t?.supervisorId,t))}</td>
+        <td class="creator">${E(creatorName(t))}</td>
         <td class="problem">${E(t?.title||t?.problem_type||'-')}</td>
         <td class="priority">${E(priorityText(t?.priority))}</td>
         <td><span class="pill status-${statusClass(t)}">${E(statusLabel(t))}</span></td>
@@ -27842,7 +27875,7 @@ ${finalUrl}
       tr.sla-late td{border-right:5px solid #cf3636}
       tr.sla-near td{border-right:5px solid #d5a014}
       tr.sla-standard td{border-right:5px solid #15965a}
-      .num{width:3%}.ticket-no{width:7%;font-weight:900}.date{width:9%}.project{width:8%}.supervisor{width:7%}.problem{width:9%}.priority{width:5%}.duration{width:13%;font-weight:800}.desc{width:25%;text-align:right}
+      .num{width:3%}.ticket-no{width:7%;font-weight:900}.date{width:9%}.project{width:8%}.supervisor{width:7%}.creator{width:8%;font-weight:800}.problem{width:9%}.priority{width:5%}.duration{width:13%;font-weight:800}.desc{width:18%;text-align:right}
       .duration small{display:block;color:#66766f;font-size:7.8px;margin-top:2px;font-weight:700}
       .pill{display:inline-block;border-radius:999px;padding:3px 8px;font-weight:900;white-space:nowrap}
       .status-closed{background:#e2f5e9;color:#0b8041}.status-processing{background:#fff1cc;color:#875900}.status-open{background:#ffe5e5;color:#a21f1f}
@@ -27862,7 +27895,7 @@ ${finalUrl}
         <div class="kpi"><b>${stats.standard}</b><span>قياسي</span></div>
         <div class="kpi"><b>${E(reportType())}</b><span>نوع التقرير</span></div>
       </div>
-      <table><thead><tr><th class="num">م</th><th class="ticket-no">رقم التكت</th><th class="date">التاريخ</th><th class="project">المشروع</th><th class="supervisor">المشرف</th><th class="problem">نوع المشكلة</th><th class="priority">الأولوية</th><th>الحالة</th><th class="duration">مدة الإغلاق / الفتح</th><th class="desc">الوصف / الإجراء</th></tr></thead><tbody>${body}</tbody></table>
+      <table><thead><tr><th class="num">م</th><th class="ticket-no">رقم التكت</th><th class="date">التاريخ</th><th class="project">المشروع</th><th class="supervisor">المشرف</th><th class="creator">المنشئ</th><th class="problem">نوع المشكلة</th><th class="priority">الأولوية</th><th>الحالة</th><th class="duration">مدة الإغلاق / الفتح</th><th class="desc">الوصف / الإجراء</th></tr></thead><tbody>${body}</tbody></table>
       <div class="footer"><span class="copy">${E(reportType())}</span><span class="disc">تم إنشاء هذا التقرير من نظام شركة تصنيف لإدارة المرافق ويعتبر معتمدًا ما لم يبرر العميل خلاف ذلك.</span></div>
     </div><script>window.onload=function(){setTimeout(function(){window.print()},450)}<\/script></body></html>`;
     const w=window.open('','_blank');
@@ -27894,6 +27927,9 @@ ${finalUrl}
   console.info(BUILD,'loaded');
 })();
 /* ===== END V10843 ===== */
+
+/* ===== V10856: General Issues project + creator-safe ticket reports ===== */
+window.TASNEEF_TICKET_GENERAL_CREATOR_BUILD='V10856';
 
 /* ===== V10852: Supervisor ticket save through secure RPC (RLS-safe) ===== */
 (function(){
