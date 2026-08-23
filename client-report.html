@@ -517,14 +517,42 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
   window.__tasneefClientTicketV10859=true;
   const S=v=>String(v??'').trim();
   const $=id=>document.getElementById(id);
-  const token=()=>S((typeof decodeToken==='function'?decodeToken():{}).raw_token||'');
+  const rawUrlToken=()=>S((typeof decodeToken==='function'?decodeToken():{}).raw_token||'');
   const projectId=()=>S(window.portal?.projectId||window.portal?.project_id||'');
   const requestKey=()=>{try{return 'client:'+projectId()+':'+crypto.randomUUID();}catch(_){return 'client:'+projectId()+':'+Date.now()+':'+Math.random().toString(36).slice(2)}};
   const db=()=>window.sb || (typeof sb!=='undefined'?sb:null);
+  let cachedAccessTokenV10861='';
+
+  async function clientAccessTokenV10861(){
+    if(cachedAccessTokenV10861) return cachedAccessTokenV10861;
+    const raw=rawUrlToken();
+    const pid=projectId();
+    const localCandidates=[
+      window.portal?.focusReport?.public_token,
+      ...(Array.isArray(window.portal?.reports)?window.portal.reports.map(r=>r?.public_token):[])
+    ].map(S).filter(Boolean);
+    if(raw && /^r_[A-Za-z0-9_\-]+$/i.test(raw)){cachedAccessTokenV10861=raw;return raw;}
+    if(localCandidates.length){cachedAccessTokenV10861=localCandidates[0];return cachedAccessTokenV10861;}
+    const client=db();
+    if(pid&&client?.from){
+      try{
+        const q=await client.from('client_reports').select('public_token').eq('project_id',pid).eq('status','published').not('public_token','is',null).order('id',{ascending:false}).limit(1).maybeSingle();
+        const t=S(q?.data?.public_token);
+        if(!q?.error&&t){cachedAccessTokenV10861=t;return t;}
+      }catch(_){ }
+    }
+    // Keep the original token for legacy encoded links. V10861 validates legacy portal mode server-side.
+    return raw;
+  }
+  window.clientAccessTokenV10861=clientAccessTokenV10861;
 
   async function refreshClientTicketsV10859(){
     const pid=projectId(), client=db(); if(!pid||!client?.rpc) return window.portal?.tickets||[];
-    const r=await client.rpc('tasneef_client_tickets_v10859',{p_token:token(),p_project_id:pid});
+    const accessToken=await clientAccessTokenV10861();
+    let r=await client.rpc('tasneef_client_tickets_v10861',{p_token:accessToken,p_project_id:pid});
+    if(r.error && /tasneef_client_tickets_v10861|Could not find the function|PGRST202|schema cache/i.test(S(r.error?.message||r.error))){
+      r=await client.rpc('tasneef_client_tickets_v10859',{p_token:accessToken,p_project_id:pid});
+    }
     if(r.error) throw r.error;
     const rows=Array.isArray(r.data)?r.data:[];
     window.portal=window.portal||{};
@@ -562,8 +590,9 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       if(!client?.rpc) throw new Error('تعذر تهيئة اتصال Supabase في بوابة العميل.');
       if(btn){btn.disabled=true;btn.textContent='جاري حفظ التذكرة...';}
 
-      let r=await client.rpc('tasneef_client_create_ticket_v10859',{
-        p_token:token(),
+      const accessToken=await clientAccessTokenV10861();
+      let r=await client.rpc('tasneef_client_create_ticket_v10861',{
+        p_token:accessToken,
         p_project_id:pid,
         p_title:title,
         p_description:desc,
@@ -575,14 +604,19 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       });
       if(r.error){
         const m=S(r.error?.message||r.error);
-        // If V10859 SQL has not been deployed yet, use the previous server-side endpoint.
-        if(/tasneef_client_create_ticket_v10859|Could not find the function|PGRST202|schema cache/i.test(m)){
-          const fallback=await client.rpc('tasneef_client_create_ticket_v10857',{
-            p_token:token(),p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''
+        // If V10861 SQL has not been deployed yet, try V10859 then the older endpoint.
+        if(/tasneef_client_create_ticket_v10861|Could not find the function|PGRST202|schema cache/i.test(m)){
+          let fallback=await client.rpc('tasneef_client_create_ticket_v10859',{
+            p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:'',p_request_key:requestKey()
           });
-          if(fallback.error) throw new Error('SQL V10859 غير مثبت على Supabase: '+S(fallback.error?.message||fallback.error));
+          if(fallback.error && /tasneef_client_create_ticket_v10859|Could not find the function|PGRST202|schema cache/i.test(S(fallback.error?.message||fallback.error))){
+            fallback=await client.rpc('tasneef_client_create_ticket_v10857',{
+              p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''
+            });
+          }
+          if(fallback.error) throw new Error('SQL V10861 غير مثبت على Supabase أو رابط العميل غير متوافق: '+S(fallback.error?.message||fallback.error));
           const frow=Array.isArray(fallback.data)?fallback.data[0]:fallback.data;
-          r={data:{ok:true,ticket:frow}};
+          r={data:(frow?.ok!==undefined?frow:{ok:true,ticket:frow})};
         }else throw r.error;
       }
       const payload=(r.data&&typeof r.data==='object')?r.data:{};
@@ -614,7 +648,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       if(btn){btn.disabled=false;btn.textContent=originalText;}
     }
   };
-  console.info('TASNEEF V10860 client ticket connection/save loaded');
+  console.info('TASNEEF V10861 client portal token/save loaded');
 })();
 </script>
 
