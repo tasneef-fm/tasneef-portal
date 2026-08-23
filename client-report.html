@@ -22,6 +22,8 @@
 const SUPABASE_URL = "https://zmjdqiswytxlbfgnfjfv.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ADsAC5MtBCusDgX62c8NaQ_LyyuTPeb";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// TASNEEF V10860: expose the working Supabase client to all client-portal modules.
+window.sb = sb;
 const $=id=>document.getElementById(id);
 const E=s=>String(s??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let portal={projectId:'',projectName:'',from:'',to:'',project:null,smart:null,activeContract:null,annualServices:[],reports:[],services:[],tickets:[],timeLogs:[],ratings:[],rating:0,loadErrors:[]};
@@ -508,7 +510,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
 
 
 <script id="tasneef-client-ticket-v10859">
-/* TASNEEF V10859: authoritative client ticket save/read. */
+/* TASNEEF V10860: authoritative client ticket save/read + Supabase connection bridge. */
 (function(){
   'use strict';
   if(window.__tasneefClientTicketV10859) return;
@@ -518,10 +520,11 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
   const token=()=>S((typeof decodeToken==='function'?decodeToken():{}).raw_token||'');
   const projectId=()=>S(window.portal?.projectId||window.portal?.project_id||'');
   const requestKey=()=>{try{return 'client:'+projectId()+':'+crypto.randomUUID();}catch(_){return 'client:'+projectId()+':'+Date.now()+':'+Math.random().toString(36).slice(2)}};
+  const db=()=>window.sb || (typeof sb!=='undefined'?sb:null);
 
   async function refreshClientTicketsV10859(){
-    const pid=projectId(); if(!pid||!window.sb?.rpc) return window.portal?.tickets||[];
-    const r=await window.sb.rpc('tasneef_client_tickets_v10859',{p_token:token(),p_project_id:pid});
+    const pid=projectId(), client=db(); if(!pid||!client?.rpc) return window.portal?.tickets||[];
+    const r=await client.rpc('tasneef_client_tickets_v10859',{p_token:token(),p_project_id:pid});
     if(r.error) throw r.error;
     const rows=Array.isArray(r.data)?r.data:[];
     window.portal=window.portal||{};
@@ -555,10 +558,11 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
         if(pid){window.portal.projectId=pid;}
       }
       if(!pid) throw new Error('تعذر تحديد المشروع المرتبط ببوابة العميل.');
-      if(!window.sb?.rpc) throw new Error('تعذر الاتصال بقاعدة البيانات.');
+      const client=db();
+      if(!client?.rpc) throw new Error('تعذر تهيئة اتصال Supabase في بوابة العميل.');
       if(btn){btn.disabled=true;btn.textContent='جاري حفظ التذكرة...';}
 
-      const r=await window.sb.rpc('tasneef_client_create_ticket_v10859',{
+      let r=await client.rpc('tasneef_client_create_ticket_v10859',{
         p_token:token(),
         p_project_id:pid,
         p_title:title,
@@ -569,7 +573,18 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
         p_client_contact:'',
         p_request_key:requestKey()
       });
-      if(r.error) throw r.error;
+      if(r.error){
+        const m=S(r.error?.message||r.error);
+        // If V10859 SQL has not been deployed yet, use the previous server-side endpoint.
+        if(/tasneef_client_create_ticket_v10859|Could not find the function|PGRST202|schema cache/i.test(m)){
+          const fallback=await client.rpc('tasneef_client_create_ticket_v10857',{
+            p_token:token(),p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''
+          });
+          if(fallback.error) throw new Error('SQL V10859 غير مثبت على Supabase: '+S(fallback.error?.message||fallback.error));
+          const frow=Array.isArray(fallback.data)?fallback.data[0]:fallback.data;
+          r={data:{ok:true,ticket:frow}};
+        }else throw r.error;
+      }
       const payload=(r.data&&typeof r.data==='object')?r.data:{};
       if(payload.ok===false) throw new Error(payload.error||'تعذر حفظ التذكرة');
       const inserted=payload.ticket||null;
@@ -599,7 +614,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       if(btn){btn.disabled=false;btn.textContent=originalText;}
     }
   };
-  console.info('TASNEEF V10859 client ticket save/read loaded');
+  console.info('TASNEEF V10860 client ticket connection/save loaded');
 })();
 </script>
 
