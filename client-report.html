@@ -438,7 +438,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
     }).join('');
     return `<section class="card"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><h2 style="margin:0">التذاكر الخاصة بالمشروع</h2><button onclick="openClientTicketFormV466()">رفع تذكرة</button></div><p style="color:#60706a;line-height:1.8">متابعة حالة التذاكر ومدة بقائها مفتوحة أو الزمن الذي استغرقه إغلاقها.</p>${rows?`<div class="table-wrap"><table style="min-width:900px"><thead><tr><th>رقم التذكرة</th><th>المشكلة</th><th>الحالة</th><th>وقت الفتح</th><th>وقت الإغلاق</th><th>المدة</th></tr></thead><tbody>${rows}</tbody></table></div>`:'<div class="empty">لا توجد تذاكر ضمن الفترة المحددة.</div>'}</section>`;
   }
-  function ticketFormHtml(){return `<div class="form-grid"><div><label>نوع المشكلة</label><select id="clientTicketTypeV466"><option>صيانة</option><option>نظافة</option><option>مياه</option><option>كهرباء</option><option>مصاعد</option><option>أخرى</option></select></div><div><label>رقم الوحدة / الموقع</label><input id="clientTicketLocationV466" placeholder="مثال: شقة 12 / البيسمنت / المدخل"></div></div><label>عنوان التذكرة</label><input id="clientTicketTitleV466" placeholder="اكتب عنوان مختصر للتذكرة"><label>وصف المشكلة</label><textarea id="clientTicketDescV466" rows="5" placeholder="اكتب تفاصيل المشكلة"></textarea><button onclick="submitClientTicketV466(this)">إرسال التذكرة</button>`;}
+  function ticketFormHtml(){return `<div class="form-grid"><div><label>نوع المشكلة</label><select id="clientTicketTypeV466"><option>صيانة</option><option>نظافة</option><option>مياه</option><option>كهرباء</option><option>مصاعد</option><option>أخرى</option></select></div><div><label>رقم الوحدة / الموقع</label><input id="clientTicketLocationV466" placeholder="مثال: شقة 12 / البيسمنت / المدخل"></div></div><label>عنوان التذكرة</label><select id="clientTicketTitleV466"><option value="">اختر عنوان التذكرة</option><option value="صيانة">صيانة</option><option value="سباكة">سباكة</option><option value="تعطير">تعطير</option><option value="تشجير">تشجير</option><option value="كهرباء">كهرباء</option><option value="نظافة">نظافة</option><option value="دفاع مدني">دفاع مدني</option><option value="مصاعد">مصاعد</option><option value="مشكلة نظافة">مشكلة نظافة</option><option value="صهاريج">صهاريج</option><option value="مشكلة عامل">مشكلة عامل</option><option value="مشكلة مشرف">مشكلة مشرف</option><option value="عام">عام</option></select><label>وصف المشكلة</label><textarea id="clientTicketDescV466" rows="5" placeholder="اكتب تفاصيل المشكلة"></textarea><button onclick="submitClientTicketV466(this)">إرسال التذكرة</button>`;}
   G.openClientTicketFormV466=function(){ if(typeof G.openModal==='function') G.openModal('رفع تذكرة',portal.projectName||'المشروع',ticketFormHtml()); };
   G.submitClientTicketV466=async function(btn){
     try{
@@ -446,7 +446,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       const desc=String($('clientTicketDescV466')?.value||'').trim();
       const type=String($('clientTicketTypeV466')?.value||'أخرى').trim();
       const loc=String($('clientTicketLocationV466')?.value||'').trim();
-      if(!title) throw new Error('اكتب عنوان التذكرة');
+      if(!title) throw new Error('اختر عنوان التذكرة');
       let resolvedProjectId=portal.projectId||portal.project_id||'';
       if(!resolvedProjectId){
         const payload=await resolvePortalPayload();
@@ -458,10 +458,10 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       let inserted=null, err=null;
       if(G.sb){
         try{
-          const r=await G.sb.rpc('tasneef_client_create_ticket_v10857',{p_token:String(decodeToken().raw_token||''),p_project_id:String(resolvedProjectId),p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''});
+          const r=await G.sb.rpc('tasneef_client_create_ticket_v10857',{p_token:String(decodeToken().raw_token||''),p_project_id:String(resolvedProjectId),p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل',p_client_contact:''});
           if(r.error) throw r.error;
           inserted=Array.isArray(r.data)?r.data[0]:r.data;
-        }catch(e){ err=e; try{ const old=await G.sb.rpc('tasneef_client_create_ticket_v10519',{p_project_id:String(resolvedProjectId),p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''}); if(old.error)throw old.error; inserted=Array.isArray(old.data)?old.data[0]:old.data; err=null; }catch(e1){ try{ const d=await G.sb.from('tickets').insert({project_id:Number(resolvedProjectId)||resolvedProjectId,title,description:[desc,loc?('الموقع: '+loc):'',type?('النوع: '+type):''].filter(Boolean).join('\n'),status:'open',created_at:new Date().toISOString(),created_by_name:'عميل المشروع'}).select('*').single(); if(d.error) throw d.error; inserted=d.data; err=null; }catch(e2){ err=e2; } } }
+        }catch(e){ err=e; try{ const old=await G.sb.rpc('tasneef_client_create_ticket_v10519',{p_project_id:String(resolvedProjectId),p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل',p_client_contact:''}); if(old.error)throw old.error; inserted=Array.isArray(old.data)?old.data[0]:old.data; err=null; }catch(e1){ try{ const d=await G.sb.from('tickets').insert({project_id:Number(resolvedProjectId)||resolvedProjectId,title,description:[desc,loc?('الموقع: '+loc):'',type?('النوع: '+type):''].filter(Boolean).join('\n'),status:'open',created_at:new Date().toISOString(),created_by_name:'عميل'}).select('*').single(); if(d.error) throw d.error; inserted=d.data; err=null; }catch(e2){ err=e2; } } }
       }
       if(err) throw err;
       if(inserted) portal.tickets=[inserted,...(portal.tickets||[]).filter(x=>String(x.id)!==String(inserted.id))];
@@ -578,7 +578,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
       const desc=S($('clientTicketDescV466')?.value);
       const type=S($('clientTicketTypeV466')?.value||'أخرى');
       const loc=S($('clientTicketLocationV466')?.value);
-      if(!title) throw new Error('اكتب عنوان التذكرة');
+      if(!title) throw new Error('اختر عنوان التذكرة');
       let pid=projectId();
       if(!pid && typeof resolvePortalPayload==='function'){
         const payload=await resolvePortalPayload();
@@ -598,7 +598,7 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
         p_description:desc,
         p_type:type,
         p_location:loc,
-        p_client_name:'عميل المشروع',
+        p_client_name:'عميل',
         p_client_contact:'',
         p_request_key:requestKey()
       });
@@ -607,11 +607,11 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
         // If V10861 SQL has not been deployed yet, try V10859 then the older endpoint.
         if(/tasneef_client_create_ticket_v10861|Could not find the function|PGRST202|schema cache/i.test(m)){
           let fallback=await client.rpc('tasneef_client_create_ticket_v10859',{
-            p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:'',p_request_key:requestKey()
+            p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل',p_client_contact:'',p_request_key:requestKey()
           });
           if(fallback.error && /tasneef_client_create_ticket_v10859|Could not find the function|PGRST202|schema cache/i.test(S(fallback.error?.message||fallback.error))){
             fallback=await client.rpc('tasneef_client_create_ticket_v10857',{
-              p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل المشروع',p_client_contact:''
+              p_token:accessToken,p_project_id:pid,p_title:title,p_description:desc,p_type:type,p_location:loc,p_client_name:'عميل',p_client_contact:''
             });
           }
           if(fallback.error) throw new Error('SQL V10861 غير مثبت على Supabase أو رابط العميل غير متوافق: '+S(fallback.error?.message||fallback.error));
