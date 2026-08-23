@@ -506,5 +506,102 @@ function openModal(title,sub,body,detailMode=false){$('modalTitle').textContent=
 </script>
 
 
+
+<script id="tasneef-client-ticket-v10859">
+/* TASNEEF V10859: authoritative client ticket save/read. */
+(function(){
+  'use strict';
+  if(window.__tasneefClientTicketV10859) return;
+  window.__tasneefClientTicketV10859=true;
+  const S=v=>String(v??'').trim();
+  const $=id=>document.getElementById(id);
+  const token=()=>S((typeof decodeToken==='function'?decodeToken():{}).raw_token||'');
+  const projectId=()=>S(window.portal?.projectId||window.portal?.project_id||'');
+  const requestKey=()=>{try{return 'client:'+projectId()+':'+crypto.randomUUID();}catch(_){return 'client:'+projectId()+':'+Date.now()+':'+Math.random().toString(36).slice(2)}};
+
+  async function refreshClientTicketsV10859(){
+    const pid=projectId(); if(!pid||!window.sb?.rpc) return window.portal?.tickets||[];
+    const r=await window.sb.rpc('tasneef_client_tickets_v10859',{p_token:token(),p_project_id:pid});
+    if(r.error) throw r.error;
+    const rows=Array.isArray(r.data)?r.data:[];
+    window.portal=window.portal||{};
+    window.portal.tickets=rows;
+    return rows;
+  }
+  window.refreshClientTicketsV10859=refreshClientTicketsV10859;
+
+  const oldLoadData=window.loadData;
+  if(typeof oldLoadData==='function'){
+    window.loadData=async function(){
+      const out=await oldLoadData.apply(this,arguments);
+      try{await refreshClientTicketsV10859();}catch(e){console.warn('V10859 client ticket list',e?.message||e);}
+      return out;
+    };
+    try{loadData=window.loadData;}catch(_){ }
+  }
+
+  window.submitClientTicketV466=async function(btn){
+    const originalText=btn?.textContent||'إرسال التذكرة';
+    try{
+      const title=S($('clientTicketTitleV466')?.value);
+      const desc=S($('clientTicketDescV466')?.value);
+      const type=S($('clientTicketTypeV466')?.value||'أخرى');
+      const loc=S($('clientTicketLocationV466')?.value);
+      if(!title) throw new Error('اكتب عنوان التذكرة');
+      let pid=projectId();
+      if(!pid && typeof resolvePortalPayload==='function'){
+        const payload=await resolvePortalPayload();
+        pid=S(payload?.project_id||payload?.projectId||'');
+        if(pid){window.portal.projectId=pid;}
+      }
+      if(!pid) throw new Error('تعذر تحديد المشروع المرتبط ببوابة العميل.');
+      if(!window.sb?.rpc) throw new Error('تعذر الاتصال بقاعدة البيانات.');
+      if(btn){btn.disabled=true;btn.textContent='جاري حفظ التذكرة...';}
+
+      const r=await window.sb.rpc('tasneef_client_create_ticket_v10859',{
+        p_token:token(),
+        p_project_id:pid,
+        p_title:title,
+        p_description:desc,
+        p_type:type,
+        p_location:loc,
+        p_client_name:'عميل المشروع',
+        p_client_contact:'',
+        p_request_key:requestKey()
+      });
+      if(r.error) throw r.error;
+      const payload=(r.data&&typeof r.data==='object')?r.data:{};
+      if(payload.ok===false) throw new Error(payload.error||'تعذر حفظ التذكرة');
+      const inserted=payload.ticket||null;
+      if(!inserted?.id) throw new Error('لم تؤكد قاعدة البيانات حفظ التذكرة.');
+
+      let rows=[];
+      try{rows=await refreshClientTicketsV10859();}catch(e){
+        window.portal.tickets=[inserted,...(window.portal.tickets||[]).filter(x=>String(x.id)!==String(inserted.id))];
+        rows=window.portal.tickets;
+      }
+      if(!rows.some(x=>String(x.id)===String(inserted.id))){
+        window.portal.tickets=[inserted,...rows];
+      }
+
+      try{
+        const stamp=String(Date.now());
+        ['tasneef_client_ticket_changed_v10519','tasneef_client_ticket_changed_v10520','tasneef_client_ticket_changed_v10857','tasneef_client_ticket_changed_v10859'].forEach(k=>localStorage.setItem(k,stamp));
+      }catch(_){ }
+      if(typeof window.toast==='function') window.toast('تم رفع التذكرة بنجاح — '+S(inserted.ticket_number||('T-'+inserted.id)));
+      if(typeof window.closeModal==='function') window.closeModal();
+      if(typeof window.showMain==='function') window.showMain('tickets');
+    }catch(e){
+      const msg=S(e?.message||e||'تعذر رفع التذكرة');
+      console.error('V10859 client ticket save',e);
+      if(typeof window.toast==='function') window.toast('لم يتم حفظ التذكرة: '+msg,true); else alert('لم يتم حفظ التذكرة: '+msg);
+    }finally{
+      if(btn){btn.disabled=false;btn.textContent=originalText;}
+    }
+  };
+  console.info('TASNEEF V10859 client ticket save/read loaded');
+})();
+</script>
+
 </body>
 </html>
