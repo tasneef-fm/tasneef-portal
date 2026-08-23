@@ -27,7 +27,7 @@
         if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)await r.unregister();}
         if(window.caches&&location.protocol!=='file:'){const keys=await caches.keys();for(const k of keys)await caches.delete(k);}
         out.textContent='تم تحديث الملفات بنجاح دون حذف بياناتك. سيتم فتح تسجيل الدخول.';
-        setTimeout(()=>location.href='index.html?v=10831-attendance-review-filters-pages&nocache='+Date.now(),700);
+        setTimeout(()=>location.href='index.html?v=10858-performance&nocache='+Date.now(),700);
       }catch(e){out.textContent='حدث خطأ: '+(e.message||e);}
     }
   </script>

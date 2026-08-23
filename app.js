@@ -237,16 +237,16 @@ async function logout(){
 }
 async function loadAll(){
   window.tasneefMarkStart?.('core-loadAll');
-  const [users, projects, workers, attendance, logs, tickets] = await Promise.all([
+  const permissionToken = String(localStorage.getItem('tasneef_session_token_v10817')||'').trim();
+  const [users, projects, workers, attendance, logs, tickets, contractServices] = await Promise.all([
     sb.from('app_users').select('*').order('id'),
     sb.from('projects').select('*').eq('is_active', true).order('id'),
     sb.from('workers').select('*').eq('is_active', true).order('id'),
     sb.from('attendance').select('*').gte('attendance_date', new Date(Date.now()-62*86400000).toISOString().slice(0,10)).order('attendance_date',{ascending:false}).limit(5000),
     sb.from('time_logs').select('*').gte('check_in', new Date(Date.now()-62*86400000).toISOString()).order('check_in',{ascending:false}).limit(5000),
-    sb.rpc('tasneef_tickets_all_v10519')
+    sb.rpc('tasneef_tickets_all_v10857',{p_session_token:permissionToken||null}),
+    sb.from('contract_services').select('*').order('id', { ascending: false })
   ]);
-
-  let contractServices = await sb.from('contract_services').select('*').order('id', { ascending: false });
 
   for(const r of [users,projects,workers,attendance,logs,tickets,contractServices]) if(r.error) console.warn(r.error.message);
   data.users = users.data || [];
@@ -10272,7 +10272,7 @@ function financePrintReport(kind){
       inp.addEventListener('change',()=>setTimeout(()=>setCameraBusy(false),650));
     });
   }
-  document.addEventListener('DOMContentLoaded',stabilizeFileInputs); setInterval(stabilizeFileInputs,2500);
+  document.addEventListener('DOMContentLoaded',stabilizeFileInputs); setInterval(()=>{if(!document.hidden)stabilizeFileInputs();},15000);
   // Faster page switching: render only the opened page instead of every heavy section.
   const pageRenderers={dashboard:['renderDashboard','renderAlerts'],daily:['renderTimeLogs'],users:['renderUsers'],projects:['renderProjects'],workers:['renderWorkers'],attendance:['renderAttendance'],monthly:['renderMonthly'],tickets:['renderTickets'],contracts:['renderContractServices'],financeDashboard:['financeRenderAll'],premiumReports:['renderPremiumReports'],};
   window.showPage=function(id,btn){
@@ -11758,7 +11758,7 @@ function financePrintReport(kind){
   window.addEventListener('load', () => setTimeout(bootV184, 600));
   document.addEventListener('click', () => setTimeout(bootV184, 60), true);
   document.addEventListener('input', (e) => { if(e.target && ['batchQtyV148','batchUnitPriceV148','batchUnitV148'].includes(e.target.id)) setTimeout(renderDraftRowsV184, 30); }, true);
-  setInterval(() => { if($('stockBatchCardV148')?.classList.contains('v149-open')) bootV184(); }, 800);
+  setInterval(() => { if(!document.hidden && $('stockBatchCardV148')?.classList.contains('v149-open')) bootV184(); }, 4000);
   setTimeout(bootV184, 1200);
   console.log('V184 invoice unit visible and values fix loaded');
 })();
@@ -11863,7 +11863,7 @@ function financePrintReport(kind){
   document.addEventListener('click',()=>setTimeout(forceUnitFieldV185,60),true);
   document.addEventListener('focusin',()=>setTimeout(forceUnitFieldV185,30),true);
   window.addEventListener('load',()=>setTimeout(forceUnitFieldV185,700));
-  setInterval(()=>{ if($('stockBatchCardV148')?.classList.contains('v149-open')) forceUnitFieldV185(); },500);
+  setInterval(()=>{ if(!document.hidden && $('stockBatchCardV148')?.classList.contains('v149-open')) forceUnitFieldV185(); },4000);
   setTimeout(forceUnitFieldV185,1200);
   console.log('V185 invoice unit dropdown final visible fix loaded');
 })();
@@ -12738,7 +12738,7 @@ function financePrintReport(kind){
     if($('financeDashboard') && !document.querySelector('#financeDashboard .finance-tab-page:not(.hidden)')) showTabPage(activeKey || 'overview', active);
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(init, ev==='load'?900:200)));
-  setInterval(()=>{ if($('financeDashboard')) ensureTabs(); }, 2500);
+  setInterval(()=>{ if(!document.hidden && $('financeDashboard') && !$('financeDashboard').classList.contains('hidden')) ensureTabs(); },12000);
   console.log('Tasneef V205 safe tabs/reports fix loaded');
 })();
 
@@ -13415,7 +13415,7 @@ function financePrintReport(kind){
   }
   window.tasneefBootV208 = bootV208;
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV208, ev==='load'?1000:300)));
-  setInterval(bootV208, 1200);
+  setInterval(()=>{if(!document.hidden)bootV208();},12000);
   setTimeout(bootV208, 500);
   setTimeout(bootV208, 2000);
   console.log('Tasneef V208 real fixes loaded');
@@ -13644,7 +13644,7 @@ function financePrintReport(kind){
 
   function bootV209(){ patchTicketPdfButtons(); renderSmartAlertsV209(); removeTotalConsumptionLeftovers(); }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV209, ev==='load'?1200:300)));
-  setTimeout(bootV209,500); setTimeout(bootV209,2000); setInterval(bootV209,2500);
+  setTimeout(bootV209,500); setTimeout(bootV209,2000); setInterval(()=>{if(!document.hidden)bootV209();},15000);
   console.log('Tasneef V209 real PDF + smart alerts loaded');
 })();
 
@@ -13886,7 +13886,7 @@ function financePrintReport(kind){
   }
   function bootV210(){ overrideBatchAddLineV210(); overrideBatchSaveV210(); cleanupProductCardsV210(); patchPdfButtonsV210(); }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(bootV210,ev==='load'?1400:400)));
-  setTimeout(bootV210,700); setTimeout(bootV210,2500); setInterval(bootV210,2500);
+  setTimeout(bootV210,700); setTimeout(bootV210,2500); setInterval(()=>{if(!document.hidden)bootV210();},15000);
   console.log('Tasneef V210 clean PDF + weighted cost loaded');
 })();
 
@@ -14128,7 +14128,7 @@ function financePrintReport(kind){
     });
   }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(patchButtonsV211,ev==='load'?1600:500)));
-  setTimeout(patchButtonsV211,800); setTimeout(patchButtonsV211,2600); setInterval(patchButtonsV211,3000);
+  setTimeout(patchButtonsV211,800); setTimeout(patchButtonsV211,2600); setInterval(()=>{if(!document.hidden)patchButtonsV211();},15000);
   console.log('Tasneef V211 smart ticket PDF window loaded');
 })();
 
@@ -14787,7 +14787,7 @@ function financePrintReport(kind){
   }
   function updateVersionLabels(){ document.querySelectorAll('h1,h2,h3,.version,.app-version').forEach(el=>{ if(S(el.textContent).includes('V217')) el.textContent=el.textContent.replace('V217','V217'); }); }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(()=>{patchButtons(); updateVersionLabels();},ev==='load'?1600:500)));
-  setTimeout(()=>{patchButtons(); updateVersionLabels();},1000); setInterval(patchButtons,3000);
+  setTimeout(()=>{patchButtons(); updateVersionLabels();},1000); setInterval(()=>{if(!document.hidden)patchButtons();},15000);
   console.log('Tasneef V217 current project supervisor report logic loaded');
 })();
 
@@ -16354,7 +16354,7 @@ function financePrintReport(kind){
   }
   function boot(){ cleanupDuplicateBatchBlocks(); document.querySelectorAll('.export-hero-badge-v222').forEach(x=>x.textContent=VERSION); document.querySelectorAll('script[src*="app.js?v="]').forEach(()=>{}); }
   ['DOMContentLoaded','load'].forEach(ev=>window.addEventListener(ev,()=>setTimeout(boot,ev==='load'?900:250)));
-  setInterval(cleanupDuplicateBatchBlocks,1600);
+  setInterval(()=>{if(!document.hidden)cleanupDuplicateBatchBlocks();},15000);
   setTimeout(boot,1200);
   console.log('Tasneef V230 export complete + product detail cleanup loaded');
 })();
@@ -18331,7 +18331,7 @@ function financePrintReport(kind){
   hardRemoveLoader();
   document.addEventListener('DOMContentLoaded', hardRemoveLoader);
   window.addEventListener('load', hardRemoveLoader);
-  setInterval(hardRemoveLoader, 1200);
+  setInterval(()=>{if(!document.hidden)hardRemoveLoader();},15000);
 
   function normId(v){ return v==null ? '' : String(v); }
   async function safeData(q){ try{ const r=await q; if(r.error){ console.warn('[Tasneef '+FIX_VERSION+']', r.error.message); return []; } return r.data||[]; }catch(e){ console.warn('[Tasneef '+FIX_VERSION+']', e?.message||e); return []; } }
@@ -23313,7 +23313,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
     window.exportDailySupervisorPDF = window.exportSupervisorDailyPDFV10310;
     try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }catch(_){ }
   }
-  setInterval(bind, 800);
+  setInterval(()=>{if(!document.hidden)bind();},10000);
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, {once:true}); else setTimeout(bind,0);
 })();
 
@@ -23876,7 +23876,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   document.head.appendChild(css);
   document.addEventListener('DOMContentLoaded',()=>setTimeout(decorate,500));
   window.addEventListener('load',()=>{ setTimeout(decorate,700); setTimeout(decorate,1800); });
-  setInterval(decorate,2500);
+  setInterval(()=>{if(!document.hidden)decorate();},12000);
   console.log('Tasneef '+BUILD+' loaded');
 })();
 
@@ -23974,7 +23974,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function boot(){ ensureTicketSupervisorField(); ensureTechnicianProjectSupervisor(); }
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,600));
   window.addEventListener('load',()=>{ setTimeout(boot,800); setTimeout(boot,1800); });
-  setInterval(boot,2500);
+  setInterval(()=>{if(!document.hidden)boot();},12000);
   console.log('Tasneef '+BUILD+' loaded');
 })();
 
@@ -24188,7 +24188,7 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   function boot(){ applyScope(); refillSupervisorProjectSelects(); }
   document.addEventListener('DOMContentLoaded',()=>{ setTimeout(boot,300); setTimeout(boot,1200); setTimeout(boot,2500); });
   window.addEventListener('load',()=>{ setTimeout(boot,600); setTimeout(boot,1800); });
-  setInterval(boot,3000);
+  setInterval(()=>{if(!document.hidden)boot();},12000);
   console.log('Tasneef '+BUILD+' loaded');
 })();
 

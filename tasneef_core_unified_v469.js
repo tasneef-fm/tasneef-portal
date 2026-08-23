@@ -1236,7 +1236,7 @@ function printWorkersFiltered(){
   async function init(){installCss(); installNav(); installSection(); await reload(false); setTab(state.tab||'distribution');}
   window.tasneefCoreUnifiedV413={init,reload,saveWorker,fillNextWorkerCode,saveProject,saveDistribution,saveQuickDistribution,copyPreviousMonth,toggleWorker,toggleProject,selectVisibleProjects,selectVisibleWorkers,clearDistributionSelection,printDistribution,printWorkersFiltered,exportSupervisorEmployeesExcel,editWorker,clearWorkerForm,editProject,clearProjectForm,editDistribution,renderWorkersTab,renderProjectsTab,openProjectDistribution,refreshProjectsMonthDistribution,calcWorkerTotal,renderAttendanceTab,refreshAttendance,saveAttendanceRow,setAllAttendanceStatus,saveAllAttendanceRows,renderBorrowingTab,toggleBorrowWorker,saveBorrowing,cancelBorrowing,effectiveDistributionRows};
   document.addEventListener('DOMContentLoaded',()=>setTimeout(init,1200));
-  setInterval(installNav,2000);
+  setInterval(()=>{if(!document.hidden)installNav();},12000);
 })();
 
 /* ===================== V458 Smart stop + visible status + no duplicates ===================== */
@@ -1466,6 +1466,6 @@ function printWorkersFiltered(){
   function install(){syncPublicState().then(()=>{hookSaveWorker(); setTimeout(()=>{enhanceWorkerCards(); installEndDateAutoFill();},300);});}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(install,1500));
   window.addEventListener('load',()=>setTimeout(install,1800));
-  setInterval(()=>{hookSaveWorker(); enhanceWorkerCards(); installEndDateAutoFill();},2000);
+  setInterval(()=>{if(!document.hidden){hookSaveWorker(); enhanceWorkerCards(); installEndDateAutoFill();}},12000);
   console.log('Tasneef core smart stop '+VERSION+' loaded - generic supervisor transfer');
 })();

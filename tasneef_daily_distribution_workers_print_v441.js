@@ -299,6 +299,6 @@
   window.addEventListener('load',()=>setTimeout(install,1200));
   [1800,3000,5000,8000].forEach(t=>setTimeout(install,t));
   try{new MutationObserver(()=>{const body=$('logsBody'); if(body && !body.dataset.td441Decorating){ body.dataset.td441Decorating='1'; setTimeout(()=>{decorateDailyRows().finally(()=>{delete body.dataset.td441Decorating;});},120); }}).observe(document.body,{childList:true,subtree:true});}catch(_){}
-  setInterval(()=>{wrapRender(); bindFilters(); patchPrint();},5000);
+  setInterval(()=>{if(!document.hidden){wrapRender(); bindFilters(); patchPrint();}},15000);
   window.tasneefDailyDistributionWorkersPrintV441={install,decorateDailyRows,reload:function(){cache.dist={};cache.attendance={};cache.workers=null;cache.projects=null;return install();}};
 })();
