@@ -8,7 +8,7 @@
   window.__tasneefOrdersV10801Loaded=true;
   window.__tasneefOrdersUnifiedOnlyV10801=true;
 
-  const BUILD='V10826-ORDER-PROJECT-OPTIONS-SCOPE';
+  const BUILD='V10857-ORDER-PROJECT-MASTER-STABLE';
   const PAGE_SIZE=50;
   const BUCKET='order-receipts';
   const ALLOWED_MIME=new Set(['application/pdf','image/jpeg','image/png']);
@@ -61,32 +61,58 @@
     if(Array.isArray(state.allowedProjects)) return state.allowedProjects;
     return [];
   }
+  function mergeProjectRows(){
+    const map=new Map();
+    for(const list of arguments){
+      normalizeProjectRows(list).forEach(p=>{ if(!map.has(S(p.id))) map.set(S(p.id),p); else map.set(S(p.id),Object.assign({},map.get(S(p.id)),p)); });
+    }
+    return [...map.values()].sort((a,b)=>a.name.localeCompare(b.name,'ar'));
+  }
+  async function fetchMasterProjects(){
+    const out=[]; let from=0; const size=1000;
+    for(let guard=0;guard<50;guard++){
+      const {data,error}=await sb().from('projects').select('id,name,project_name,official_name,display_name,project_code,code,status,is_active').range(from,from+size-1).order('id',{ascending:true});
+      if(error)throw error;
+      const rows=Array.isArray(data)?data:[]; out.push(...rows);
+      if(rows.length<size)break;
+      from+=size;
+    }
+    return normalizeProjectRows(out);
+  }
   async function loadOrderProjectOptions(force=false){
     if(state.projectOptionsLoading&&!force)return state.projectOptionsLoading;
     if(state.projectOptionsLoaded&&!force)return state.projectOptions;
     state.projectOptionsLoading=(async()=>{
-      let rows=[];
+      let rpcRows=[],serviceRows=[],masterRows=[];
       try{
         if(window.PermissionsService?.load)await window.PermissionsService.load(false);
         const token=permissionSessionToken();
         if(token){
           const {data,error}=await sb().rpc('orders_project_options_v10826',{p_session_token:token});
           if(error)throw error;
-          rows=normalizeProjectRows(data);
+          rpcRows=normalizeProjectRows(data);
         }
       }catch(e){console.warn(BUILD,'orders_project_options_v10826 fallback:',e?.message||e);}
-      if(!rows.length){
-        try{
-          const u=currentUser();
-          if(window.ProjectsService?.getAccessibleProjects){
-            rows=normalizeProjectRows(await window.ProjectsService.getAccessibleProjects(u.id,effectiveRole(),{period:'current'}));
-          }
-        }catch(e){console.warn(BUILD,'ProjectsService fallback:',e?.message||e);}
+      try{
+        const u=currentUser();
+        if(window.ProjectsService?.getAccessibleProjects){
+          serviceRows=normalizeProjectRows(await window.ProjectsService.getAccessibleProjects(u.id,effectiveRole(),{period:'current'}));
+        }
+      }catch(e){console.warn(BUILD,'ProjectsService fallback:',e?.message||e);}
+
+      // الإدارة تعتمد دائمًا على جدول المشاريع الرئيسي حتى لا يظهر المشروع الجديد ثم يختفي
+      // عند وصول نتيجة RPC قديمة/مخزنة. المشرف يبقى مقيدًا بمشاريعه المصرح بها فقط.
+      if(!isSupervisor()){
+        try{ masterRows=await fetchMasterProjects(); }
+        catch(e){ console.warn(BUILD,'master projects fallback:',e?.message||e); }
+        const rows=mergeProjectRows(masterRows,window.data?.projects||[],rpcRows,serviceRows);
+        state.projectOptions=rows;
+      }else{
+        const scoped=mergeProjectRows(rpcRows,serviceRows);
+        state.projectOptions=scoped.length?scoped:normalizeProjectRows(window.data?.projects||[]);
       }
-      if(!rows.length)rows=normalizeProjectRows(window.data?.projects||[]);
-      state.projectOptions=rows;
       state.projectOptionsLoaded=true;
-      return rows;
+      return state.projectOptions;
     })().finally(()=>{state.projectOptionsLoading=null;});
     return state.projectOptionsLoading;
   }
@@ -402,6 +428,6 @@
   window.saveOrderV233=save;window.clearOrderFormV233=resetForm;window.renderOrdersV233=load;window.deleteCurrentOrderV233=OrdersUI.archiveCurrent;
   window.supOrdersLoadV10061=load;window.supOrdersRenderV10061=load;window.supOrdersSaveV10061=save;window.supOrdersClearV10061=resetForm;
 
-  async function boot(){if(!mount())return;bind();resetForm();await resolveAllowedProjects();hydrateReferences();await loadFilters();await load();setTimeout(async()=>{await resolveAllowedProjects(true);hydrateReferences();},900);console.log('Tasneef Orders',BUILD,'loaded — scoped project options');}
+  async function boot(){if(!mount())return;bind();resetForm();await resolveAllowedProjects();hydrateReferences();await loadFilters();await load();setTimeout(async()=>{await resolveAllowedProjects(true);hydrateReferences();},900);if(!window.__tasneefOrdersProjectEventV10857){window.__tasneefOrdersProjectEventV10857=true;window.addEventListener('tasneef:project-updated',async()=>{try{await resolveAllowedProjects(true);hydrateReferences();await loadFilters();}catch(e){console.warn(BUILD,'project update refresh',e);}});}console.log('Tasneef Orders',BUILD,'loaded — stable project master');}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);
 })();
