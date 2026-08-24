@@ -153,9 +153,10 @@
     const box=document.createElement('div'); box.id='qd403Box'; box.className='qd403-card'; box.innerHTML=`<div class="qd403-head"><div><h3>توزيع سريع للعمال على المشرف والمشروع</h3><small>اختر الشهر ثم المشرف ثم المشروع، واضغط على أسماء العمال ثم حفظ. كل شهر يبقى محفوظًا لوحده.</small></div><div class="qd403-actions"><button type="button" class="light" id="qd403CopyPrev">نسخ توزيع الشهر السابق</button><button type="button" id="qd403Save">حفظ توزيع المشروع</button></div></div><div class="qd403-grid"><div><label>الشهر</label><input type="month" id="qd403Month"></div><div><label>المشرف</label><select id="qd403Supervisor"><option>جاري التحميل...</option></select></div><div><label>المشروع</label><select id="qd403Project"><option>اختر المشرف أولًا</option></select></div><div><label>بحث في العمال</label><input id="qd403Search" placeholder="اكتب اسم العامل أو الكود"></div></div><div class="qd403-work-area"><div><b>العمال</b><div id="qd403Workers" class="qd403-workers"><div class="qd403-empty">جاري التحميل...</div></div></div><div><b>العمال المختارون: <span id="qd403SelectedCount">0</span></b><div id="qd403SelectedWorkers" class="qd403-selected"></div></div></div><div id="qd403Msg" class="qd403-msg">جاهز</div><div id="qd403Summary" class="qd403-summary"></div>`;
     const tabs=root.querySelector('.wk386-tabs'); root.insertBefore(box,tabs||root.children[1]);
     $('qd403Month').value=monthNow(); $('qd403Supervisor').onchange=()=>{fillProjects(); loadSelected(); renderWorkers();}; $('qd403Project').onchange=()=>{loadSelected(); renderWorkers();}; $('qd403Month').onchange=()=>{loadSelected(); renderWorkers(); renderSummary();}; $('qd403Search').oninput=renderWorkers; $('qd403Save').onclick=saveDistribution; $('qd403CopyPrev').onclick=copyPrevious;
-    setTimeout(loadAll,300); return true;
+    if(!$('workers')?.classList.contains('hidden'))setTimeout(loadAll,300); return true;
   }
   const oldShow=window.showPage; window.showPage=function(id,btn){const r=oldShow?oldShow.apply(this,arguments):undefined; if(id==='workers') setTimeout(()=>{inject(); loadAll();},350); return r;};
+  window.tasneefWorkersQuickDistributionV403={load:loadAll,inject};
   function boot(){setTimeout(()=>{inject();},900);}
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();

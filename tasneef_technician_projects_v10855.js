@@ -428,16 +428,18 @@
   style.textContent = '.tech-project-name-v10855{font-weight:900!important;color:#064b3b!important;white-space:normal!important;min-width:130px}';
   document.head.appendChild(style);
 
+  function technicianProjectsNeeded(){
+    return !!(document.getElementById('techTicketsTab')?.classList.contains('active')||document.getElementById('techCreateTab')?.classList.contains('active'));
+  }
   readCache();
   ingestLocal();
   mergeCatalogIntoData();
-  document.addEventListener('DOMContentLoaded', () => setTimeout(() => hydrate(true), 250));
-  window.addEventListener('load', () => setTimeout(() => hydrate(true), 500));
-  document.addEventListener('visibilitychange', () => { if(!document.hidden) hydrate(true); });
+  document.addEventListener('DOMContentLoaded', () => { if(technicianProjectsNeeded()) setTimeout(() => hydrate(true), 250); });
+  window.addEventListener('load', () => { if(technicianProjectsNeeded()) setTimeout(() => hydrate(true), 500); });
+  document.addEventListener('visibilitychange', () => { if(!document.hidden&&technicianProjectsNeeded()) hydrate(true); });
   window.addEventListener('storage', event => {
-    if(event.key === 'tasneef_client_ticket_changed_v10519' || event.key === 'tasneef_user') hydrate(true);
+    if((event.key === 'tasneef_client_ticket_changed_v10519' || event.key === 'tasneef_user')&&technicianProjectsNeeded()) hydrate(true);
   });
-  setInterval(() => hydrate(true), 30000);
-  setTimeout(() => hydrate(true), 900);
+  setInterval(() => { if(!document.hidden&&technicianProjectsNeeded()) hydrate(true); }, 30000);
   console.info(BUILD + ' loaded');
 })();

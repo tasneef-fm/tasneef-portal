@@ -560,5 +560,5 @@
   window.renderMonthly=()=>api.render(false);
   window.__tasneefMonthlyUnifiedOnlyV10801=true;
 
-  document.addEventListener('DOMContentLoaded',()=>{bind();setTimeout(()=>scheduleMonthLoad(false),450);});
+  document.addEventListener('DOMContentLoaded',()=>{bind();if(!document.getElementById('monthly')?.classList.contains('hidden'))setTimeout(()=>scheduleMonthLoad(false),450);});
 })();

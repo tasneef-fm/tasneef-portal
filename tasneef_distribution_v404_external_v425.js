@@ -143,5 +143,5 @@
     await reload(false);
   }
   window.tasneefDistributionV404={init,reload,renderWorkers,toggleWorker,clearSelection,saveProjectDistribution,copyPreviousMonth,deleteRow,renderDistribution,print};
-  document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{if($('distribution')) init();},900)});
+  document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{const page=$('distribution');if(page&&!page.classList.contains('hidden')) init();},900)});
 })();

@@ -7660,7 +7660,7 @@ function financePrintReport(kind){
   const oldFinanceRenderAll = window.financeRenderAll;
   window.financeRenderAll = function(){ if(oldFinanceRenderAll) oldFinanceRenderAll.apply(this, arguments); ensureBatchUiV148(); relabelInventoryFormV148(); stockBatchLoadV148(false); };
 
-  window.addEventListener('load', ()=>{ setTimeout(()=>{ ensureBatchUiV148(); relabelInventoryFormV148(); stockBatchRenderLinesV148(); stockBatchLoadV148(true); }, 700); });
+  window.addEventListener('load', ()=>{ setTimeout(()=>{ const host=document.getElementById('financeDashboard'); if(!host||host.classList.contains('hidden')) return; ensureBatchUiV148(); relabelInventoryFormV148(); stockBatchRenderLinesV148(); stockBatchLoadV148(true); }, 700); });
 })();
 
 /* ===== V149: Smart stock invoice cards + independent catalog view ===== */
@@ -26281,7 +26281,7 @@ ${finalUrl}
   function applyUi(){const map={users:'users.view',workers:'workers.view',projects:'projects.view',distribution:'distribution.view',attendance:'attendance.view',daily:'daily_records.view',monthly:'monthly_times.view',salaries:'salaries.view',contracts:'contracts.view',crm:'crm.view',tickets:'tickets.view',inventory:'inventory.view',reports:'reports.view',settings:'settings.view'};document.querySelectorAll('[onclick*="showPage("]').forEach(btn=>{const m=(btn.getAttribute('onclick')||'').match(/showPage\(['\"]([^'\"]+)/);if(m&&map[m[1]]&&!can(currentUser(),map[m[1]]))btn.style.display='none';});}
   function hookTabs(){document.querySelectorAll('.perm-tabs [data-perm-tab]').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.perm-tabs button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('[data-perm-pane]').forEach(p=>p.classList.toggle('hidden',p.dataset.permPane!==btn.dataset.permTab));}));}
   const oldRefresh=window.refreshAll; if(typeof oldRefresh==='function')window.refreshAll=async function(){const r=await oldRefresh.apply(this,arguments);applyUi();return r;};
-  document.addEventListener('DOMContentLoaded',()=>{hookTabs();setTimeout(()=>{loadSecurityCenterV10700();applyUi();},500);});
+  document.addEventListener('DOMContentLoaded',()=>{hookTabs();setTimeout(()=>{const page=document.getElementById('users');if(page&&!page.classList.contains('hidden'))loadSecurityCenterV10700();applyUi();},500);});
   console.log(BUILD+' loaded');
 })();
 
@@ -27470,7 +27470,7 @@ ${finalUrl}
     @media(max-width:1100px){.attendance-review-filters-v10831{grid-template-columns:repeat(3,1fr)}.attendance-review-filters-v10831 input{grid-column:1/-1}}
     @media(max-width:760px){.attendance-time-grid-v10830{grid-template-columns:repeat(2,1fr)}.attendance-delay-summary-v10830{grid-template-columns:1fr 1fr}.attendance-review-kpis-v10830{grid-template-columns:repeat(2,1fr)}.attendance-review-filters-v10831{grid-template-columns:1fr 1fr}.attendance-review-filters-v10831 input{grid-column:1/-1}.attendance-review-item-v10830{display:block}.attendance-review-actions-v10830{margin-top:8px}.attendance-review-reason-v10831{white-space:normal}.attendance-review-pagination-v10831>span{width:100%;text-align:center}}
   `;document.head.appendChild(st)}
-  function boot(){style();if($('logProject')){refreshTiming(true);state.timer=setInterval(()=>refreshTiming(Date.now()-state.lastServerAt>240000),60000)}if($('dashboard')){setTimeout(loadReviewQueue,1500);state.reviewTimer=setInterval(()=>{const d=$('dashboard');if(d&&getComputedStyle(d).display!=='none')loadReviewQueue()},300000)}}
+  function boot(){style();const daily=$('daily'),supLogs=$('supLogs');const timingVisible=!!((daily&&!daily.classList.contains('hidden'))||(supLogs&&supLogs.classList.contains('active')));if($('logProject')&&timingVisible){refreshTiming(true);state.timer=setInterval(()=>{const d=$('daily'),s=$('supLogs');if((d&&!d.classList.contains('hidden'))||(s&&s.classList.contains('active')))refreshTiming(Date.now()-state.lastServerAt>240000)},60000)}if($('dashboard')){setTimeout(loadReviewQueue,1500);state.reviewTimer=setInterval(()=>{const d=$('dashboard');if(d&&!d.classList.contains('hidden')&&getComputedStyle(d).display!=='none')loadReviewQueue()},300000)}}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,800));window.addEventListener('load',()=>setTimeout(boot,1300));setTimeout(boot,2500);
   console.info(BUILD,'loaded');
 })();

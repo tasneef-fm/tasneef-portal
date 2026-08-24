@@ -1235,7 +1235,7 @@ function printWorkersFiltered(){
 
   async function init(){installCss(); installNav(); installSection(); await reload(false); setTab(state.tab||'distribution');}
   window.tasneefCoreUnifiedV413={init,reload,saveWorker,fillNextWorkerCode,saveProject,saveDistribution,saveQuickDistribution,copyPreviousMonth,toggleWorker,toggleProject,selectVisibleProjects,selectVisibleWorkers,clearDistributionSelection,printDistribution,printWorkersFiltered,exportSupervisorEmployeesExcel,editWorker,clearWorkerForm,editProject,clearProjectForm,editDistribution,renderWorkersTab,renderProjectsTab,openProjectDistribution,refreshProjectsMonthDistribution,calcWorkerTotal,renderAttendanceTab,refreshAttendance,saveAttendanceRow,setAllAttendanceStatus,saveAllAttendanceRows,renderBorrowingTab,toggleBorrowWorker,saveBorrowing,cancelBorrowing,effectiveDistributionRows};
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(init,1200));
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{installCss();installNav();installSection();setTab(state.tab||'distribution');},1200));
   setInterval(()=>{if(!document.hidden)installNav();},12000);
 })();
 

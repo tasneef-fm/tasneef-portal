@@ -84,7 +84,7 @@
     projects:()=>safe('renderProjects'),
     workers:()=>safe('renderWorkers'),
     attendance:()=>{safe('renderAttendance');safe('renderAttendanceMonthly');},
-    monthly:()=>safe('renderMonthly'),
+    monthly:()=>{}, // V10864 loads the selected month from server after the section becomes active
     tickets:()=>{safe('renderTickets');fetchTickets(true);},
     alerts:()=>safe('renderAlerts'),
     assistant:()=>safe('renderTasneefAssistant'),
@@ -116,7 +116,7 @@
     document.querySelectorAll('.sup-tab').forEach(b=>b.classList.remove('active'));
     btn?.classList.add('active');
     requestAnimationFrame(()=>setTimeout(()=>{
-      if(id==='supAttendance') safe('renderSupervisorAttendanceList');
+      if(id==='supAttendance'){} // V10864 owns the authoritative attendance load for the active section
       if(id==='supTickets'){ safe('renderTickets'); fetchTickets(true); }
       if(id==='supSummary') safe('renderSupervisorDailySummary');
     },0));
@@ -173,7 +173,7 @@
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden && inTicketView()) fetchTickets(false); });
 
   // Initial authoritative ticket feed for all application roles, including technician.
-  const boot=()=>setTimeout(()=>{ if($('ticketsBody')||$('supTicketsBody')||$('techOpenTicketsBody')) fetchTickets(true); },1100);
+  const boot=()=>setTimeout(()=>{ if(inTicketView()) fetchTickets(true); },1100);
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
 
   console.info(BUILD,'loaded');

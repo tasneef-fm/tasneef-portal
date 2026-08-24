@@ -233,10 +233,13 @@
     try{ loadAll = patchedLoadAll; }catch(_){ }
   }
 
+  function techProjectDataNeeded(){
+    return !!(document.getElementById('techTicketsTab')?.classList.contains('active')||document.getElementById('techCreateTab')?.classList.contains('active'));
+  }
   const originalInit = window.initTechnician;
   window.initTechnician = async function(){
     if(typeof originalInit === 'function') await originalInit.apply(this, arguments);
-    await hydrateProjectNames(true);
+    if(techProjectDataNeeded()) await hydrateProjectNames(true);
   };
 
   const style=document.createElement('style');
@@ -244,9 +247,9 @@
   style.textContent='.tech-project-name-v10853{color:#064b3b;font-weight:900;white-space:normal;min-width:130px;display:inline-block}';
   document.head.appendChild(style);
 
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) hydrateProjectNames(true); });
-  window.addEventListener('storage',e=>{ if(e.key==='tasneef_client_ticket_changed_v10519') hydrateProjectNames(true); });
-  setInterval(()=>hydrateProjectNames(true),30000);
-  setTimeout(()=>hydrateProjectNames(true),900);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&techProjectDataNeeded()) hydrateProjectNames(true); });
+  window.addEventListener('storage',e=>{ if(e.key==='tasneef_client_ticket_changed_v10519'&&techProjectDataNeeded()) hydrateProjectNames(true); });
+  setInterval(()=>{if(!document.hidden&&techProjectDataNeeded())hydrateProjectNames(true);},30000);
+  setTimeout(()=>{if(techProjectDataNeeded())hydrateProjectNames(true);},900);
   console.log('Tasneef ' + BUILD + ' loaded');
 })();

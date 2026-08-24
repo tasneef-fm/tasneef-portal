@@ -428,6 +428,10 @@
   window.saveOrderV233=save;window.clearOrderFormV233=resetForm;window.renderOrdersV233=load;window.deleteCurrentOrderV233=OrdersUI.archiveCurrent;
   window.supOrdersLoadV10061=load;window.supOrdersRenderV10061=load;window.supOrdersSaveV10061=save;window.supOrdersClearV10061=resetForm;
 
-  async function boot(){if(!mount())return;bind();resetForm();await resolveAllowedProjects();hydrateReferences();await loadFilters();await load();setTimeout(async()=>{await resolveAllowedProjects(true);hydrateReferences();},900);if(!window.__tasneefOrdersProjectEventV10857){window.__tasneefOrdersProjectEventV10857=true;window.addEventListener('tasneef:project-updated',async()=>{try{await resolveAllowedProjects(true);hydrateReferences();await loadFilters();}catch(e){console.warn(BUILD,'project update refresh',e);}});}console.log('Tasneef Orders',BUILD,'loaded — stable project master');}
+  function ordersViewActive(){
+    const admin=$('orders'),sup=$('supOrders');
+    return !!((admin&&!admin.classList.contains('hidden'))||(sup&&sup.classList.contains('active')));
+  }
+  async function boot(){if(!mount())return;bind();resetForm();hydrateReferences();if(ordersViewActive()){await resolveAllowedProjects();hydrateReferences();await loadFilters();await load();setTimeout(async()=>{if(!ordersViewActive())return;await resolveAllowedProjects(true);hydrateReferences();},900);}if(!window.__tasneefOrdersProjectEventV10857){window.__tasneefOrdersProjectEventV10857=true;window.addEventListener('tasneef:project-updated',async()=>{if(!ordersViewActive())return;try{await resolveAllowedProjects(true);hydrateReferences();await loadFilters();}catch(e){console.warn(BUILD,'project update refresh',e);}});}console.log('Tasneef Orders',BUILD,'loaded — lazy section data');}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,0));else setTimeout(boot,0);
 })();

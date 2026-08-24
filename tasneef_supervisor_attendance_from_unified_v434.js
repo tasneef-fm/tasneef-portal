@@ -161,8 +161,9 @@
     $('supUniSave').onclick=saveSupervisorUnified;
     document.querySelectorAll('#supUniWorkers select').forEach(sel=>sel.onchange=()=>sel.closest('.sup-uni-worker')?.classList.toggle('absent',sel.value==='absent'));
   }
+  function supervisorAttendanceActive(){const page=$('supAttendance');return !!(page&&page.classList.contains('active'));}
   async function renderSupervisorUnified(force){
-    const list=$('supervisorAttendanceList'); if(!list)return;
+    const list=$('supervisorAttendanceList'); if(!list||!supervisorAttendanceActive())return;
     try{
       css();
       const date=($('attendanceDate')?.value||$('supUniDate')?.value||today());
