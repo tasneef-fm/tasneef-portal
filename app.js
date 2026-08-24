@@ -28125,10 +28125,53 @@ window.TASNEEF_TICKET_GENERAL_CREATOR_BUILD='V10856';
       if(result && result.ok===false) throw new Error(result.message||'تعذر حفظ التذكرة');
 
       window.__tasneefNewTicketKeyV10852=null;
+
+      // V10873: بعد إضافة/تعديل تذكرة من حساب المشرف نحدّث قسم التكتات نفسه فقط.
+      // في V10867+ أصبحت initSupervisor تفتح بيانات قسم الدخول/الخروج، لذلك استدعاؤها هنا
+      // كان يترك قائمة التكتات قديمة رغم نجاح الحفظ في قاعدة البيانات.
+      const extractSavedTicketV10873=(value)=>{
+        if(!value) return null;
+        if(Array.isArray(value)) return value.find(x=>x&&typeof x==='object'&&(x.id||x.ticket_id))||null;
+        if(value.ticket&&typeof value.ticket==='object') return value.ticket;
+        if(value.data&&typeof value.data==='object') return Array.isArray(value.data)?(value.data[0]||null):value.data;
+        if(value.row&&typeof value.row==='object') return value.row;
+        if(value.id||value.ticket_id) return value;
+        return null;
+      };
+      let savedTicketV10873=extractSavedTicketV10873(result);
+      const savedIdV10873=Number(savedTicketV10873?.id||savedTicketV10873?.ticket_id||result?.ticket_id||result?.id||0)||0;
+      if(savedIdV10873 && (!savedTicketV10873 || !savedTicketV10873.project_id)){
+        try{
+          const q=await client.from('tickets').select('*').eq('id',savedIdV10873).maybeSingle();
+          if(!q.error&&q.data) savedTicketV10873=q.data;
+        }catch(_){ }
+      }
+      const upsertLocalTicketV10873=()=>{
+        if(!savedTicketV10873||!savedTicketV10873.id) return;
+        window.data=window.data||{};
+        const rows=Array.isArray(window.data.tickets)?window.data.tickets:[];
+        window.data.tickets=[savedTicketV10873,...rows.filter(x=>String(x?.id)!==String(savedTicketV10873.id))];
+      };
+      upsertLocalTicketV10873();
+
       try{ if(typeof window.playAppSound==='function') window.playAppSound('ticket'); }catch(_){}
       say(ticketId?'تم تحديث التذكرة بنجاح':'تم رفع التذكرة بنجاح','ok');
       try{ if(typeof window.clearTicketForm==='function') window.clearTicketForm(); }catch(_){}
-      try{ if(typeof window.initSupervisor==='function') await window.initSupervisor(); else if(typeof window.refreshAll==='function') await window.refreshAll(); }catch(e){console.warn('[V10852 refresh]',e);}
+      try{
+        if(typeof window.tasneefLoadSectionV10864==='function'){
+          await window.tasneefLoadSectionV10864('supervisor:supTickets',true);
+        }else if(typeof window.tasneefRefreshActiveSectionV10864==='function'){
+          await window.tasneefRefreshActiveSectionV10864(true);
+        }else if(typeof window.tasneefRefreshTicketsV10859==='function'){
+          await window.tasneefRefreshTicketsV10859(true);
+        }else if(typeof window.refreshAll==='function'){
+          await window.refreshAll();
+        }
+      }catch(e){console.warn('[V10873 supervisor ticket refresh]',e);}
+
+      // إذا تأخر RPC في إرجاع السجل الجديد، أبقِ نتيجة الحفظ ظاهرة فورًا ولا تنتظر أي polling.
+      upsertLocalTicketV10873();
+      try{ if(typeof window.renderTickets==='function') await Promise.resolve(window.renderTickets()); }catch(e){console.warn('[V10873 render ticket]',e);}
       return result;
     }catch(error){
       console.error('[V10852 supervisor ticket save]',error);
