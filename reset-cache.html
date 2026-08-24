@@ -16,20 +16,20 @@
     <h1>تحديث ملفات نظام تصنيف</h1>
     <p class="muted">يلغي Service Worker وكاش ملفات الموقع فقط. لا يحذف بيانات النظام أو إعدادات المستخدم المحفوظة.</p>
     <button onclick="clean()">تحديث الملفات الآن</button>
-    <a href="index.html?v=10862-client-dropdown-filtered-print">فتح تسجيل الدخول</a>
+    <a href="index.html?v=10863-server-resilience">فتح تسجيل الدخول</a>
     <pre id="out"></pre>
   </div>
   <script>
     async function clean(){
       const out=document.getElementById('out');
       try{
-        try{localStorage.setItem('tasneef_version','10862-client-dropdown-filtered-print');localStorage.setItem('tasneef_build_version','V10862-CLIENT-DROPDOWN-FILTERED-PRINT');}catch(_){ }
+        try{localStorage.setItem('tasneef_version','10863-server-resilience');localStorage.setItem('tasneef_build_version','V10863-SERVER-RESILIENCE');}catch(_){ }
         if('serviceWorker' in navigator){const regs=await navigator.serviceWorker.getRegistrations();for(const r of regs)await r.unregister();}
         if(window.caches&&location.protocol!=='file:'){const keys=await caches.keys();for(const k of keys)await caches.delete(k);}
         out.textContent='تم تحديث الملفات بنجاح دون حذف بياناتك. سيتم فتح تسجيل الدخول.';
-        setTimeout(()=>location.href='index.html?v=10862-client-dropdown-filtered-print&nocache='+Date.now(),700);
+        setTimeout(()=>location.href='index.html?v=10863-server-resilience&nocache='+Date.now(),700);
       }catch(e){out.textContent='حدث خطأ: '+(e.message||e);}
     }
   </script>
-<script>try{localStorage.setItem("tasneef_build_marker","V10862-client-dropdown-filtered-print");}catch(e){}</script></body>
+<script>try{localStorage.setItem("tasneef_build_marker","V10863-server-resilience");}catch(e){}</script></body>
 </html>

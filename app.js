@@ -1512,7 +1512,7 @@ window.showSupervisorWindow = function(id, btn){
     if($('techNewTicketProject') && typeof fillSelect==='function') fillSelect('techNewTicketProject', data.projects||[], 'name', 'اختر المشروع');
     renderTechnicianTickets();
     if(!window.__techAutoRefreshV46){
-      window.__techAutoRefreshV46=setInterval(async()=>{ await loadAll(); if($('techNewTicketProject') && typeof fillSelect==='function' && !$('techNewTicketProject').options.length) fillSelect('techNewTicketProject', data.projects||[], 'name', 'اختر المشروع'); renderTechnicianTickets(); }, 20000);
+      window.__techAutoRefreshV46=setInterval(async()=>{ if(document.hidden) return; const active=document.getElementById('techTicketsTab'); if(active && active.classList.contains('active')){ try{ if(typeof window.tasneefRefreshTicketsV10859==='function') await window.tasneefRefreshTicketsV10859(false); else if(typeof window.tasneefRefreshTicketsV10519==='function') await window.tasneefRefreshTicketsV10519(); }catch(e){ console.warn('V10863 tech ticket refresh',e); } try{ renderTechnicianTickets(); }catch(_){} } }, 60000);
     }
   };
   const css=document.createElement('style');
@@ -17642,7 +17642,7 @@ function financePrintReport(kind){
     b.textContent='Tasneef '+FIX_VERSION;
     b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.9';
   }
-  document.addEventListener('DOMContentLoaded', function(){ showBadge(); if(!document.getElementById('supTitle')) setTimeout(()=>{ if(document.body) refreshAllV281(); }, 300); });
+  document.addEventListener('DOMContentLoaded', function(){ showBadge(); /* V10863: admin startup owns the single initial data refresh. */ });
   console.log('Tasneef '+FIX_VERSION+' loaded');
 })();
 
@@ -17815,7 +17815,7 @@ function financePrintReport(kind){
     b.textContent='Tasneef '+FIX_VERSION;
     b.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99999;background:#0a4033;color:#fff;padding:6px 10px;border-radius:12px;font:12px Arial;box-shadow:0 4px 12px #0002;opacity:.9';
   }
-  document.addEventListener('DOMContentLoaded', function(){ showBadgeV282(); if(!document.getElementById('supTitle')) setTimeout(()=>refreshAllV282(), 500); });
+  document.addEventListener('DOMContentLoaded', function(){ showBadgeV282(); /* V10863: avoid duplicate full refresh on admin boot. */ });
   console.log('Tasneef '+FIX_VERSION+' loaded');
 })();
 
@@ -20290,7 +20290,7 @@ function financePrintReport(kind){
   window.refreshAll = refreshAllV10174;
   try{ refreshAll = refreshAllV10174; }catch(_){}
   if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', function(){ if($v('dashboard')) refreshAllV10174(); }, {once:true});
+    document.addEventListener('DOMContentLoaded', function(){ /* V10863: dashboard is populated by the authoritative startup refresh. */ }, {once:true});
   }else{
     if($v('dashboard')) refreshAllV10174();
   }
@@ -22938,45 +22938,93 @@ function financePrintReport(kind){
   }
   window.time12TasneefV10350 = time12Fix;
 
-  async function fetchAllRowsV10350(table, select='*', orderColumn='id', ascending=true){
-    const pageSize = 1000;
-    let from = 0;
-    let out = [];
-    while(true){
-      let q = sb.from(table).select(select).range(from, from + pageSize - 1);
-      if(orderColumn) q = q.order(orderColumn, { ascending });
-      const res = await q;
-      if(res.error){ console.warn(table + ': ' + res.error.message); return out; }
-      const rows = res.data || [];
-      out = out.concat(rows);
-      if(rows.length < pageSize) break;
-      from += pageSize;
-      if(from > 20000) break;
+  /* V10863: resilient, lower-pressure base loader.
+     Important: a failed request never replaces good in-memory data with an empty array. */
+  async function waitV10863(ms){ return new Promise(r=>setTimeout(r,ms)); }
+  async function runQueryV10863(name, factory, attempts=2){
+    let lastError=null;
+    for(let i=0;i<attempts;i++){
+      try{
+        const res=await factory();
+        if(res && !res.error) return {ok:true,data:res.data||[],error:null};
+        lastError=res?.error || new Error('Unknown query error');
+      }catch(e){ lastError=e; }
+      if(i<attempts-1) await waitV10863(700*(i+1));
     }
-    return out;
+    console.warn('[Tasneef V10863] '+name+' kept last good data:', lastError?.message||lastError);
+    return {ok:false,data:null,error:lastError};
+  }
+  async function fetchAllRowsV10350(table, select='*', orderColumn='id', ascending=true, configure=null, maxRows=12000){
+    const pageSize=1000;
+    let from=0,out=[];
+    while(from<maxRows){
+      const result=await runQueryV10863(table, async()=>{
+        let q=sb.from(table).select(select);
+        if(typeof configure==='function') q=configure(q);
+        q=q.range(from, Math.min(from+pageSize-1,maxRows-1));
+        if(orderColumn) q=q.order(orderColumn,{ascending});
+        return await q;
+      },2);
+      if(!result.ok) return {ok:false,data:out,error:result.error};
+      const rows=result.data||[];
+      out=out.concat(rows);
+      if(rows.length<pageSize) break;
+      from+=pageSize;
+    }
+    return {ok:true,data:out,error:null};
+  }
+  function monthBoundsV10863(){
+    const now=new Date();
+    const y=now.getFullYear(),m=String(now.getMonth()+1).padStart(2,'0');
+    const start=`${y}-${m}-01`;
+    const next=new Date(y,now.getMonth()+1,1);
+    const end=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-01`;
+    const d45=new Date(now.getTime()-62*86400000);
+    const attendanceStart=`${d45.getFullYear()}-${String(d45.getMonth()+1).padStart(2,'0')}-${String(d45.getDate()).padStart(2,'0')}`;
+    return {start,end,attendanceStart};
+  }
+  async function fetchTicketsV10863(){
+    const token=String(localStorage.getItem('tasneef_session_token_v10817')||'').trim();
+    if(token && sb.rpc){
+      let r=await runQueryV10863('tickets RPC V10859',()=>sb.rpc('tasneef_tickets_all_v10859',{p_session_token:token}),2);
+      if(r.ok) return r;
+      r=await runQueryV10863('tickets RPC V10857',()=>sb.rpc('tasneef_tickets_all_v10857',{p_session_token:token}),1);
+      if(r.ok) return r;
+    }
+    return fetchAllRowsV10350('tickets','*','created_at',false,null,50000);
   }
 
   window.loadAll = async function(){
-    const [users, projects, workers, attendance, logs, tickets, contractServices] = await Promise.all([
-      fetchAllRowsV10350('app_users', '*', 'id', true),
-      fetchAllRowsV10350('projects', '*', 'id', true),
-      fetchAllRowsV10350('workers', '*', 'id', true),
-      fetchAllRowsV10350('attendance', '*', 'attendance_date', false),
-      fetchAllRowsV10350('time_logs', '*', 'check_in', false),
-      fetchAllRowsV10350('tickets', '*', 'created_at', false),
-      fetchAllRowsV10350('contract_services', '*', 'id', false)
+    window.data=window.data||data||{};
+    const prev={
+      users:Array.isArray(data.users)?data.users:[], projects:Array.isArray(data.projects)?data.projects:[],
+      workers:Array.isArray(data.workers)?data.workers:[], attendance:Array.isArray(data.attendance)?data.attendance:[],
+      logs:Array.isArray(data.logs)?data.logs:[], tickets:Array.isArray(data.tickets)?data.tickets:[],
+      contractServices:Array.isArray(data.contractServices)?data.contractServices:[]
+    };
+    const b=monthBoundsV10863();
+    const [users,projects,workers,attendance,logs,tickets,contractServices]=await Promise.all([
+      fetchAllRowsV10350('app_users','*','id',true,null,5000),
+      fetchAllRowsV10350('projects','*','id',true,null,10000),
+      fetchAllRowsV10350('workers','*','id',true,null,15000),
+      fetchAllRowsV10350('attendance','*','attendance_date',false,q=>q.gte('attendance_date',b.attendanceStart),12000),
+      fetchAllRowsV10350('time_logs','*','check_in',false,q=>q.gte('log_date',b.start).lt('log_date',b.end),12000),
+      fetchTicketsV10863(),
+      fetchAllRowsV10350('contract_services','*','id',false,null,12000)
     ]);
-    window.data = window.data || data || {};
-    data.users = users;
-    data.supervisors = data.users.filter(u => u.role === 'supervisor' && u.is_active !== false);
-    data.technicians = data.users.filter(u => u.role === 'technician' && u.is_active !== false);
-    data.projects = projects;
-    data.workers = workers;
-    data.attendance = attendance;
-    data.logs = logs;
-    data.tickets = tickets;
-    data.contractServices = contractServices;
-    data.contractServicesError = '';
+    data.users = users.ok ? users.data : prev.users;
+    data.supervisors = data.users.filter(u=>u.role==='supervisor' && u.is_active!==false);
+    data.technicians = data.users.filter(u=>u.role==='technician' && u.is_active!==false);
+    data.projects = projects.ok ? projects.data : prev.projects;
+    data.workers = workers.ok ? workers.data : prev.workers;
+    data.attendance = attendance.ok ? attendance.data : prev.attendance;
+    data.logs = logs.ok ? logs.data : prev.logs;
+    data.tickets = tickets.ok ? tickets.data : prev.tickets;
+    data.contractServices = contractServices.ok ? contractServices.data : prev.contractServices;
+    data.contractServicesError = contractServices.ok ? '' : String(contractServices.error?.message||contractServices.error||'تعذر الاتصال');
+    data.__serverResilienceBuild='V10863';
+    data.__serverPartialFailure=![users,projects,workers,attendance,logs,tickets,contractServices].every(x=>x.ok);
+    try{ window.dispatchEvent(new CustomEvent('tasneef:data-loaded-v10863',{detail:{partial:data.__serverPartialFailure}})); }catch(_){}
   };
 
   function ensureDailyRangeDefaultsV10350(){
@@ -26917,7 +26965,7 @@ ${finalUrl}
         if(window.PermissionsService&&typeof window.PermissionsService.load==='function'){
           await Promise.race([
             window.PermissionsService.load(false),
-            new Promise(resolve=>setTimeout(resolve,9000))
+            new Promise(resolve=>setTimeout(resolve,2500))
           ]);
         }
         clearBootPermissionMessageV10824();
