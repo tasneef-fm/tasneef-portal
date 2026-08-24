@@ -436,10 +436,10 @@
   mergeCatalogIntoData();
   document.addEventListener('DOMContentLoaded', () => { if(technicianProjectsNeeded()) setTimeout(() => hydrate(true), 250); });
   window.addEventListener('load', () => { if(technicianProjectsNeeded()) setTimeout(() => hydrate(true), 500); });
-  document.addEventListener('visibilitychange', () => { if(!document.hidden&&technicianProjectsNeeded()) hydrate(true); });
+  // V10867: لا إعادة تحميل للمشاريع عند الرجوع للنافذة.
   window.addEventListener('storage', event => {
     if((event.key === 'tasneef_client_ticket_changed_v10519' || event.key === 'tasneef_user')&&technicianProjectsNeeded()) hydrate(true);
   });
-  setInterval(() => { if(!document.hidden&&technicianProjectsNeeded()) hydrate(true); }, 30000);
+  // V10867: لا polling لقائمة المشاريع كل 30 ثانية.
   console.info(BUILD + ' loaded');
 })();

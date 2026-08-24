@@ -1,4 +1,4 @@
-/* Tasneef V10857 CANONICAL: complete tickets + daily logs. */
+/* Tasneef V10867 CANONICAL: complete tickets + daily logs; no background refresh. */
 (function(){
   'use strict';
   if(window.__tasneefCanonicalV10519) return;
@@ -31,7 +31,6 @@
   const oldShow=window.showPage;if(typeof oldShow==='function')window.showPage=function(id){const z=oldShow.apply(this,arguments);if(id==='tickets')setTimeout(loadTickets,50);return z};
   function bind(){['dailyDateFromV10310','dailyDateToV10310','dailyDate','supDailyDateFromV10310','supDailyDateToV10310','supLogDate','dailySupervisor','dailyProject','supLogProject'].forEach(id=>{const e=$(id);if(e&&!e.dataset.canonical10519){e.dataset.canonical10519='1';e.addEventListener('change',loadLogs)}});const q=$('dailySearch');if(q&&!q.dataset.canonical10519){q.dataset.canonical10519='1';q.addEventListener('input',()=>renderLogs(lastLogs))}loadLogs();if(!window.__tasneefNavTicketSyncV10859&&($('ticketsBody')||$('supTicketsBody')))loadTickets()}
   window.addEventListener('storage',e=>{if(['tasneef_client_ticket_changed_v10519','tasneef_client_ticket_changed_v10520','tasneef_client_ticket_changed_v10857'].includes(e.key))loadTickets()});
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden){loadLogs();if(!window.__tasneefNavTicketSyncV10859&&($('ticketsBody')||$('supTicketsBody')))loadTickets()}});
+  // V10867: لا تحديث عند visibilitychange ولا setInterval.
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,800));else setTimeout(bind,800);
-  setInterval(()=>{if(document.hidden)return;const active=document.querySelector('.page:not(.hidden)');if(active&&['dailyLogs','tickets','supervisorDaily'].includes(active.id)){if($('logsBody'))loadLogs();if(!window.__tasneefNavTicketSyncV10859&&($('ticketsBody')||$('supTicketsBody')))loadTickets();}},30000);
 })();

@@ -6,7 +6,7 @@
   'use strict';
   if(window.__tasneefNavTicketSyncV10859) return;
   window.__tasneefNavTicketSyncV10859=true;
-  const BUILD='V10859_NAV_CLIENT_TICKETS';
+  const BUILD='V10867_NAV_FIRST_OPEN_MUTATION';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -85,7 +85,7 @@
     workers:()=>safe('renderWorkers'),
     attendance:()=>{safe('renderAttendance');safe('renderAttendanceMonthly');},
     monthly:()=>{}, // V10864 loads the selected month from server after the section becomes active
-    tickets:()=>{safe('renderTickets');fetchTickets(true);},
+    tickets:()=>{safe('renderTickets');},
     alerts:()=>safe('renderAlerts'),
     assistant:()=>safe('renderTasneefAssistant'),
     contracts:()=>{safe('renderContractServices');try{window.showContractsSubTab?.('services');}catch(_){}},
@@ -117,7 +117,7 @@
     btn?.classList.add('active');
     requestAnimationFrame(()=>setTimeout(()=>{
       if(id==='supAttendance'){} // V10864 owns the authoritative attendance load for the active section
-      if(id==='supTickets'){ safe('renderTickets'); fetchTickets(true); }
+      if(id==='supTickets'){ safe('renderTickets'); }
       if(id==='supSummary') safe('renderSupervisorDailySummary');
     },0));
     return true;
@@ -139,7 +139,6 @@
           safe('renderTechnicianTickets');
           window.__tasneefTechRenderedTicketVersionV10859=v;
         }
-        fetchTickets(true);
       }
     },0));
     return true;
@@ -168,13 +167,9 @@
     if(['tasneef_client_ticket_changed_v10519','tasneef_client_ticket_changed_v10520','tasneef_client_ticket_changed_v10857','tasneef_client_ticket_changed_v10859'].includes(e.key)) fetchTickets(true);
   });
 
-  // A lightweight active-view refresh. It does nothing while the user is in other menus.
-  setInterval(()=>{ if(!document.hidden && inTicketView()) fetchTickets(false); },30000);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden && inTicketView()) fetchTickets(false); });
-
-  // Initial authoritative ticket feed for all application roles, including technician.
-  const boot=()=>setTimeout(()=>{ if(inTicketView()) fetchTickets(true); },1100);
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true}); else boot();
+  // V10867: لا polling ولا تحديث عند الرجوع للنافذة.
+  // أول تحميل للتكتات يتم فقط عند فتح القسم بواسطة section loader.
+  // حدث storage يبقى لأنه يمثل إضافة/تغيير فعلياً من بوابة العميل في تبويب آخر.
 
   console.info(BUILD,'loaded');
 })();

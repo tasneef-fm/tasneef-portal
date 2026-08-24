@@ -967,8 +967,8 @@ async function saveSupervisorAttendance(){ const u=session(); const date=$('atte
     const currentMax = (data.tickets||[]).reduce((m,t)=>Math.max(m, Number(t.id||0)), 0);
     if(!lastSeenTicketId) lastSeenTicketId = currentMax;
     watchStarted = true;
-    if(ticketWatchTimer) clearInterval(ticketWatchTimer);
-    ticketWatchTimer = setInterval(()=>pollSupervisorTickets(false), 20000);
+    // V10867: لا polling للتكتات. التحديث عند أول فتح، وبعد الإضافة/الحذف فقط.
+    if(ticketWatchTimer){ clearInterval(ticketWatchTimer); ticketWatchTimer=null; }
   }
 
   const oldRenderTicketsV13 = window.renderTickets;
@@ -1516,9 +1516,8 @@ window.showSupervisorWindow = function(id, btn){
     if($('techTitle')) $('techTitle').textContent='لوحة الفني - '+(u.full_name||u.username);
     if($('techNewTicketProject') && typeof fillSelect==='function') fillSelect('techNewTicketProject', data.projects||[], 'name', 'اختر المشروع');
     renderTechnicianTickets();
-    if(!window.__techAutoRefreshV46){
-      window.__techAutoRefreshV46=setInterval(async()=>{ if(document.hidden) return; const active=document.getElementById('techTicketsTab'); if(active && active.classList.contains('active')){ try{ if(typeof window.tasneefRefreshTicketsV10859==='function') await window.tasneefRefreshTicketsV10859(false); else if(typeof window.tasneefRefreshTicketsV10519==='function') await window.tasneefRefreshTicketsV10519(); }catch(e){ console.warn('V10863 tech ticket refresh',e); } try{ renderTechnicianTickets(); }catch(_){} } }, 60000);
-    }
+    // V10867: تم إلغاء التحديث التلقائي لتكتات الفني كل دقيقة.
+    if(window.__techAutoRefreshV46){ clearInterval(window.__techAutoRefreshV46); window.__techAutoRefreshV46=null; }
   };
   const css=document.createElement('style');
   css.textContent='.wa-ticket-btn-v46{background:#128C7E!important;color:#fff!important;border:0!important;border-radius:10px!important;padding:8px 10px!important;line-height:1.25!important;min-width:105px!important;font-weight:700!important}.wa-ticket-btn-v46 small{font-size:10px;color:#fff!important}.whatsapp-col{text-align:center!important;white-space:nowrap}.grid.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}@media(max-width:760px){.grid.two{grid-template-columns:1fr}}';

@@ -1,8 +1,10 @@
-/* TASNEEF V10864 — Section-by-section data loading
+/* TASNEEF V10867 — First-open + mutation-only section data loading
    هدف النسخة:
    - لا يتم تحميل كل جداول النظام عند فتح الصفحة.
    - كل قسم يحمل البيانات التي يحتاجها عند فتحه فقط.
-   - القسم المفتوح فقط يتحدث تلقائياً كل 60 ثانية.
+   - كل قسم يجلب بياناته عند فتحه أول مرة فقط.
+   - بعد الإضافة أو الحذف، refreshAll/loadAll يحدّثان القسم الحالي فوراً.
+   - لا يوجد تحديث دوري أو تحديث عند العودة للتبويب/النافذة.
    - أي loadAll/refreshAll قديم يتحول لتحديث القسم الحالي بدل عاصفة تحميل كاملة.
    - عند فشل السيرفر لا يتم مسح البيانات الموجودة في الذاكرة.
 */
@@ -10,14 +12,13 @@
   'use strict';
   if(window.__tasneefSectionLoaderV10864) return;
   window.__tasneefSectionLoaderV10864=true;
-  const BUILD='V10864_SECTION_LAZY_DATA';
-  const REFRESH_MS=60000;
+  const BUILD='V10867_FIRST_OPEN_ADD_DELETE_REFRESH';
   const FRESH_MS=45000;
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
   const S=v=>String(v??'').trim();
   const sleepFrame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
-  const state={promises:new Map(),last:new Map(),activeKey:'',timer:null,lastError:null};
+  const state={promises:new Map(),last:new Map(),activeKey:'',lastError:null,loadedSections:new Set()};
   const legacyFullLoad=typeof window.loadAll==='function'?window.loadAll:null;
   const legacyRefreshAll=typeof window.refreshAll==='function'?window.refreshAll:null;
   window.tasneefFullLoadV10864=legacyFullLoad;
@@ -410,22 +411,26 @@
   async function loadSection(key,force=false){
     key=key||activeKey();state.activeKey=key;
     if(!key||key==='other') return;
+    // V10867: الرجوع إلى قسم تم فتحه سابقاً لا يعيد أي طلب للسيرفر.
+    // force=true مخصص لما بعد الإضافة/الحذف أو تغيير نطاق يطلبه المستخدم صراحة.
+    if(!force && state.loadedSections.has(key)) return true;
     return singleFlight('section:'+key,async()=>{
       const [kind,id]=key.split(':');
       if(kind==='admin') await adminSection(id,force);
       if(kind==='supervisor') await supervisorSection(id,force);
       if(kind==='technician') await technicianSection(id,force);
+      state.loadedSections.add(key);
       try{
         const d=dset();d.__sectionLoaderBuild=BUILD;d.__sectionLoadedAt=new Date().toISOString();d.__serverPartialFailure=false;
         window.dispatchEvent(new CustomEvent('tasneef:data-loaded-v10863',{detail:{partial:false,section:key,build:BUILD}}));
       }catch(_){ }
       return true;
-    },force);
+    },force || !state.loadedSections.has(key));
   }
   async function refreshActive(force=false){return loadSection(activeKey(),force);}
   window.tasneefLoadSectionV10864=loadSection;
   window.tasneefRefreshActiveSectionV10864=refreshActive;
-  window.tasneefSectionLoaderStatusV10864=()=>({build:BUILD,active:activeKey(),last:Object.fromEntries(state.last),loading:[...state.promises.keys()],lastError:S(state.lastError?.message||state.lastError||'')});
+  window.tasneefSectionLoaderStatusV10864=()=>({build:BUILD,active:activeKey(),loadedSections:[...state.loadedSections],last:Object.fromEntries(state.last),loading:[...state.promises.keys()],lastError:S(state.lastError?.message||state.lastError||'')});
 
   // V10859 يبقى مسؤولاً عن التبديل البصري والصلاحيات؛ بعده نحمل بيانات القسم فقط.
   const oldShowPage=window.showPage;
@@ -433,7 +438,7 @@
     window.showPage=function(id,btn){
       const out=oldShowPage.apply(this,arguments);
       if(out===false) return out;
-      requestAnimationFrame(()=>loadSection('admin:'+id,true).catch(()=>{}));
+      requestAnimationFrame(()=>loadSection('admin:'+id,false).catch(()=>{}));
       return out;
     };
     window.showPage.__permissionsV10817=oldShowPage.__permissionsV10817||true;
@@ -442,7 +447,7 @@
   if(typeof oldShowSup==='function'){
     window.showSupervisorWindow=function(id,btn){
       const out=oldShowSup.apply(this,arguments);if(out===false)return out;
-      requestAnimationFrame(()=>loadSection('supervisor:'+id,true).catch(()=>{}));return out;
+      requestAnimationFrame(()=>loadSection('supervisor:'+id,false).catch(()=>{}));return out;
     };
     window.showSupervisorWindow.__permissionsV10817=oldShowSup.__permissionsV10817||true;
   }
@@ -450,7 +455,7 @@
   if(typeof oldShowTech==='function'){
     window.showTechMainTab=function(id,btn){
       const out=oldShowTech.apply(this,arguments);if(out===false)return out;
-      requestAnimationFrame(()=>loadSection('technician:'+id,true).catch(()=>{}));return out;
+      requestAnimationFrame(()=>loadSection('technician:'+id,false).catch(()=>{}));return out;
     };
     window.showTechMainTab.__permissionsV10817=oldShowTech.__permissionsV10817||true;
   }
@@ -491,13 +496,8 @@
     if(watched.has(id)) setTimeout(()=>refreshActive(true).catch(()=>{}),20);
   },true);
 
-  function startTimer(){
-    if(state.timer) clearInterval(state.timer);
-    state.timer=setInterval(()=>{if(!document.hidden)refreshActive(false).catch(()=>{});},REFRESH_MS);
-  }
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshActive(false).catch(()=>{});});
-  window.addEventListener('online',()=>setTimeout(()=>refreshActive(true).catch(()=>{}),700));
-  startTimer();
+  // V10867: لا تحديث دوري، ولا تحديث عند الرجوع للنافذة، ولا عند عودة الإنترنت.
+  // إعادة الاتصال بعد عطل حقيقي تبقى من مسؤولية طبقة server resilience فقط.
 
   // إذا لم يكن هناك onload صريح (بعض الصفحات المساعدة) نحمل القسم الظاهر بعد اكتمال DOM.
   document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{state.activeKey=activeKey();},50),{once:true});
