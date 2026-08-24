@@ -102,11 +102,17 @@
     return p;
   }
 
+  function activeProjectV10866(p){
+    if(!p||p.is_active===false||p.active===false)return false;
+    const st=S(p.status||p.project_status||p.state).toLowerCase();
+    return !['inactive','stopped','ended','closed','cancelled','deleted','archived','disabled','موقوف','متوقف','منتهي','ملغي','محذوف','مؤرشف','غير نشط'].includes(st);
+  }
   async function loadUsers(force=false){
     return singleFlight('data:users',()=>setFromQuery('users',()=>paged('app_users',q=>q.order('id',{ascending:true}),8000)),force);
   }
   async function loadProjects(force=false){
-    return singleFlight('data:projects',()=>setFromQuery('projects',()=>paged('projects',q=>q.eq('is_active',true).order('id',{ascending:true}),12000)),force);
+    // V10866: لا نعتمد is_active=true وحدها لأن بعض المشاريع القديمة النشطة تكون القيمة فيها null.
+    return singleFlight('data:projects',()=>setFromQuery('projects',()=>paged('projects',q=>q.order('id',{ascending:true}),12000),rows=>A(rows).filter(activeProjectV10866)),force);
   }
   async function loadWorkers(force=false){
     return singleFlight('data:workers',()=>setFromQuery('workers',()=>paged('workers',q=>q.eq('is_active',true).order('id',{ascending:true}),18000)),force);
@@ -199,8 +205,19 @@
     return 'other';
   }
   function scopeSupervisorProjects(rows){
-    const u=user(),uid=normalizeId(u.id), list=A(rows);
-    return list.filter(p=>normalizeId(p.supervisor_id||p.app_supervisor_id||p.current_supervisor_id)===uid);
+    const u=user(), list=A(rows);
+    const ids=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id].map(normalizeId).filter(Boolean));
+    const codes=new Set([u.employee_code,u.employee_number,u.code].map(x=>S(x).toLowerCase()).filter(Boolean));
+    const names=new Set([u.full_name,u.name,u.username].map(x=>S(x).toLowerCase()).filter(Boolean));
+    const allowed=new Set(A(u.allowed_project_ids||u.project_ids||u.projects).map(v=>S(v?.id??v)).filter(Boolean));
+    return list.filter(p=>{
+      if(!activeProjectV10866(p))return false;
+      if(allowed.has(S(p.id)))return true;
+      const pids=[p.supervisor_id,p.app_supervisor_id,p.current_supervisor_id,p.supervisor_user_id,p.manager_id].map(normalizeId).filter(Boolean);
+      const pcodes=[p.supervisor_employee_code,p.supervisor_code].map(x=>S(x).toLowerCase()).filter(Boolean);
+      const pnames=[p.supervisor_name,p.manager_name].map(x=>S(x).toLowerCase()).filter(Boolean);
+      return pids.some(v=>ids.has(v))||pcodes.some(v=>codes.has(v))||pnames.some(v=>names.has(v));
+    });
   }
   function workerProjectIds(w){
     const out=[];
@@ -223,7 +240,8 @@
       if(window.ProjectsService?.getAccessibleProjects){
         try{rows=A(await window.ProjectsService.getAccessibleProjects(u.id,'supervisor',{period:'current',force:true}));}catch(e){console.warn(BUILD,'ProjectsService',e);}
       }
-      if(!rows.length){rows=scopeSupervisorProjects(await paged('projects',q=>q.eq('is_active',true).order('id',{ascending:true}),12000));}
+      if(!rows.length){rows=scopeSupervisorProjects(await paged('projects',q=>q.order('id',{ascending:true}),12000));}
+      rows=A(rows).filter(activeProjectV10866);
       dset().projects=rows;
       return rows;
     },force);

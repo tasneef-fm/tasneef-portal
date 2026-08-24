@@ -111,7 +111,12 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 let data = { users:[], supervisors:[], projects:[], workers:[], attendance:[], logs:[], tickets:[], contractServices:[], financeContracts:[], financeInvoices:[], financeReceipts:[], financeExpenses:[], inventoryItems:[], inventoryMovements:[], inventoryRequests:[] };
 // V10601: القاعدة التشغيلية الموحدة — لا تُعامل null أو الحقول القديمة كنشطة.
 function tasneefIsActiveRecord(row){ return !!row && row.is_active === true; }
-function activeProjects(){ return (data.projects||[]).filter(tasneefIsActiveRecord); }
+function tasneefIsActiveProjectRecordV10866(row){
+  if(!row || row.is_active===false || row.active===false) return false;
+  const s=String(row.status||row.project_status||row.state||'').trim().toLowerCase();
+  return !['inactive','stopped','ended','closed','cancelled','deleted','archived','disabled','موقوف','متوقف','منتهي','ملغي','محذوف','مؤرشف','غير نشط'].includes(s);
+}
+function activeProjects(){ return (data.projects||[]).filter(tasneefIsActiveProjectRecordV10866); }
 function activeWorkers(){ return (data.workers||[]).filter(tasneefIsActiveRecord); }
 window.tasneefIsActiveRecord=tasneefIsActiveRecord; window.activeProjects=activeProjects; window.activeWorkers=activeWorkers;
 function msg(text, type='ok'){ if(window.__tasneefPermissionBootingV10824 && type==='err' && /ليس لديك صلاحية|صلاحياتك|غير مصرح/.test(String(text||''))) return; const el=$('globalMsg')||$('loginMsg'); if(!el) return; el.className='msg '+(type==='err'?'err':''); el.textContent=text; el.classList.remove('hidden'); setTimeout(()=>el.classList.add('hidden'),4000); }
@@ -261,7 +266,7 @@ async function loadAll(){
   data.contractServicesError = contractServices.error ? contractServices.error.message : '';
   window.tasneefMarkEnd?.('core-loadAll');
 }
-function fillSelect(id, rows, label='name', allLabel=null, value='id'){ const el=$(id); if(!el) return; el.innerHTML = (allLabel!==null?`<option value="">${allLabel}</option>`:'') + rows.map(r=>`<option value="${r[value]}">${esc(r[label]||r.full_name||r.username)}</option>`).join(''); }
+function fillSelect(id, rows, label='name', allLabel=null, value='id'){ const el=$(id); if(!el) return; const old=String(el.value??''); el.innerHTML = (allLabel!==null?`<option value="">${allLabel}</option>`:'') + rows.map(r=>`<option value="${r[value]}">${esc(r[label]||r.full_name||r.username)}</option>`).join(''); if(old && [...el.options].some(o=>String(o.value)===old)) el.value=old; }
 function userRoleLabel(role){ return ({admin:'مدير عام',general_manager:'مدير عام',financial_manager:'مدير مالي',operations_manager:'مدير تشغيلي',warehouse_manager:'مدير مخازن',technician:'فني',supervisor:'مشرف'}[role] || role || '-'); }
 function approvalRoleForUser(){ const u=session()||{}; return u.role==='general_manager' ? 'general' : (u.role==='admin' ? 'general' : (u.role==='financial_manager' ? 'finance' : (u.role==='operations_manager' ? 'ops' : (u.role==='warehouse_manager' ? 'warehouse' : '')))); }
 function supervisorName(id){ return data.users.find(u=>String(u.id)===String(id))?.full_name || data.supervisors.find(u=>String(u.id)===String(id))?.full_name || '-'; }
@@ -26289,13 +26294,13 @@ ${finalUrl}
 /* ===== V10707: unified project source and stable supervisor bootstrap ===== */
 (function(){
   'use strict';
-  const VERSION='v10849-unified4-visible-project-field';
+  const VERSION='v10866-project-ticket-supervisor-stability';
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
   let latestRequestId=0;
   const cache=new Map();
   function currentUser(){ try{return JSON.parse(localStorage.getItem('tasneef_user')||'{}')||{};}catch(_){return{};} }
-  function active(r){ return r && r.is_active!==false && r.active!==false && !['inactive','stopped','موقوف'].includes(S(r.status).toLowerCase()); }
+  function active(r){ const st=S(r?.status||r?.project_status||r?.state).toLowerCase(); return !!r && r.is_active!==false && r.active!==false && !['inactive','stopped','ended','closed','cancelled','deleted','archived','disabled','موقوف','متوقف','منتهي','ملغي','محذوف','مؤرشف','غير نشط'].includes(st); }
   function normScopeV10802(v){return S(v).toLowerCase().replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/[^\p{L}\p{N}]+/gu,' ').replace(/\s+/g,' ').trim();}
   function stringSetV10802(values){return new Set((values||[]).map(S).filter(Boolean));}
   function normSetV10802(values){return new Set((values||[]).map(normScopeV10802).filter(Boolean));}
@@ -26318,33 +26323,60 @@ ${finalUrl}
     const u=currentUser();
     const sid=await resolveCurrentSupervisorId(userId||u.id);
     const period=S(filters.period||'current');
-    const key=['accessible-projects-unified4',S(userId||u.id),sid,period].join('|');
+    const key=['accessible-projects-v10866',S(userId||u.id),sid,period].join('|');
     const req=++latestRequestId;
     try{
       const projects=await queryRows('projects',sb.from('projects').select('*').order('id'));
       if(req!==latestRequestId) return cache.get(key)||[];
       if(role!=='supervisor') { const rows=projects.filter(active); cache.set(key,rows); return rows; }
 
-      // V10847: المصدر الوحيد هو نفس نتيجة توزيع النظام الموحد 4 المستخدمة لتحضير اليوم والدخول والخروج.
-      if(typeof window.getUnifiedSupervisorWorkersV10713!=='function') throw new Error('مصدر النظام الموحد 4 غير جاهز');
-      const date=S(document.getElementById('attendanceDate')?.value||document.getElementById('logDate')?.value||new Date().toISOString().slice(0,10));
-      const unified=await window.getUnifiedSupervisorWorkersV10713(date,!!filters.force);
-      const projectIds=new Set();
+      // V10866: الربط المباشر في سجل المشروع هو المصدر الأول. توزيع الشهر يستخدم كحل احتياطي فقط
+      // للمشاريع القديمة التي لا تحتوي ربط مشرف مباشر. هذا يمنع ظهور المشروع ثم اختفاءه بعد التحديث.
+      let unified={assignments:[],identity:{}};
+      try{
+        if(typeof window.getUnifiedSupervisorWorkersV10713==='function'){
+          const date=S(document.getElementById('attendanceDate')?.value||document.getElementById('logDate')?.value||new Date().toISOString().slice(0,10));
+          unified=await window.getUnifiedSupervisorWorkersV10713(date,!!filters.force)||unified;
+        }
+      }catch(e){ console.warn('ProjectsService V10866 distribution fallback unavailable',e); }
+
+      const normV10866=v=>S(v).toLowerCase().replace(/[إأآا]/g,'ا').replace(/[ىي]/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/\s+/g,' ').trim();
+      const idTokens=new Set([sid,u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
+      const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normV10866).filter(Boolean));
+      const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normV10866).filter(Boolean));
+      const allowedIds=new Set(A(u.allowed_project_ids||u.project_ids||u.projects).map(v=>S(v?.id??v)).filter(Boolean));
+      const distributionIds=new Set();
       A(unified?.assignments).forEach(row=>{
-        const status=normScopeV10802(row?.status||row?.state);
-        if(['ended','inactive','cancelled','deleted','stopped','منتهي','موقوف','ملغي','محذوف','متوقف'].includes(status)) return;
+        const st=normV10866(row?.status||row?.state);
+        if(['ended','inactive','cancelled','deleted','stopped','disabled','archived','منتهي','موقوف','ملغي','محذوف','متوقف','مؤرشف'].includes(st)) return;
         const pid=S(row?.project_id||row?.project_key||row?.app_project_id);
-        if(pid) projectIds.add(pid);
+        if(pid) distributionIds.add(pid);
       });
-      const result=projects.filter(p=>projectIds.has(S(p.id)) && active(p));
+      const directState=p=>{
+        const ids=[p?.supervisor_id,p?.app_supervisor_id,p?.current_supervisor_id,p?.supervisor_user_id,p?.manager_id].map(S).filter(Boolean);
+        const codes=[p?.supervisor_employee_code,p?.supervisor_code].map(normV10866).filter(Boolean);
+        const names=[p?.supervisor_name,p?.manager_name].map(normV10866).filter(Boolean);
+        const hasDirect=ids.length||codes.length||names.length;
+        const match=ids.some(v=>idTokens.has(v))||codes.some(v=>codeTokens.has(v))||names.some(v=>nameTokens.has(v));
+        return {hasDirect:!!hasDirect,match};
+      };
+      const result=projects.filter(p=>{
+        if(!active(p)) return false;
+        const pid=S(p.id);
+        if(allowedIds.has(pid)) return true;
+        const direct=directState(p);
+        if(direct.hasDirect) return direct.match;
+        return distributionIds.has(pid);
+      });
       cache.set(key,result);
-      window.__tasneefUnified4AccessibleProjectsV10847={
-        projectIds:[...projectIds],count:result.length,month:date.slice(0,7),
-        supervisorId:S(unified?.identity?.sid||sid),matchStrategy:S(unified?.identity?.matchStrategy),at:new Date().toISOString()
+      window.__tasneefAccessibleProjectsV10866={
+        projectIds:result.map(p=>S(p.id)),count:result.length,distributionIds:[...distributionIds],
+        supervisorId:S(unified?.identity?.sid||sid),supervisorCode:S(unified?.identity?.code||u.employee_code),
+        strategy:'direct-project-link-first-distribution-fallback',at:new Date().toISOString()
       };
       return result;
     }catch(e){
-      console.error('ProjectsService.getAccessibleProjects unified4 failed',e);
+      console.error('ProjectsService.getAccessibleProjects V10866 failed',e);
       if(cache.has(key)) return cache.get(key);
       throw e;
     }

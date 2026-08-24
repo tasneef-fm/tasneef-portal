@@ -71,29 +71,43 @@
     const date=S($('attendanceDate')?.value||$('logDate')?.value||currentDate());
     const unified=await window.getUnifiedSupervisorWorkersV10713(date,force);
     const assignments=A(unified?.assignments).filter(activeDistribution);
-    const projectIds=new Set(assignments.map(projectIdOf).filter(Boolean));
+    const distributionIds=new Set(assignments.map(projectIdOf).filter(Boolean));
 
     const pr=await window.sb.from('projects').select('*').order('id').limit(10000);
     if(pr.error)throw pr.error;
     const allProjects=A(pr.data);
     const projectById=new Map(allProjects.map(p=>[S(p.id),p]));
+    const normToken=v=>norm(v);
+    const idTokens=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
+    const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normToken).filter(Boolean));
+    const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normToken).filter(Boolean));
+    const allowedIds=new Set(A(u.allowed_project_ids||u.project_ids||u.projects).map(v=>S(v?.id??v)).filter(Boolean));
+    function directLinkState(p){
+      const ids=[p?.supervisor_id,p?.app_supervisor_id,p?.current_supervisor_id,p?.supervisor_user_id,p?.manager_id].map(S).filter(Boolean);
+      const codes=[p?.supervisor_employee_code,p?.supervisor_code].map(normToken).filter(Boolean);
+      const names=[p?.supervisor_name,p?.manager_name].map(normToken).filter(Boolean);
+      return {has:!!(ids.length||codes.length||names.length),match:ids.some(v=>idTokens.has(v))||codes.some(v=>codeTokens.has(v))||names.some(v=>nameTokens.has(v))};
+    }
     const projects=[];
-    projectIds.forEach(pid=>{
-      const master=projectById.get(pid);
-      if(master&&!activeProject(master))return;
-      const dist=assignments.find(r=>projectIdOf(r)===pid)||{};
-      const base=master||{id:pid,name:projectNameOf(dist)||pid,is_active:true,active:true,status:'active'};
-      projects.push(Object.assign({},base,{
-        id:pid,name:S(base.name||projectNameOf(dist)||pid),
-        supervisor_id:Number(u.id)||u.id||base.supervisor_id,
-        app_supervisor_id:Number(u.id)||u.id||base.app_supervisor_id,
-        current_supervisor_id:Number(u.id)||u.id||base.current_supervisor_id,
-        supervisor_name:S(unified?.identity?.name||u.full_name||u.name||u.username),
-        __unified4_link:true
+    allProjects.forEach(master=>{
+      if(!activeProject(master))return;
+      const direct=directLinkState(master);
+      const pid=S(master.id);
+      if(!allowedIds.has(pid) && (direct.has?!direct.match:!distributionIds.has(pid)))return;
+      projects.push(Object.assign({},master,{
+        id:pid,name:S(master.name||master.project_name||pid),
+        __unified4_link:distributionIds.has(pid),__direct_supervisor_link_v10866:direct.match
       }));
+    });
+    // مشروع قديم موجود في التوزيع وليس له سجل master كامل يبقى ظاهرًا بدل أن يختفي.
+    distributionIds.forEach(pid=>{
+      if(projectById.has(pid)||projects.some(p=>S(p.id)===pid))return;
+      const dist=assignments.find(r=>projectIdOf(r)===pid)||{};
+      projects.push({id:pid,name:projectNameOf(dist)||pid,is_active:true,active:true,status:'active',supervisor_id:Number(u.id)||u.id,supervisor_name:S(unified?.identity?.name||u.full_name||u.name||u.username),__unified4_link:true});
     });
     const finalProjects=uniqueProjects(projects);
     const finalIds=new Set(finalProjects.map(p=>S(p.id)));
+    const projectIds=finalIds;
 
     const workers=A(unified?.workers).map(w=>{
       const wProjects=A(w?.projects).length?A(w.projects):mergeWorkerProject(w,assignments);
