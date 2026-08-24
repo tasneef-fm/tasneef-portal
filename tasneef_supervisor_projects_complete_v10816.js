@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10868 - Stable all supervisor projects, single authoritative load ===== */
+/* ===== TASNEEF V10869 - Each supervisor sees only own linked projects, stable list ===== */
 (function(){
   'use strict';
   if(window.__tasneefSupervisorProjectsUnified4V10849) return;
   window.__tasneefSupervisorProjectsUnified4V10849=true;
 
-  const BUILD='V10868_STABLE_ALL_SUPERVISOR_PROJECTS';
+  const BUILD='V10869_OWN_SUPERVISOR_PROJECTS_ONLY';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -81,22 +81,26 @@
     const idTokens=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
     const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normToken).filter(Boolean));
     const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normToken).filter(Boolean));
-    const allowedIds=new Set([
-      ...A(u.allowed_project_ids||u.project_ids||u.projects),
-      ...A(window.PermissionsService?.state?.projectIds)
-    ].map(v=>S(v?.id??v)).filter(Boolean));
+    // V10869: نطاق مشاريع المشرف لا يعتمد على صلاحيات الحساب إطلاقاً.
+    // الربط المباشر في سجل المشروع هو المرجع الأول، والتوزيع الفعلي احتياط للمشاريع القديمة فقط.
     function directLinkState(p){
-      const ids=[p?.supervisor_id,p?.app_supervisor_id,p?.current_supervisor_id,p?.supervisor_user_id,p?.manager_id].map(S).filter(Boolean);
-      const codes=[p?.supervisor_employee_code,p?.supervisor_code].map(normToken).filter(Boolean);
-      const names=[p?.supervisor_name,p?.manager_name].map(normToken).filter(Boolean);
-      return {has:!!(ids.length||codes.length||names.length),match:ids.some(v=>idTokens.has(v))||codes.some(v=>codeTokens.has(v))||names.some(v=>nameTokens.has(v))};
+      // نعتمد أول حقل ربط فعلي حسب الأولوية، ولا نسمح لحقل قديم ثانوي أن يربط المشروع بمشرف سابق.
+      const primaryId=S(p?.supervisor_id||p?.app_supervisor_id||p?.current_supervisor_id||p?.supervisor_user_id||p?.manager_id);
+      if(primaryId)return {has:true,match:idTokens.has(primaryId),source:'id'};
+      const primaryCode=normToken(p?.supervisor_employee_code||p?.supervisor_code);
+      if(primaryCode)return {has:true,match:codeTokens.has(primaryCode),source:'code'};
+      const primaryName=normToken(p?.supervisor_name||p?.manager_name);
+      if(primaryName)return {has:true,match:nameTokens.has(primaryName),source:'name'};
+      return {has:false,match:false,source:''};
     }
     const projects=[];
     allProjects.forEach(master=>{
       if(!activeProject(master))return;
       const direct=directLinkState(master);
       const pid=S(master.id);
-      if(!allowedIds.has(pid) && (direct.has?!direct.match:!distributionIds.has(pid)))return;
+      // إذا كان للمشروع مشرف محدد، فلا يظهر إلا لذلك المشرف حتى لو وُجد نطاق صلاحيات عام.
+      if(direct.has){ if(!direct.match)return; }
+      else if(!distributionIds.has(pid))return;
       projects.push(Object.assign({},master,{
         id:pid,name:S(master.name||master.project_name||pid),
         __unified4_link:distributionIds.has(pid),__direct_supervisor_link_v10866:direct.match
