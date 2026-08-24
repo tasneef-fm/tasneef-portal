@@ -1,4 +1,4 @@
-/* TASNEEF V10867 — First-open + mutation-only section data loading
+/* TASNEEF V10868 — Stable supervisor projects + first-open/mutation-only loading
    هدف النسخة:
    - لا يتم تحميل كل جداول النظام عند فتح الصفحة.
    - كل قسم يحمل البيانات التي يحتاجها عند فتحه فقط.
@@ -12,7 +12,7 @@
   'use strict';
   if(window.__tasneefSectionLoaderV10864) return;
   window.__tasneefSectionLoaderV10864=true;
-  const BUILD='V10867_FIRST_OPEN_ADD_DELETE_REFRESH';
+  const BUILD='V10868_STABLE_SUPERVISOR_ALL_PROJECTS';
   const FRESH_MS=45000;
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
@@ -210,7 +210,10 @@
     const ids=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id].map(normalizeId).filter(Boolean));
     const codes=new Set([u.employee_code,u.employee_number,u.code].map(x=>S(x).toLowerCase()).filter(Boolean));
     const names=new Set([u.full_name,u.name,u.username].map(x=>S(x).toLowerCase()).filter(Boolean));
-    const allowed=new Set(A(u.allowed_project_ids||u.project_ids||u.projects).map(v=>S(v?.id??v)).filter(Boolean));
+    const allowed=new Set([
+      ...A(u.allowed_project_ids||u.project_ids||u.projects),
+      ...A(window.PermissionsService?.state?.projectIds)
+    ].map(v=>S(v?.id??v)).filter(Boolean));
     return list.filter(p=>{
       if(!activeProjectV10866(p))return false;
       if(allowed.has(S(p.id)))return true;
@@ -237,14 +240,32 @@
   }
   async function loadSupervisorProjects(force=false){
     return singleFlight('sup:projects',async()=>{
+      const d=dset();
+      // V10868: مصدر مشاريع المشرف الموحّد هو المرجع النهائي. هذا المصدر يجمع:
+      // الربط المباشر بالمشرف + allowed_project_ids + مشاريع التوزيع الحالية.
+      // كان Section Loader يعيد كتابة data.projects بعده بمصدر أضيق، فتظهر مشاريع ثم تختفي.
+      if(typeof window.refreshSupervisorProjectsUnified4V10849==='function'){
+        try{
+          const ctx=await window.refreshSupervisorProjectsUnified4V10849();
+          if(ctx && Array.isArray(ctx.projects)){
+            d.projects=A(ctx.projects).filter(activeProjectV10866);
+            return d.projects;
+          }
+        }catch(e){
+          console.warn(BUILD,'authoritative supervisor projects',e);
+          // عند فشل المصدر الموحّد لا نمسح قائمة صحيحة موجودة بالفعل في الذاكرة.
+          if(A(d.projects).length) return d.projects;
+        }
+      }
       const u=user();let rows=[];
       if(window.ProjectsService?.getAccessibleProjects){
         try{rows=A(await window.ProjectsService.getAccessibleProjects(u.id,'supervisor',{period:'current',force:true}));}catch(e){console.warn(BUILD,'ProjectsService',e);}
       }
       if(!rows.length){rows=scopeSupervisorProjects(await paged('projects',q=>q.order('id',{ascending:true}),12000));}
       rows=A(rows).filter(activeProjectV10866);
-      dset().projects=rows;
-      return rows;
+      // لا نستبدل قائمة مشاريع المشرف الجيدة بقائمة فارغة بسبب فشل/تأخر مصدر احتياطي.
+      if(rows.length || !A(d.projects).length) d.projects=rows;
+      return A(d.projects);
     },force);
   }
   async function loadSupervisorWorkers(force=false){

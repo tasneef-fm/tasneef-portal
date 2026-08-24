@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10849 - Unified System 4 visible single authoritative supervisor project load ===== */
+/* ===== TASNEEF V10868 - Stable all supervisor projects, single authoritative load ===== */
 (function(){
   'use strict';
   if(window.__tasneefSupervisorProjectsUnified4V10849) return;
   window.__tasneefSupervisorProjectsUnified4V10849=true;
 
-  const BUILD='V10849_UNIFIED4_VISIBLE_PROJECT_FIELD';
+  const BUILD='V10868_STABLE_ALL_SUPERVISOR_PROJECTS';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -32,14 +32,14 @@
   }
   function refill(projects){
     const empty=!A(projects).length;
-    setSelect('logProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
-    setSelect('attendanceProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل مشاريع المشرف');
-    setSelect('ticketProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
-    setSelect('supTicketFilterProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل المشاريع');
-    setSelect('supOrderProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
-    setSelect('supOrderFilterProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'كل المشاريع');
-    setSelect('supInventoryRequestProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
-    setSelect('supClientReportProject',projects,empty?'لا توجد مشاريع مرتبطة بك في توزيع الشهر الحالي':'اختر المشروع');
+    setSelect('logProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'اختر المشروع');
+    setSelect('attendanceProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'كل مشاريع المشرف');
+    setSelect('ticketProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'اختر المشروع');
+    setSelect('supTicketFilterProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'كل المشاريع');
+    setSelect('supOrderProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'اختر المشروع');
+    setSelect('supOrderFilterProjectV10061',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'كل المشاريع');
+    setSelect('supInventoryRequestProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'اختر المشروع');
+    setSelect('supClientReportProject',projects,empty?'لا توجد مشاريع مرتبطة بحسابك':'اختر المشروع');
   }
   function uniqueProjects(rows){
     const map=new Map();
@@ -81,7 +81,10 @@
     const idTokens=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
     const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normToken).filter(Boolean));
     const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normToken).filter(Boolean));
-    const allowedIds=new Set(A(u.allowed_project_ids||u.project_ids||u.projects).map(v=>S(v?.id??v)).filter(Boolean));
+    const allowedIds=new Set([
+      ...A(u.allowed_project_ids||u.project_ids||u.projects),
+      ...A(window.PermissionsService?.state?.projectIds)
+    ].map(v=>S(v?.id??v)).filter(Boolean));
     function directLinkState(p){
       const ids=[p?.supervisor_id,p?.app_supervisor_id,p?.current_supervisor_id,p?.supervisor_user_id,p?.manager_id].map(S).filter(Boolean);
       const codes=[p?.supervisor_employee_code,p?.supervisor_code].map(normToken).filter(Boolean);
@@ -257,6 +260,7 @@
   window.refreshSupervisorProjectsUnified4V10847=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10848=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10849=()=>apply(true);
+  window.refreshSupervisorProjectsUnified4V10868=()=>apply(true);
   // V10849: المصدر القديم متوقف، والقائمة تبقى ظاهرة دائمًا أثناء تحميل المصدر الموحد الوحيد.
   console.log('Tasneef '+BUILD+' loaded');
 })();
