@@ -67,6 +67,7 @@
 .sup-worker-kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}.sup-worker-kpi{border:1px solid #d6e4df;background:#f5faf8;border-radius:14px;padding:12px;text-align:center}.sup-worker-kpi small{display:block;color:#667b74}.sup-worker-kpi b{font-size:25px;color:#07513f}.sup-worker-panels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 16px}.sup-worker-panel{border:1px solid #d6e4df;border-radius:14px;padding:12px;background:#fff}.sup-worker-panel h3{margin:0 0 10px;font-size:15px;color:#07513f}.sup-worker-list{display:grid;gap:7px;max-height:230px;overflow:auto}.sup-worker-row{display:flex;align-items:center;gap:8px;border:1px solid #e1ebe7;border-radius:10px;padding:8px;background:#f8fbfa}.sup-worker-row input{width:auto;margin:0}.sup-worker-row span{flex:1}.sup-worker-row small{color:#64756f}.sup-worker-empty{padding:12px;text-align:center;color:#73817d;border:1px dashed #cfddd8;border-radius:10px}.sup-worker-action{width:100%;margin-top:10px}.sup-busy{opacity:.65;pointer-events:none}
 @media(max-width:760px){.sup-worker-kpis,.sup-worker-panels{grid-template-columns:1fr}.sup-worker-list{max-height:180px}}
 </style>
+<link rel="stylesheet" href="tasneef_mobile_smooth_v10865.css?v=10865-mobile-smooth">
 </head>
 <body onload="initSupervisor()">
 <div class="mobile-shell">
@@ -222,7 +223,7 @@ window.__TASNEEF_BUILD__="V10849-UNIFIED4-VISIBLE-PROJECT-FIELD";
     if (loadingPromise) return loadingPromise;
     loadingPromise = new Promise(function(resolve,reject){
       const script=document.createElement('script');
-      script.src='tasneef_orders_v10801.js?v=10857-project-master-stable';
+      script.src='tasneef_orders_v10801.js?v=10865-project-mobile-stable';
       script.async=true;
       script.onload=function(){
         try { if(typeof window.supOrdersLoadV10061==='function') window.supOrdersLoadV10061(); } finally { resolve(); }

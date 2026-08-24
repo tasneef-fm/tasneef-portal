@@ -1,0 +1,31 @@
+/* TASNEEF V10865 — mobile-only smooth layout. Desktop behavior is unchanged. */
+@media (max-width:1000px){
+  html,body{max-width:100%;overflow-x:hidden;scroll-behavior:smooth}
+  body{-webkit-text-size-adjust:100%;touch-action:pan-y}
+  .app-shell,.content,main,.page,.sup-page{min-width:0;max-width:100%}
+  .content{overflow:visible!important}
+  .table-wrap,.tech-table-wrap{-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  img,video,canvas,iframe{max-width:100%}
+  .card{max-width:100%;overflow-wrap:anywhere}
+  input,select,textarea,button{font-size:16px}
+  button,.nav,.sup-tab,.tech-main-tab,.tech-ticket-tab{min-height:44px}
+}
+@media (max-width:760px){
+  /* قائمة الإدارة تصبح شريطاً أفقياً خفيفاً بدلاً من شبكة طويلة قبل المحتوى. */
+  .app-shell>.side{
+    position:sticky!important;top:0!important;z-index:90!important;height:auto!important;
+    display:flex!important;align-items:center!important;gap:6px!important;
+    overflow-x:auto!important;overflow-y:hidden!important;padding:8px!important;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain;
+  }
+  .app-shell>.side::-webkit-scrollbar{display:none}
+  .app-shell>.side .brand{display:none!important}
+  .app-shell>.side .nav{flex:0 0 auto!important;width:auto!important;white-space:nowrap!important;margin:0!important;padding:9px 12px!important;text-align:center!important}
+  .content{padding:10px!important}
+  .hero{margin:-10px -10px 12px!important;padding:16px!important;gap:10px!important}
+  .hero h1{font-size:22px}
+  .card{border-radius:16px;padding:13px;margin-bottom:12px}
+  .filters>*{min-width:0!important;flex:1 1 100%!important}
+  .actions{gap:7px}
+  .actions>button{flex:1 1 140px}
+}
