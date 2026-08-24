@@ -424,7 +424,7 @@
     exportExcel,print:printOrders,quote
   };
   window.OrdersUI=OrdersUI;
-  window.tasneefOrders10400={load,refresh:OrdersUI.refresh,save,edit:(i)=>state.rows[i]&&edit(state.rows[i].id),del:(i)=>state.rows[i]&&archive(state.rows[i].id),view:(i)=>state.rows[i]&&view(state.rows[i].id),page:d=>OrdersUI.page(d),clear:resetForm,render:renderCards,exportExcel,printFiltered:printOrders,openQuoteBuilder:quote};
+  window.tasneefOrders10400={load,refresh:load,save,edit:(i)=>state.rows[i]&&edit(state.rows[i].id),del:(i)=>state.rows[i]&&archive(state.rows[i].id),view:(i)=>state.rows[i]&&view(state.rows[i].id),page:d=>OrdersUI.page(d),clear:resetForm,render:renderCards,exportExcel,printFiltered:printOrders,openQuoteBuilder:quote};
   window.saveOrderV233=save;window.clearOrderFormV233=resetForm;window.renderOrdersV233=load;window.deleteCurrentOrderV233=OrdersUI.archiveCurrent;
   window.supOrdersLoadV10061=load;window.supOrdersRenderV10061=load;window.supOrdersSaveV10061=save;window.supOrdersClearV10061=resetForm;
 

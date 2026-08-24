@@ -312,11 +312,7 @@
       case 'tickets':
         await Promise.all([loadUsers(force),loadProjects(force),loadTickets(force)]);try{window.hydrateForms?.();window.renderTickets?.();}catch(_){ }break;
       case 'orders':
-        // V10865: projects must be ready before the orders UI hydrates its project dropdowns.
-        // The previous lazy loader called the orders rows loader only, so the form/filter could open empty.
-        await loadProjects(force);
-        if(window.OrdersUI?.refresh) await window.OrdersUI.refresh();
-        else if(window.tasneefOrders10400?.refresh) await window.tasneefOrders10400.refresh();
+        if(window.tasneefOrders10400?.refresh) await window.tasneefOrders10400.refresh();
         else if(typeof window.renderOrdersV233==='function') await window.renderOrdersV233();
         break;
       case 'inventoryAudit':
@@ -369,9 +365,7 @@
       await Promise.all([loadSupervisorWorkers(force),loadLogs(r.from,r.to,force,'sup:summary:logs'),loadAttendance(r.from,r.to,force,'sup:summary:attendance'),loadSupervisorTickets(force)]);
       try{window.renderSupervisorDailySummary?.();}catch(_){ }
     }else if(id==='supOrders'){
-      // V10865: refresh project references together with supervisor orders.
-      if(window.OrdersUI?.refresh) await window.OrdersUI.refresh();
-      else if(window.tasneefOrders10400?.refresh) await window.tasneefOrders10400.refresh();
+      if(window.tasneefOrders10400?.refresh) await window.tasneefOrders10400.refresh();
     }else if(id==='supInventory'){
       try{await window.supervisorInventoryLoad?.();}catch(_){ }
     }else if(id==='supAdminTasks'){
