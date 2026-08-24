@@ -1,4 +1,4 @@
-/* TASNEEF V10870 — Own supervisor projects + legacy mixed supervisor identity + first-open/mutation-only loading
+/* TASNEEF V10872 — Root supervisor project binding + first-open/mutation-only loading
    هدف النسخة:
    - لا يتم تحميل كل جداول النظام عند فتح الصفحة.
    - كل قسم يحمل البيانات التي يحتاجها عند فتحه فقط.
@@ -12,7 +12,7 @@
   'use strict';
   if(window.__tasneefSectionLoaderV10864) return;
   window.__tasneefSectionLoaderV10864=true;
-  const BUILD='V10870_SUPERVISOR_MIXED_IDENTITY_PROJECT_LINK';
+  const BUILD='V10872_SUPERVISOR_PROJECT_ROOT_BINDING';
   const FRESH_MS=45000;
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
@@ -246,9 +246,9 @@
       // V10869: مصدر مشاريع المشرف الموحّد هو المرجع النهائي. هذا المصدر يجمع فقط:
       // الربط المباشر بالمشرف، مع التوزيع الفعلي كاحتياط للمشاريع القديمة فقط.
       // كان Section Loader يعيد كتابة data.projects بعده بمصدر أضيق، فتظهر مشاريع ثم تختفي.
-      if(typeof window.refreshSupervisorProjectsUnified4V10870==='function' || typeof window.refreshSupervisorProjectsUnified4V10849==='function'){
+      if(typeof window.refreshSupervisorProjectsUnified4V10872==='function' || typeof window.refreshSupervisorProjectsUnified4V10870==='function' || typeof window.refreshSupervisorProjectsUnified4V10849==='function'){
         try{
-          const refreshProjects=window.refreshSupervisorProjectsUnified4V10870||window.refreshSupervisorProjectsUnified4V10849;
+          const refreshProjects=window.refreshSupervisorProjectsUnified4V10872||window.refreshSupervisorProjectsUnified4V10870||window.refreshSupervisorProjectsUnified4V10849;
           const ctx=await refreshProjects();
           if(ctx && Array.isArray(ctx.projects)){
             d.projects=A(ctx.projects).filter(activeProjectV10866);

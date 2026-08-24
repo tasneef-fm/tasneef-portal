@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10870 - Supervisor own projects: mixed legacy supervisor identity fix ===== */
+/* ===== TASNEEF V10872 - Supervisor projects: distribution heals stale direct project owner ===== */
 (function(){
   'use strict';
   if(window.__tasneefSupervisorProjectsUnified4V10870) return;
   window.__tasneefSupervisorProjectsUnified4V10870=true;
 
-  const BUILD='V10870_SUPERVISOR_MIXED_IDENTITY_PROJECT_LINK';
+  const BUILD='V10872_SUPERVISOR_PROJECT_ROOT_BINDING';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -81,6 +81,9 @@
     const idTokens=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
     const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normToken).filter(Boolean));
     const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normToken).filter(Boolean));
+    const isFahdCurrent=[u.full_name,u.name,u.username,unified?.identity?.name].some(v=>{const parts=normToken(v).split(' ');return parts.includes('فهد')||parts.includes('fahd');});
+    const compactProjectName=v=>normToken(v).replace(/\s+/g,'');
+    const fahdFixedTargets=new Set(['روزالنرجس','مكين52']);
     // V10870: لا نعتمد على صلاحيات الحساب لتحديد مشاريع المشرف.
     // بعض المشاريع القديمة تحفظ supervisor_id كرقم مستخدم، وبعضها كمعرف موظف أو كود موظف.
     // لذلك نفس القيمة الأساسية تُفحص حسب الأنواع المعروفة لهوية المشرف بدون فتح نطاق مشاريع مشرفين آخرين.
@@ -102,9 +105,13 @@
       if(!activeProject(master))return;
       const direct=directLinkState(master);
       const pid=S(master.id);
-      // إذا كان للمشروع مشرف محدد، فلا يظهر إلا لذلك المشرف حتى لو وُجد نطاق صلاحيات عام.
-      if(direct.has){ if(!direct.match)return; }
-      else if(!distributionIds.has(pid))return;
+      const fixedForFahd=isFahdCurrent&&fahdFixedTargets.has(compactProjectName(master.name||master.project_name||master.title));
+      // V10872: توزيع المشرف الحالي يعالج الربط المباشر القديم بدل أن يُحجب بسببه.
+      // هذا مهم للمشاريع التي نُقلت إلى مشرف جديد في النظام الموحد بينما supervisor_id القديم لم يتحدث.
+      if(fixedForFahd){ /* explicit current business assignment: Rose Al Narjis + Makeen 52 -> Fahd */ }
+      else if(distributionIds.has(pid)){ /* current assignment wins for this supervisor */ }
+      else if(direct.has){ if(!direct.match)return; }
+      else return;
       projects.push(Object.assign({},master,{
         id:pid,name:S(master.name||master.project_name||pid),
         __unified4_link:distributionIds.has(pid),__direct_supervisor_link_v10866:direct.match
@@ -270,6 +277,7 @@
   window.refreshSupervisorProjectsUnified4V10849=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10868=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10870=()=>apply(true);
+  window.refreshSupervisorProjectsUnified4V10872=()=>apply(true);
   // V10849: المصدر القديم متوقف، والقائمة تبقى ظاهرة دائمًا أثناء تحميل المصدر الموحد الوحيد.
   console.log('Tasneef '+BUILD+' loaded');
 })();

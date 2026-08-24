@@ -851,7 +851,23 @@ function printWorkersFiltered(){
     const row={name, operation_type:S($('cu413PType')?.value||'daily_visit'), required_daily_minutes:N($('cu413PReq')?.value), status:S($('cu413PStatus')?.value||'active'), state:S($('cu413PStatus')?.value||'active'), is_active:S($('cu413PStatus')?.value||'active')==='active', active:S($('cu413PStatus')?.value||'active')==='active', supervisor_employee_code:supCode||null, supervisor_name:supName||null, supervisor_id:supUserId, current_supervisor_id:supUserId, app_supervisor_id:supUserId, buildings_count:N($('cu413PBuildings')?.value), units_count:N($('cu413PUnits')?.value), project_start_date:pStart, project_end_date:pEnd, contract_start:pStart, contract_end:pEnd, start_date:pStart, end_date:pEnd, updated_at:new Date().toISOString()};
     let r;
     if(pid) r=await c.from('projects').update(row).eq('id',pid).select(); else r=await c.from('projects').insert(row).select();
-    if(r.error){showMsg('تعذر حفظ المشروع: '+r.error.message,true);return;}
+    // V10872: إذا كان مخطط projects أقدم ولا يحتوي أحد الحقول الإضافية، لا نفشل حفظ المشروع كله.
+    // نحفظ الحقول الأساسية المؤكدة أولًا ثم نحاول الحقول الإضافية منفردة.
+    if(r.error){
+      const base={name,operation_type:row.operation_type,required_daily_minutes:row.required_daily_minutes,status:row.status,is_active:row.is_active,active:row.active,supervisor_id:supUserId};
+      r=pid?await c.from('projects').update(base).eq('id',pid).select():await c.from('projects').insert(base).select();
+      if(r.error){showMsg('تعذر حفظ المشروع: '+r.error.message,true);return;}
+      const fallbackPid=pid||S((r.data||[])[0]?.id||'');
+      if(fallbackPid){
+        const optional=[
+          {supervisor_employee_code:supCode||null},{supervisor_name:supName||null},{state:row.state},
+          {buildings_count:row.buildings_count},{units_count:row.units_count},{project_start_date:pStart},{project_end_date:pEnd},
+          {contract_start:pStart},{contract_end:pEnd},{start_date:pStart},{end_date:pEnd},{updated_at:row.updated_at},
+          {current_supervisor_id:supUserId},{app_supervisor_id:supUserId}
+        ];
+        for(const pay of optional){try{await c.from('projects').update(pay).eq('id',fallbackPid);}catch(_){}}
+      }
+    }
     const savedPid=pid||S((r.data||[])[0]?.id||'');
     if(savedPid){
       const m=todayMonth();
@@ -883,6 +899,20 @@ function printWorkersFiltered(){
       supervisor_name:workerName(sup),
       updated_at:now
     };
+
+    // V10872 ROOT FIX: ربط التوزيع يجب أن يحدّث مالك المشروع نفسه أيضًا.
+    // سابقًا كان monthly_distribution يتغير بينما projects.supervisor_id يبقى على مشرف قديم،
+    // فتستبعد صفحة المشرف المشروع رغم أن التوزيع الجديد صحيح. supervisor_id هو الحقل المؤكد
+    // في جدول projects لذلك نكتبه منفردًا أولًا؛ الحقول القديمة الإضافية اختيارية ولا تعطل الربط.
+    for(const p of projects){
+      const pid=projectId(p);
+      const pr=await c.from('projects').update({supervisor_id:supUserId}).eq('id',pid).select('id,supervisor_id');
+      if(pr.error){showMsg('تعذر تثبيت المشروع على حساب المشرف: '+pr.error.message,true);return;}
+      try{await c.from('projects').update({supervisor_employee_code:workerCode(sup)}).eq('id',pid);}catch(_){}
+      try{await c.from('projects').update({supervisor_name:workerName(sup)}).eq('id',pid);}catch(_){}
+      const local=(state.projects||[]).find(x=>projectId(x)===S(pid));
+      if(local){local.supervisor_id=supUserId;local.supervisor_employee_code=workerCode(sup);local.supervisor_name=workerName(sup);}
+    }
 
     // إصلاح الصفوف القديمة أولًا. بعض صفوف V466 كانت بلا supervisor_id، وأي UPDATE عليها يرفضه Trigger القاعدة.
     for(const p of projects){
