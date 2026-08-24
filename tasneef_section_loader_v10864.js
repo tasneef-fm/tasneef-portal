@@ -1,4 +1,4 @@
-/* TASNEEF V10869 — Own supervisor projects only + first-open/mutation-only loading
+/* TASNEEF V10870 — Own supervisor projects + legacy mixed supervisor identity + first-open/mutation-only loading
    هدف النسخة:
    - لا يتم تحميل كل جداول النظام عند فتح الصفحة.
    - كل قسم يحمل البيانات التي يحتاجها عند فتحه فقط.
@@ -12,7 +12,7 @@
   'use strict';
   if(window.__tasneefSectionLoaderV10864) return;
   window.__tasneefSectionLoaderV10864=true;
-  const BUILD='V10869_OWN_SUPERVISOR_PROJECTS_ONLY';
+  const BUILD='V10870_SUPERVISOR_MIXED_IDENTITY_PROJECT_LINK';
   const FRESH_MS=45000;
   const $=id=>document.getElementById(id);
   const A=v=>Array.isArray(v)?v:[];
@@ -210,12 +210,15 @@
     const ids=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id].map(normalizeId).filter(Boolean));
     const codes=new Set([u.employee_code,u.employee_number,u.code].map(x=>S(x).toLowerCase()).filter(Boolean));
     const names=new Set([u.full_name,u.name,u.username].map(x=>S(x).toLowerCase()).filter(Boolean));
-    // V10869: fallback صارم — لا نستخدم allowed_project_ids أو PermissionsService لتحديد مشاريع المشرف.
-    // هذه الدالة تعتمد فقط على الربط المباشر الموجود في سجل المشروع.
+    // V10870: fallback صارم — لا نستخدم allowed_project_ids أو PermissionsService.
+    // supervisor_id القديم قد يحتوي رقم المستخدم أو معرف الموظف أو كود الموظف؛ نفحصه بهذه الأنواع فقط.
     return list.filter(p=>{
       if(!activeProjectV10866(p))return false;
-      const primaryId=normalizeId(p.supervisor_id||p.app_supervisor_id||p.current_supervisor_id||p.supervisor_user_id||p.manager_id);
-      if(primaryId)return ids.has(primaryId);
+      const primary=normalizeId(p.supervisor_id||p.app_supervisor_id||p.current_supervisor_id||p.supervisor_user_id||p.manager_id);
+      if(primary){
+        const n=S(primary).toLowerCase();
+        return ids.has(primary)||codes.has(n)||names.has(n);
+      }
       const primaryCode=S(p.supervisor_employee_code||p.supervisor_code).toLowerCase();
       if(primaryCode)return codes.has(primaryCode);
       const primaryName=S(p.supervisor_name||p.manager_name).toLowerCase();
@@ -243,9 +246,10 @@
       // V10869: مصدر مشاريع المشرف الموحّد هو المرجع النهائي. هذا المصدر يجمع فقط:
       // الربط المباشر بالمشرف، مع التوزيع الفعلي كاحتياط للمشاريع القديمة فقط.
       // كان Section Loader يعيد كتابة data.projects بعده بمصدر أضيق، فتظهر مشاريع ثم تختفي.
-      if(typeof window.refreshSupervisorProjectsUnified4V10849==='function'){
+      if(typeof window.refreshSupervisorProjectsUnified4V10870==='function' || typeof window.refreshSupervisorProjectsUnified4V10849==='function'){
         try{
-          const ctx=await window.refreshSupervisorProjectsUnified4V10849();
+          const refreshProjects=window.refreshSupervisorProjectsUnified4V10870||window.refreshSupervisorProjectsUnified4V10849;
+          const ctx=await refreshProjects();
           if(ctx && Array.isArray(ctx.projects)){
             d.projects=A(ctx.projects).filter(activeProjectV10866);
             return d.projects;

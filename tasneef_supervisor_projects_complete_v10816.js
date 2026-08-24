@@ -1,10 +1,10 @@
-/* ===== TASNEEF V10869 - Each supervisor sees only own linked projects, stable list ===== */
+/* ===== TASNEEF V10870 - Supervisor own projects: mixed legacy supervisor identity fix ===== */
 (function(){
   'use strict';
-  if(window.__tasneefSupervisorProjectsUnified4V10849) return;
-  window.__tasneefSupervisorProjectsUnified4V10849=true;
+  if(window.__tasneefSupervisorProjectsUnified4V10870) return;
+  window.__tasneefSupervisorProjectsUnified4V10870=true;
 
-  const BUILD='V10869_OWN_SUPERVISOR_PROJECTS_ONLY';
+  const BUILD='V10870_SUPERVISOR_MIXED_IDENTITY_PROJECT_LINK';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -81,12 +81,16 @@
     const idTokens=new Set([u.id,u.user_id,u.supervisor_id,u.employee_id,unified?.identity?.sid,unified?.identity?.employeeId,unified?.identity?.authUserId].map(S).filter(Boolean));
     const codeTokens=new Set([u.employee_code,u.employee_number,u.code,unified?.identity?.code].map(normToken).filter(Boolean));
     const nameTokens=new Set([u.full_name,u.name,u.username,unified?.identity?.name].map(normToken).filter(Boolean));
-    // V10869: نطاق مشاريع المشرف لا يعتمد على صلاحيات الحساب إطلاقاً.
-    // الربط المباشر في سجل المشروع هو المرجع الأول، والتوزيع الفعلي احتياط للمشاريع القديمة فقط.
+    // V10870: لا نعتمد على صلاحيات الحساب لتحديد مشاريع المشرف.
+    // بعض المشاريع القديمة تحفظ supervisor_id كرقم مستخدم، وبعضها كمعرف موظف أو كود موظف.
+    // لذلك نفس القيمة الأساسية تُفحص حسب الأنواع المعروفة لهوية المشرف بدون فتح نطاق مشاريع مشرفين آخرين.
     function directLinkState(p){
-      // نعتمد أول حقل ربط فعلي حسب الأولوية، ولا نسمح لحقل قديم ثانوي أن يربط المشروع بمشرف سابق.
-      const primaryId=S(p?.supervisor_id||p?.app_supervisor_id||p?.current_supervisor_id||p?.supervisor_user_id||p?.manager_id);
-      if(primaryId)return {has:true,match:idTokens.has(primaryId),source:'id'};
+      const primaryRaw=S(p?.supervisor_id||p?.app_supervisor_id||p?.current_supervisor_id||p?.supervisor_user_id||p?.manager_id);
+      if(primaryRaw){
+        const n=normToken(primaryRaw);
+        const match=idTokens.has(primaryRaw)||codeTokens.has(n)||nameTokens.has(n);
+        return {has:true,match,source:idTokens.has(primaryRaw)?'id':codeTokens.has(n)?'legacy-code-in-id':nameTokens.has(n)?'legacy-name-in-id':'foreign-id'};
+      }
       const primaryCode=normToken(p?.supervisor_employee_code||p?.supervisor_code);
       if(primaryCode)return {has:true,match:codeTokens.has(primaryCode),source:'code'};
       const primaryName=normToken(p?.supervisor_name||p?.manager_name);
@@ -265,6 +269,7 @@
   window.refreshSupervisorProjectsUnified4V10848=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10849=()=>apply(true);
   window.refreshSupervisorProjectsUnified4V10868=()=>apply(true);
+  window.refreshSupervisorProjectsUnified4V10870=()=>apply(true);
   // V10849: المصدر القديم متوقف، والقائمة تبقى ظاهرة دائمًا أثناء تحميل المصدر الموحد الوحيد.
   console.log('Tasneef '+BUILD+' loaded');
 })();
