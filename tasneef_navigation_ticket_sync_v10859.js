@@ -164,7 +164,10 @@
 
   // Client ticket changed in another tab on the same device.
   window.addEventListener('storage',e=>{
-    if(['tasneef_client_ticket_changed_v10519','tasneef_client_ticket_changed_v10520','tasneef_client_ticket_changed_v10857','tasneef_client_ticket_changed_v10859'].includes(e.key)) fetchTickets(true);
+    if(['tasneef_client_ticket_changed_v10519','tasneef_client_ticket_changed_v10520','tasneef_client_ticket_changed_v10857','tasneef_client_ticket_changed_v10859'].includes(e.key)){
+      if(window.TasneefDataKernelV10900?.loadTickets && typeof window.tasneefRefreshTicketsV10859==='function') window.tasneefRefreshTicketsV10859(true);
+      else fetchTickets(true);
+    }
   });
 
   // V10867: لا polling ولا تحديث عند الرجوع للنافذة.

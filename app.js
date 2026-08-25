@@ -24686,9 +24686,10 @@ try{ exportSupervisorDailyPDFV10310 = window.exportSupervisorDailyPDFV10310; }ca
   }
   function boot(){
     if(!isAdminPage()) return;
-    ensureUI(); wrapAdminSave(); loadPending(true);
-    clearInterval(pollTimer); pollTimer=setInterval(()=>loadPending(true),30000);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadPending(true);});
+    ensureUI(); wrapAdminSave();
+    // V10900: load once on section/app open. No 30s polling and no focus refresh.
+    if(!window.__tasneefPendingReportsLoadedV10900){window.__tasneefPendingReportsLoadedV10900=true;loadPending(true);}
+    clearInterval(pollTimer); pollTimer=null;
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,900)); else setTimeout(boot,900);
   window.addEventListener('load',()=>setTimeout(boot,1400));
@@ -27501,7 +27502,7 @@ ${finalUrl}
     @media(max-width:1100px){.attendance-review-filters-v10831{grid-template-columns:repeat(3,1fr)}.attendance-review-filters-v10831 input{grid-column:1/-1}}
     @media(max-width:760px){.attendance-time-grid-v10830{grid-template-columns:repeat(2,1fr)}.attendance-delay-summary-v10830{grid-template-columns:1fr 1fr}.attendance-review-kpis-v10830{grid-template-columns:repeat(2,1fr)}.attendance-review-filters-v10831{grid-template-columns:1fr 1fr}.attendance-review-filters-v10831 input{grid-column:1/-1}.attendance-review-item-v10830{display:block}.attendance-review-actions-v10830{margin-top:8px}.attendance-review-reason-v10831{white-space:normal}.attendance-review-pagination-v10831>span{width:100%;text-align:center}}
   `;document.head.appendChild(st)}
-  function boot(){style();const daily=$('daily'),supLogs=$('supLogs');const timingVisible=!!((daily&&!daily.classList.contains('hidden'))||(supLogs&&supLogs.classList.contains('active')));if($('logProject')&&timingVisible){refreshTiming(true);state.timer=setInterval(()=>{const d=$('daily'),s=$('supLogs');if((d&&!d.classList.contains('hidden'))||(s&&s.classList.contains('active')))refreshTiming(Date.now()-state.lastServerAt>240000)},60000)}if($('dashboard')){setTimeout(loadReviewQueue,1500);state.reviewTimer=setInterval(()=>{const d=$('dashboard');if(d&&!d.classList.contains('hidden')&&getComputedStyle(d).display!=='none')loadReviewQueue()},300000)}}
+  function boot(){style();const daily=$('daily'),supLogs=$('supLogs');const timingVisible=!!((daily&&!daily.classList.contains('hidden'))||(supLogs&&supLogs.classList.contains('active')));if($('logProject')&&timingVisible&&!window.__tasneefTimingLoadedV10900){window.__tasneefTimingLoadedV10900=true;refreshTiming(true)}if($('dashboard')&&!window.__tasneefReviewQueueLoadedV10900){window.__tasneefReviewQueueLoadedV10900=true;setTimeout(loadReviewQueue,1500)}if(state.timer){clearInterval(state.timer);state.timer=null}if(state.reviewTimer){clearInterval(state.reviewTimer);state.reviewTimer=null}}
   document.addEventListener('DOMContentLoaded',()=>setTimeout(boot,800));window.addEventListener('load',()=>setTimeout(boot,1300));setTimeout(boot,2500);
   console.info(BUILD,'loaded');
 })();

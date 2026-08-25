@@ -148,27 +148,55 @@
     }catch(_){ }
     return /^\d+$/.test(selectedSup)?Number(selectedSup):null;
   }
+  async function schemaSafeProjectWriteV10900(c,pid,row,expected){
+    const payload=Object.assign({},row);
+    for(let attempt=0;attempt<20;attempt++){
+      let q=pid?c.from('projects').update(payload).eq('id',pid):c.from('projects').insert(payload);
+      if(pid&&expected&&Object.prototype.hasOwnProperty.call(payload,'updated_at'))q=q.eq('updated_at',expected);
+      const r=await q.select('*').single();
+      if(!r.error)return r;
+      const text=S(r.error.message||r.error.details||r.error);
+      if(pid&&expected&&/JSON object requested|0 rows|PGRST116/i.test(text))return r;
+      const m=text.match(/(?:column|Could not find the)\s+['"]?([a-zA-Z0-9_]+)['"]?(?:\s+column)?/i)||text.match(/['"]([a-zA-Z0-9_]+)['"]\s+column/i);
+      const col=m&&m[1];
+      if(col&&Object.prototype.hasOwnProperty.call(payload,col)&&col!=='name'&&col!=='supervisor_id'){
+        console.warn('V10900 project schema compatibility: dropping unsupported column',col);
+        delete payload[col];continue;
+      }
+      return r;
+    }
+    return {error:{message:'تعذر حفظ المشروع بعد التحقق من توافق أعمدة قاعدة البيانات'}};
+  }
+  async function updateOneFieldV10900(c,table,filter,payload){
+    try{let q=c.from(table).update(payload);for(const [k,v] of Object.entries(filter||{}))q=q.eq(k,v);const r=await q;if(r?.error)console.info('V10900 optional sync skipped',table,Object.keys(payload)[0],r.error.message);return !r?.error;}catch(_){return false;}
+  }
   async function saveProjectV10815(){
     const c=db();if(!c)return message('الاتصال بقاعدة البيانات غير جاهز.','err');
     const pid=S($('pr387ProjectId')?.value),selectedSup=S($('pr387Supervisor')?.value),expected=S($('pr387ProjectId')?.getAttribute('data-updated-at'));
-    const selectedName=S($('pr387Supervisor')?.selectedOptions?.[0]?.textContent).replace(/\s*\(.*/,'');
-    const numericSup=await resolveSupervisorUserIdV10871(c,selectedSup,selectedName),now=new Date().toISOString();
+    const selectedName=S($('pr387Supervisor')?.selectedOptions?.[0]?.textContent).replace(/\s*\(.*/,''),numericSup=await resolveSupervisorUserIdV10871(c,selectedSup,selectedName),now=new Date().toISOString();
     const row={name:S($('pr387Name')?.value),project_code:S($('pr387ProjectCode')?.value)||null,project_type:S($('pr387ProjectType')?.value)||null,city:S($('pr387City')?.value)||null,district:S($('pr387District')?.value)||null,responsible_name:S($('pr387Responsible')?.value)||null,contact_phone:S($('pr387ContactPhone')?.value)||null,location:S($('pr387Location')?.value),buildings_count:N($('pr387Buildings')?.value),units_count:N($('pr387Units')?.value),operation_type:S($('pr387Operation')?.value),required_daily_minutes:N($('pr387Required')?.value),friday_minutes:N($('pr387Friday')?.value),visits_per_week:N($('pr387Visits')?.value),contract_start:S($('pr387Start')?.value)||null,contract_end:S($('pr387End')?.value)||null,supervisor_id:numericSup,app_supervisor_id:numericSup,current_supervisor_id:numericSup,supervisor_employee_code:selectedSup||null,supervisor_name:selectedName||null,status:S($('pr387Status')?.value||'active'),is_active:!['inactive','stopped','ended','archived'].includes(S($('pr387Status')?.value).toLowerCase()),notes:S($('pr387Notes')?.value),updated_at:now};if(row.is_active){row.stopped_reason=null;row.stopped_at=null;}
     if(!row.name)return message('اسم المشروع مطلوب.','err');
-    let q=pid?c.from('projects').update(row).eq('id',pid):c.from('projects').insert(row);if(pid&&expected)q=q.eq('updated_at',expected);const r=await q.select('*').single();
+    const r=await schemaSafeProjectWriteV10900(c,pid,row,expected);
     if(r.error){if(pid&&expected&&/JSON object requested|0 rows|PGRST116/i.test(S(r.error.message)))return message('تم تعديل البيانات من مستخدم آخر. يرجى تحديث المشروع قبل الحفظ.','err');return message('تعذر حفظ المشروع: '+r.error.message,'err');}
     const saved=r.data||{},savedPid=S(saved.id||pid);
     if(savedPid){
       const m=new Date().toISOString().slice(0,7);
-      try{await c.from('monthly_distribution').update({supervisor_id:numericSup,supervisor_employee_code:selectedSup||null,supervisor_name:selectedName||null,updated_at:now}).eq('month_key',m).eq('project_id',savedPid).neq('status','ended');}catch(_){}
-      try{await c.from('project_monthly_settings_v387').update({supervisor_id:numericSup||selectedSup||null,supervisor_name:selectedName||null,updated_at:now}).eq('month_key',m).eq('project_id',savedPid);}catch(_){}
+      // supervisor_id is the canonical binding and must succeed independently of optional legacy columns.
+      try{let q=c.from('monthly_distribution').update({supervisor_id:numericSup}).eq('month_key',m).eq('project_id',savedPid);const rr=await q;if(rr?.error)console.warn('V10900 monthly supervisor_id sync',rr.error.message);}catch(_){}
+      if(selectedSup)await updateOneFieldV10900(c,'monthly_distribution',{month_key:m,project_id:savedPid},{supervisor_employee_code:selectedSup});
+      if(selectedName)await updateOneFieldV10900(c,'monthly_distribution',{month_key:m,project_id:savedPid},{supervisor_name:selectedName});
+      await updateOneFieldV10900(c,'project_monthly_settings_v387',{month_key:m,project_id:savedPid},{supervisor_id:numericSup||selectedSup||null});
+      if(selectedName)await updateOneFieldV10900(c,'project_monthly_settings_v387',{month_key:m,project_id:savedPid},{supervisor_name:selectedName});
       try{await c.from('contract_change_logs').insert({entity_type:'project',entity_id:savedPid,project_id:savedPid,field_name:'project_master',old_value:null,new_value:saved,changed_by:/^\d+$/.test(S(user().id))?Number(user().id):null,changed_by_name:S(user().full_name||user().username),changed_at:now,reason:'تعديل بيانات المشروع',source_section:'projects'});}catch(_){}
     }
-    message(pid?'تم تحديث المشروع ومزامنته مع العقود والخدمات.':'تم حفظ المشروع وربطه بالعقود والخدمات.');
+    message(pid?'تم تحديث المشروع وربط المشرف.':'تم حفظ المشروع وربط المشرف.');
     window.dispatchEvent(new CustomEvent('tasneef:project-updated',{detail:{projectId:savedPid,project:saved,source:'projects'}}));
-    if(window.tasneefProjectsCleanV390?.refreshAll)await window.tasneefProjectsCleanV390.refreshAll();
+    window.dispatchEvent(new CustomEvent('tasneef:data-mutated-v10900',{detail:{resources:['projects']}}));
+    if(window.TasneefDataKernelV10900?.loadSection)await window.TasneefDataKernelV10900.loadSection('admin:projects',true);
+    else if(window.tasneefProjectsCleanV390?.refreshAll)await window.tasneefProjectsCleanV390.refreshAll();
     ensureUi();
   }
+
   function hook(){
     ensureUi();const oldShow=window.showPage;if(typeof oldShow==='function'&&!oldShow.__v10815ProjectSync){const wrapped=function(id){const r=oldShow.apply(this,arguments);if(id==='projects')setTimeout(ensureUi,250);return r;};wrapped.__v10815ProjectSync=true;window.showPage=wrapped;}
     window.addEventListener('tasneef:project-updated',e=>{if(e.detail?.source!=='projects'&&window.tasneefProjectsCleanV390?.refreshAll)window.tasneefProjectsCleanV390.refreshAll();});

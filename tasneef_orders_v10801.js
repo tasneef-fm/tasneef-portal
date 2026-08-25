@@ -124,8 +124,10 @@
       // الإدارة تعتمد دائمًا على جدول المشاريع الرئيسي حتى لا يظهر المشروع الجديد ثم يختفي
       // عند وصول نتيجة RPC قديمة/مخزنة. المشرف يبقى مقيدًا بمشاريعه المصرح بها فقط.
       if(!isSupervisor()){
-        try{ masterRows=await fetchMasterProjects(); }
-        catch(e){ console.warn(BUILD,'master projects fallback:',e?.message||e); }
+        try{
+          const kernelRows=window.TasneefDataKernelV10900?.state?.master?.projects;
+          masterRows=Array.isArray(kernelRows)?normalizeProjectRows(kernelRows):await fetchMasterProjects();
+        }catch(e){ console.warn(BUILD,'master projects fallback:',e?.message||e); }
         const rows=mergeProjectRows(masterRows,window.data?.projects||[],rpcRows,serviceRows);
         state.projectOptions=rows;
       }else{
