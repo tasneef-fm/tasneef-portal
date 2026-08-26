@@ -333,12 +333,171 @@
   async function reasonDialog(title,message){return new Promise(resolve=>{let m=$('permissionsModalV10817');if(!m){m=document.createElement('div');m.id='permissionsModalV10817';m.className='perm17-modal hidden';document.body.appendChild(m);}m.innerHTML=`<div class="perm17-dialog"><h3>${esc(title)}</h3><p>${esc(message)}</p><label>سبب التغيير<textarea id="permissionReasonV10817" required></textarea></label><div class="actions"><button id="permissionReasonConfirmV10817">تأكيد</button><button class="light" id="permissionReasonCancelV10817">إلغاء</button></div></div>`;m.classList.remove('hidden');$('permissionReasonCancelV10817').onclick=()=>{m.classList.add('hidden');resolve(null);};$('permissionReasonConfirmV10817').onclick=()=>{const v=S($('permissionReasonV10817').value);if(!v)return toast('سبب التغيير مطلوب','err');m.classList.add('hidden');resolve(v);};});}
   function changedOverrides(){const keys=new Set([...Object.keys(adminState.initialOverrides),...Object.keys(adminState.overrides)]);return [...keys].filter(k=>adminState.initialOverrides[k]!==adminState.overrides[k]).map(k=>({permission_key:k,granted:Object.prototype.hasOwnProperty.call(adminState.overrides,k)?adminState.overrides[k]:null}));}
   function completeOverrideSnapshotV10823(){return CATALOG.map(p=>({permission_key:p.permission_key,granted:Object.prototype.hasOwnProperty.call(adminState.overrides,p.permission_key)?adminState.overrides[p.permission_key]:null}));}
+  /* V10903: stable user creation — create app_users row first, then bind permissions.
+     Never send a null target user id to the permission bundle path and never refresh the whole app. */
   window.saveUser=async function(){
-    const id=S($('userId')?.value),isNew=!id;if(!requirePermission(isNew?'users.create':'users.edit')||!requirePermission('users.manage_permissions'))return;const username=S($('userUsername')?.value),fullName=S($('userFullName')?.value);if(!username||!fullName)return toast('الاسم الكامل واسم المستخدم مطلوبان','err');const selectedProjects=[...$('userProjectsScope')?.selectedOptions||[]].map(o=>Number(o.value)).filter(Number.isSafeInteger);const status=S($('userStatus')?.value||'active'),oldStatus=S(adminState.bundle?.user?.status||(adminState.bundle?.user?.is_active===false?'suspended':'active'));if(!isNew&&status!==oldStatus&&!requirePermission('users.disable'))return;const reason=await reasonDialog(isNew?'إضافة مستخدم وصلاحياته':'حفظ المستخدم والصلاحيات','اكتب سبب إنشاء المستخدم أو تعديل دوره وصلاحياته ونطاق مشاريعه.');if(!reason)return;const base={full_name:fullName,username,email:S($('userEmail')?.value)||null,phone:S($('userPhone')?.value)||null,job_title:S($('userJobTitle')?.value)||null,department_id:Number($('userDepartment')?.value)||null,role:legacyRouteRole(S($('userRole')?.value||'custom')),role_key:S($('userRole')?.value||'custom'),manager_id:Number($('userManager')?.value)||null,status,is_active:status==='active',valid_from:S($('userValidFrom')?.value)||null,valid_until:S($('userValidUntil')?.value)||null,notes:S($('userNotes')?.value)||null,scope_type:S($('userScopeType')?.value||'all'),allowed_project_ids:selectedProjects,force_password_change:!!$('userForcePasswordChange')?.checked,mfa_required:!!$('userMfaRequired')?.checked,login_attempt_limit:Number($('userLoginLimit')?.value)||5,session_timeout_minutes:Number($('userSessionTimeout')?.value)||480,updated_at:now()};if(S($('userPassword')?.value))base.password=S($('userPassword').value);else if(!id)base.password='123456';
-    const btn=document.querySelector('.perm-save button');if(btn?.disabled)return;btn&&(btn.disabled=true);try{const c=client();let bundle=null,targetId=Number(id)||null;try{bundle=await callRpc('save_app_user_permissions_v10817',{p_session_token:token(),p_target_user_id:targetId,p_user_data:base,p_role_key:base.role_key,p_changes:completeOverrideSnapshotV10823(),p_scope_type:base.scope_type,p_project_ids:selectedProjects,p_reason:reason,p_source:'users_admin'});targetId=Number(bundle?.saved_user_id||bundle?.user?.id||targetId);}catch(e){if(!isMissingRpc(e))throw e;let saved;if(id){const r=await c.from('app_users').update(base).eq('id',Number(id)).select('*').maybeSingle();if(r.error)throw r.error;saved=r.data;}else{const r=await c.from('app_users').insert({...base,created_by:Number(currentUser().id)||null}).select('*').single();if(r.error)throw r.error;saved=r.data;}targetId=Number(saved?.id||id);try{bundle=await callRpc('save_user_permission_bundle_v10817',{p_session_token:token(),p_target_user_id:targetId,p_role_key:base.role_key,p_changes:completeOverrideSnapshotV10823(),p_scope_type:base.scope_type,p_project_ids:selectedProjects,p_reason:reason,p_source:'users_admin'});}catch(inner){if(!isMissingRpc(inner))throw inner;await c.from('app_users').update({permissions:adminState.overrides,allowed_project_ids:selectedProjects,scope_type:base.scope_type,permissions_version:Number(saved?.permissions_version||0)+1}).eq('id',targetId);}}
+    const id=S($('userId')?.value),isNew=!id;
+    if(!requirePermission(isNew?'users.create':'users.edit')||!requirePermission('users.manage_permissions'))return;
+    const username=S($('userUsername')?.value),fullName=S($('userFullName')?.value);
+    if(!username||!fullName)return toast('الاسم الكامل واسم المستخدم مطلوبان','err');
+    const selectedProjects=[...$('userProjectsScope')?.selectedOptions||[]].map(o=>Number(o.value)).filter(Number.isSafeInteger);
+    const status=S($('userStatus')?.value||'active'),oldStatus=S(adminState.bundle?.user?.status||(adminState.bundle?.user?.is_active===false?'suspended':'active'));
+    if(!isNew&&status!==oldStatus&&!requirePermission('users.disable'))return;
+    const reason=await reasonDialog(isNew?'إضافة مستخدم وصلاحياته':'حفظ المستخدم والصلاحيات','اكتب سبب إنشاء المستخدم أو تعديل دوره وصلاحياته ونطاق مشاريعه.');
+    if(!reason)return;
+
+    const base={
+      full_name:fullName,username,email:S($('userEmail')?.value)||null,phone:S($('userPhone')?.value)||null,
+      job_title:S($('userJobTitle')?.value)||null,department_id:Number($('userDepartment')?.value)||null,
+      role:legacyRouteRole(S($('userRole')?.value||'custom')),role_key:S($('userRole')?.value||'custom'),
+      manager_id:Number($('userManager')?.value)||null,status,is_active:status==='active',
+      valid_from:S($('userValidFrom')?.value)||null,valid_until:S($('userValidUntil')?.value)||null,
+      notes:S($('userNotes')?.value)||null,scope_type:S($('userScopeType')?.value||'all'),
+      allowed_project_ids:selectedProjects,force_password_change:!!$('userForcePasswordChange')?.checked,
+      mfa_required:!!$('userMfaRequired')?.checked,login_attempt_limit:Number($('userLoginLimit')?.value)||5,
+      session_timeout_minutes:Number($('userSessionTimeout')?.value)||480,updated_at:now()
+    };
+    if(S($('userPassword')?.value))base.password=S($('userPassword').value);else if(isNew)base.password='123456';
+
+    const btn=document.querySelector('.perm-save button');
+    if(btn?.disabled)return;
+    btn&&(btn.disabled=true);
+
+    const actorUserRaw=localStorage.getItem('tasneef_user');
+    const actorToken=localStorage.getItem('tasneef_session_token_v10817');
+    const actorLegacyToken=localStorage.getItem('tasneef_permission_session_v10817');
+    const actor=currentUser()||{};
+    const actorId=S(actor.id||actor.user_id);
+    const c=client();
+    const notFound=e=>/المستخدم غير موجود|user\s+not\s+found|user.*does not exist/i.test(S(e?.message||e));
+    const missingColumn=e=>/column .* does not exist|schema cache|PGRST204|PGRST205/i.test(S(e?.message||e));
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+    async function findCreatedUser(){
+      let r=await c.from('app_users').select('*').eq('username',username).order('id',{ascending:false}).limit(2);
+      if(r.error)throw r.error;
+      return A(r.data)[0]||null;
+    }
+    async function refreshUsersOnly(){
+      let rows=null;
+      try{
+        if(window.TasneefDataKernelV10902?.loadUsers) rows=await window.TasneefDataKernelV10902.loadUsers(true);
+        else if(window.TasneefDataKernelV10900?.loadUsers) rows=await window.TasneefDataKernelV10900.loadUsers(true);
+      }catch(e){console.warn(BUILD,'kernel users refresh',e);}
+      if(!rows){const r=await c.from('app_users').select('*').order('id');if(!r.error)rows=r.data||[];}
+      if(Array.isArray(rows)){
+        window.data=window.data||{};window.data.users=rows;
+        window.data.supervisors=rows.filter(u=>S(u.role)==='supervisor'&&u.is_active!==false);
+        window.data.technicians=rows.filter(u=>S(u.role)==='technician'&&u.is_active!==false);
+      }
+      try{window.renderUsers?.();}catch(_){ }
+      try{fillSecuritySelectsV10700();}catch(_){ }
+    }
+    async function savePermissionBundle(targetId,saved){
+      let bundle=null,lastErr=null;
+      for(let attempt=0;attempt<3;attempt++){
+        try{
+          bundle=await callRpc('save_user_permission_bundle_v10817',{
+            p_session_token:token(),p_target_user_id:Number(targetId),p_role_key:base.role_key,
+            p_changes:completeOverrideSnapshotV10823(),p_scope_type:base.scope_type,
+            p_project_ids:selectedProjects,p_reason:reason,p_source:'users_admin'
+          });
+          return bundle;
+        }catch(e){
+          lastErr=e;
+          if(isMissingRpc(e))break;
+          if(notFound(e)&&attempt<2){await sleep(180*(attempt+1));continue;}
+          throw e;
+        }
+      }
+      // Older server: keep the same permissions in app_users without breaking user creation.
+      const fallback={permissions:{...adminState.overrides},allowed_project_ids:selectedProjects,scope_type:base.scope_type,permissions_version:Number(saved?.permissions_version||0)+1};
+      let r=await c.from('app_users').update(fallback).eq('id',Number(targetId)).select('*').maybeSingle();
+      if(r.error&&missingColumn(r.error)){
+        const minimal={allowed_project_ids:selectedProjects,scope_type:base.scope_type};
+        r=await c.from('app_users').update(minimal).eq('id',Number(targetId)).select('*').maybeSingle();
+      }
+      if(r.error)throw lastErr||r.error;
+      return {user:r.data,saved_user_id:Number(targetId),overrides:{...adminState.overrides},permissions_version:Number(r.data?.permissions_version||0)};
+    }
+
+    try{
+      let saved=null,bundle=null,targetId=Number(id)||null;
+
+      if(isNew){
+        // Root fix: the user row must exist before permissions are attached to it.
+        let r=await c.from('app_users').insert({...base,created_by:Number(actor.id)||null}).select('*').single();
+        if(r.error){
+          // If the server requires its unified create RPC, use it only as a fallback.
+          try{
+            bundle=await callRpc('save_app_user_permissions_v10817',{
+              p_session_token:token(),p_target_user_id:null,p_user_data:base,p_role_key:base.role_key,
+              p_changes:completeOverrideSnapshotV10823(),p_scope_type:base.scope_type,p_project_ids:selectedProjects,
+              p_reason:reason,p_source:'users_admin'
+            });
+            targetId=Number(bundle?.saved_user_id||bundle?.user?.id||0)||null;
+            saved=bundle?.user||null;
+          }catch(rpcErr){
+            // Some old RPC versions create the row then incorrectly return "user not found".
+            if(notFound(rpcErr)){
+              try{saved=await findCreatedUser();targetId=Number(saved?.id||0)||null;}catch(_){ }
+              if(!targetId)throw rpcErr;
+            }else throw r.error||rpcErr;
+          }
+        }else{
+          saved=r.data;targetId=Number(saved?.id||0)||null;
+        }
+        if(!targetId)throw new Error('تعذر الحصول على رقم المستخدم الجديد بعد الحفظ');
+        if(!bundle)bundle=await savePermissionBundle(targetId,saved);
+      }else{
+        // Existing user: unified RPC first; safe direct update if the RPC is unavailable.
+        try{
+          bundle=await callRpc('save_app_user_permissions_v10817',{
+            p_session_token:token(),p_target_user_id:Number(id),p_user_data:base,p_role_key:base.role_key,
+            p_changes:completeOverrideSnapshotV10823(),p_scope_type:base.scope_type,p_project_ids:selectedProjects,
+            p_reason:reason,p_source:'users_admin'
+          });
+          targetId=Number(bundle?.saved_user_id||bundle?.user?.id||id);
+          saved=bundle?.user||null;
+        }catch(e){
+          if(!isMissingRpc(e)&&!notFound(e))throw e;
+          const r=await c.from('app_users').update(base).eq('id',Number(id)).select('*').maybeSingle();
+          if(r.error)throw r.error;saved=r.data;targetId=Number(id);
+          bundle=await savePermissionBundle(targetId,saved);
+        }
+      }
+
+      // Never let creating/editing another account replace the signed-in admin session.
+      const after=currentUser()||{};
+      if(actorId&&S(after.id||after.user_id)!==actorId){
+        if(actorUserRaw!==null)localStorage.setItem('tasneef_user',actorUserRaw);
+        if(actorToken!==null)localStorage.setItem('tasneef_session_token_v10817',actorToken);
+        if(actorLegacyToken!==null)localStorage.setItem('tasneef_permission_session_v10817',actorLegacyToken);
+        setSessionHeader();
+      }
+
       if(bundle){adminState.bundle=bundle;adminState.initialOverrides={...(bundle.overrides||adminState.overrides)};adminState.overrides={...adminState.initialOverrides};}
-      clearPermissionCache(targetId);broadcast?.postMessage({type:'permissions-updated',userId:targetId,version:Number(bundle?.permissions_version||0)});toast('تم حفظ الدور والصلاحيات وتطبيقها كوحدة واحدة');$('advancedUserDrawerV10700')?.classList.add('hidden');if(typeof window.refreshAll==='function')await window.refreshAll();if(typeof window.loadSecurityCenterV10700==='function')await window.loadSecurityCenterV10700(true);applyUI(true);
-    }catch(e){console.error(BUILD,e);const raw=S(e.message||e);toast(/app_users_role_check|violates check constraint/i.test(raw)?'تعذر حفظ الدور بسبب قيد قديم في قاعدة البيانات. شغّل ملف إصلاح الأدوار V10822 ثم أعد المحاولة.':raw,'err');}finally{btn&&(btn.disabled=false);}
+      clearPermissionCache(targetId);
+      broadcast?.postMessage({type:'permissions-updated',userId:targetId,version:Number(bundle?.permissions_version||0)});
+      await refreshUsersOnly();
+      toast(isNew?'تم إنشاء المستخدم وحفظ صلاحياته بنجاح':'تم حفظ المستخدم والصلاحيات');
+      $('advancedUserDrawerV10700')?.classList.add('hidden');
+      try{applyUI(true);}catch(_){ }
+    }catch(e){
+      console.error(BUILD,'V10903 save user',e);
+      const raw=S(e.message||e);
+      toast(/app_users_role_check|violates check constraint/i.test(raw)?'تعذر حفظ الدور بسبب قيد قديم في قاعدة البيانات. شغّل ملف إصلاح الأدوار V10822 ثم أعد المحاولة.':raw,'err');
+    }finally{
+      // Defensive session restoration even when a server/RPC call fails midway.
+      const after=currentUser()||{};
+      if(actorId&&S(after.id||after.user_id)!==actorId){
+        if(actorUserRaw!==null)localStorage.setItem('tasneef_user',actorUserRaw);
+        if(actorToken!==null)localStorage.setItem('tasneef_session_token_v10817',actorToken);
+        if(actorLegacyToken!==null)localStorage.setItem('tasneef_permission_session_v10817',actorLegacyToken);
+        setSessionHeader();
+      }
+      btn&&(btn.disabled=false);
+    }
   };
   window.toggleUserStatusV10700=async function(id,currentStatus){if(!requirePermission('users.disable'))return;const next=currentStatus==='active'?'suspended':'active';const reason=await reasonDialog(next==='active'?'إعادة تفعيل المستخدم':'إيقاف المستخدم',`سيتم ${next==='active'?'إعادة تفعيل':'إيقاف'} الحساب وتحديث جلساته فورًا.`);if(!reason)return;try{await callRpc('set_user_status_v10817',{p_session_token:token(),p_target_user_id:Number(id),p_status:next,p_reason:reason});clearPermissionCache(id);broadcast?.postMessage({type:'permissions-updated',userId:Number(id)});toast(next==='active'?'تمت إعادة تفعيل المستخدم':'تم إيقاف المستخدم وإنهاء صلاحية جلساته');if(typeof window.refreshAll==='function')await window.refreshAll();if(typeof window.loadSecurityCenterV10700==='function')await window.loadSecurityCenterV10700(true);}catch(e){toast(S(e.message||e),'err');}};
   window.endUserSessionsV10700=async function(id){if(!requirePermission('users.end_sessions'))return;const reason=await reasonDialog('إنهاء جلسات المستخدم','سيتم إنهاء جميع جلسات هذا المستخدم على الأجهزة المختلفة.');if(!reason)return;try{const out=await callRpc('end_user_sessions_v10817',{p_session_token:token(),p_target_user_id:Number(id),p_reason:reason});broadcast?.postMessage({type:'permissions-updated',userId:Number(id)});toast(`تم إنهاء ${Number(out?.ended_sessions||0)} جلسة`);if(typeof window.loadSecurityCenterV10700==='function')await window.loadSecurityCenterV10700(true);}catch(e){toast(S(e.message||e),'err');}};
