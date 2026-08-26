@@ -7,7 +7,7 @@
   if(window.__tasneefDataKernelV10900) return;
   window.__tasneefDataKernelV10900=true;
 
-  const BUILD='V10900_UNIFIED_DATA_KERNEL';
+  const BUILD='V10902_UNIFIED_DATA_KERNEL_STABLE_SELECTION';
   const $=id=>document.getElementById(id);
   const S=v=>String(v??'').trim();
   const A=v=>Array.isArray(v)?v:[];
@@ -26,7 +26,22 @@
   function activeProject(p){if(!p||p.is_active===false||p.active===false)return false;const st=norm(p.status||p.project_status||p.state);return !['inactive','stopped','ended','closed','cancelled','deleted','archived','disabled','موقوف','متوقف','منتهي','ملغي','محذوف','مؤرشف','غير نشط'].includes(st);}
   function role(){const r=norm(sessionUser().role);if(r==='supervisor'||r.includes('مشرف'))return'supervisor';if(r==='technician'||r.includes('فني'))return'technician';if(r==='admin'||r.includes('ادار')||$('dashboard'))return'admin';return r||'other';}
   function selectedValue(...ids){for(const id of ids){const v=S($(id)?.value);if(v)return v;}return'';}
-  function preserveSelect(id,rows,label){const el=$(id);if(!el)return;const old=S(el.value);el.innerHTML='<option value="">'+esc(label)+'</option>'+A(rows).map(p=>'<option value="'+escAttr(p.id)+'">'+esc(p.name||p.project_name||p.title||p.id)+'</option>').join('');if(old&&[...el.options].some(o=>S(o.value)===old))el.value=old;}
+  function preserveSelect(id,rows,label){
+    const el=$(id);if(!el)return;
+    const stable=window.TasneefProjectSelectionV10902;
+    const old=S(el.value),remembered=S(stable?.get?.(id)||'');
+    const desired=old||remembered;
+    const wanted=A(rows).map(p=>({value:S(p.id),text:S(p.name||p.project_name||p.title||p.id)}));
+    const current=[...el.options].slice(1).map(o=>({value:S(o.value),text:S(o.textContent)}));
+    const same=current.length===wanted.length&&current.every((o,i)=>o.value===wanted[i].value&&o.text===wanted[i].text);
+    if(!same){
+      el.innerHTML='<option value="">'+esc(label)+'</option>'+wanted.map(p=>'<option value="'+escAttr(p.value)+'">'+esc(p.text)+'</option>').join('');
+    }else if(el.options[0]&&S(el.options[0].textContent)!==S(label)){
+      el.options[0].textContent=label;
+    }
+    if(desired&&[...el.options].some(o=>S(o.value)===desired))el.value=desired;
+    stable?.confirmFromSelect?.(id);
+  }
   function esc(v){return S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function escAttr(v){return esc(v).replace(/`/g,'&#96;');}
 
@@ -182,7 +197,10 @@
   }
 
   async function loadSupervisor(id,force){
-    const d=data(),scope=await supervisorScope(force);d.projects=scope.projects;d.workerAssignments=scope.assignments;fillSupervisorProjects(scope);
+    // V10902: project scope is session-stable. A log/ticket mutation refreshes only its dataset,
+    // not the supervisor project list. Project scope is force-refreshed only by the explicit
+    // refreshSupervisorProjects API or a fresh page/session boot.
+    const d=data(),scope=await supervisorScope(false);d.projects=scope.projects;d.workerAssignments=scope.assignments;fillSupervisorProjects(scope);
     if(id==='supTickets'){const t=await tickets(force);d.tickets=scopedTickets(t,scope);try{window.renderTickets?.();}catch(_){}return;}
     if(id==='supLogs'){const [w,l]=await Promise.all([supervisorWorkers(scope,force),logs(today(),today(),force)]);d.workers=w;d.logs=A(l).filter(x=>scope.projectIds.has(S(x.project_id)));try{window.renderTimeLogs?.();}catch(_){}return;}
     if(id==='supAttendance'){const date=selectedValue('attendanceDate')||today(),[w,a]=await Promise.all([supervisorWorkers(scope,force),attendance(date,date,force)]);d.workers=w;d.attendance=A(a).filter(x=>scope.projectIds.has(S(x.project_id)));try{await window.renderSupervisorAttendanceList?.();}catch(_){}return;}
@@ -242,6 +260,6 @@
   window.addEventListener('tasneef:project-updated',()=>{invalidate(['projects']);state.supervisor=null;});
   window.addEventListener('tasneef:data-mutated-v10900',e=>{invalidate(A(e.detail?.resources));});
 
-  window.TasneefDataKernelV10900={build:BUILD,state,loadSection,refreshActive,loadProjects:projects,loadUsers:users,loadWorkers:workers,loadTickets:tickets,supervisorScope,invalidate,status:()=>({build:BUILD,role:role(),loadedSections:[...state.loadedSections],inflight:[...state.inflight.keys()],master:Object.fromEntries(Object.entries(state.master).map(([k,v])=>[k,Array.isArray(v)?v.length:(v?.projectIds?.size??'ready')])),errors:state.errors,supervisorProjects:state.supervisor?.projects?.length||0})};
+  window.TasneefDataKernelV10900=window.TasneefDataKernelV10902={build:BUILD,state,loadSection,refreshActive,loadProjects:projects,loadUsers:users,loadWorkers:workers,loadTickets:tickets,supervisorScope,invalidate,status:()=>({build:BUILD,role:role(),loadedSections:[...state.loadedSections],inflight:[...state.inflight.keys()],master:Object.fromEntries(Object.entries(state.master).map(([k,v])=>[k,Array.isArray(v)?v.length:(v?.projectIds?.size??'ready')])),errors:state.errors,supervisorProjects:state.supervisor?.projects?.length||0})};
   console.info(BUILD,'loaded');
 })();
