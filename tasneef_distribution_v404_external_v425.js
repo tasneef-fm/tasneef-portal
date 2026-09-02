@@ -1,14 +1,15 @@
 (function(){
   'use strict';
   if(window.tasneefDistributionV404) return;
-  const VERSION='404';
+  const VERSION='426';
   const $=id=>document.getElementById(id);
   const S=v=>(v==null?'':String(v)).trim();
   const N=v=>{const n=Number(v||0); return Number.isFinite(n)?n:0};
   const esc=v=>S(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const norm=v=>S(v).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/[\u064B-\u0652]/g,'').replace(/\s+/g,' ').toLowerCase();
-  const todayMonth=()=>new Date().toISOString().slice(0,7);
-  const prevMonth=m=>{const d=new Date((m||todayMonth())+'-01T00:00:00'); d.setMonth(d.getMonth()-1); return d.toISOString().slice(0,7)};
+  const pad2=n=>String(Number(n)||0).padStart(2,'0');
+  const todayMonth=()=>{const d=new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)};
+  const prevMonth=m=>{const hit=String(m||todayMonth()).match(/^(\d{4})-(\d{2})$/); const y=Number(hit?.[1]||new Date().getFullYear()), mm=Number(hit?.[2]||new Date().getMonth()+1); const total=y*12+(mm-1)-1; return Math.floor(total/12)+'-'+pad2(((total%12)+12)%12+1)};
   const state={ready:false,employees:null,projects:null,users:null,distByMonth:{},selected:new Map(),lastLoad:0};
   const cacheTtl=1000*60*2;
   function sb(){return window.sb || window.supabaseClient || window._supabase || null;}
@@ -80,17 +81,33 @@
     const first=rows[0]; if(first){const sup=$('td404Supervisor'); if(sup) sup.value=S(first.supervisor_employee_code||sup.value); const notes=$('td404Notes'); if(notes) notes.value=S(first.notes||'');}
     renderWorkers(); renderSelected();
   }
+  async function resolveSupervisorUserId(client,sup){
+    const code=empCode(sup), name=empName(sup);
+    const direct=[sup?.app_user_id,sup?.auth_user_id,sup?.supervisor_user_id,sup?.user_id].map(S).filter(Boolean);
+    const users=await safe(client.from('app_users').select('*').limit(10000),'app_users supervisor lookup');
+    const normCode=v=>S(v).replace(/[_\s]/g,'-').toUpperCase();
+    let hit=users.find(u=>[u.employee_code,u.worker_code,u.code,u.emp_code,u.supervisor_employee_code,u.username].some(v=>normCode(v)===normCode(code)));
+    if(!hit && name){const exact=users.filter(u=>[u.full_name,u.name,u.display_name,u.username].some(v=>norm(v)===norm(name))); if(exact.length===1) hit=exact[0];}
+    if(!hit && direct.length) hit=users.find(u=>direct.includes(S(u.id)));
+    return S(hit?.id||direct[0]||'');
+  }
   async function saveProjectDistribution(){
     const client=sb(); if(!client){msg('لا يوجد اتصال بالسيرفر. تأكد من إعداد Supabase.',true); return;}
     const m=month(), p=selectedProject(), sup=selectedSupervisor(), status=$('td404Status')?.value||'active';
     if(!m||!p||!sup){msg('اختر الشهر والمشرف والمشروع أولاً.',true); return;}
     const chosen=[...state.selected.values()]; if(!chosen.length){msg('اختر عامل واحد على الأقل.',true); return;}
+    const supervisorId=await resolveSupervisorUserId(client,sup);
+    if(!supervisorId){msg('تعذر حفظ التوزيع: حساب المشرف غير مربوط بمستخدم في النظام. اربط '+empDisplay(sup)+' بحسابه ثم أعد المحاولة.',true); return;}
+    // تثبيت المشروع على نفس حساب المشرف حتى ترى بوابة المشرف التوزيع فورًا.
+    const projectBind=await client.from('projects').update({supervisor_id:supervisorId}).eq('id',p.id).select('id');
+    if(projectBind.error){msg('تعذر ربط المشروع بالمشرف: '+projectBind.error.message,true); return;}
     const existing=await safe(client.from('monthly_distribution').select('id,worker_employee_code').eq('month_key',m).eq('project_id',p.id),'load existing');
     const chosenCodes=new Set(chosen.map(empCode));
     const toDelete=existing.filter(r=>!chosenCodes.has(S(r.worker_employee_code))).map(r=>r.id).filter(Boolean);
     if(toDelete.length) await safe(client.from('monthly_distribution').delete().in('id',toDelete),'delete removed');
     const rows=chosen.map(e=>({
       month_key:m,
+      supervisor_id:supervisorId,
       supervisor_employee_code:empCode(sup),
       supervisor_name:empDisplay(sup),
       project_id:N(p.id),
@@ -104,7 +121,7 @@
     }));
     const r=await client.from('monthly_distribution').upsert(rows,{onConflict:'month_key,project_id,worker_employee_code'}).select();
     if(r.error){msg('خطأ في الحفظ: '+r.error.message,true); return;}
-    delete state.distByMonth[m]; await loadDistribution(true); fillSelects(); renderDistribution(); msg('تم حفظ توزيع المشروع بنجاح.');
+    delete state.distByMonth[m]; await loadDistribution(true); fillSelects(); renderDistribution(); msg('تم حفظ توزيع المشروع وظهر في توزيع هذا الشهر بنجاح.');
   }
   async function copyPreviousMonth(){
     const client=sb(); if(!client){msg('لا يوجد اتصال بالسيرفر.',true); return;}
